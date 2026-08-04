@@ -20,7 +20,7 @@ import rumps
 from . import audio, config, debugdump, hotkey, insert, overlay, stt, webstt
 
 ICON = {
-    "idle": "🎙",
+    "idle": "⚪",
     "recording": "🟢",
     "thinking": "🟡",
     "error": "⚠️",
@@ -93,6 +93,7 @@ class DictateApp(rumps.App):
             on_start=self._on_start,
             on_stop=self._on_stop,
             on_cancel=self._on_cancel,
+            is_synthetic=insert.injecting,
         )
 
     # ------------------------------------------------------------------ UI

@@ -4,7 +4,7 @@ Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se poja
 u kojoj si trenutno. U menu baru ikonica pokazuje stanje.
 
 ```
-menu bar:   🎙 spremno    🟢 snima    🟡 obrađuje    ⚠️ greška
+menu bar:   ⚪ spremno    🟢 snima    🟡 obrađuje    ⚠️ greška
 na ekranu:  ( 0:12 ) zeleno = snima     ( 0:12 ) žuto = obrađuje
 ```
 

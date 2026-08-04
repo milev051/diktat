@@ -25,7 +25,7 @@ KEY_MAP = {
 
 
 class HotkeyListener:
-    def __init__(self, cfg, on_start, on_stop, on_cancel):
+    def __init__(self, cfg, on_start, on_stop, on_cancel, is_synthetic=None):
         key_name = cfg.get("hotkey", "cmd_r")
         if key_name not in KEY_MAP:
             raise RuntimeError(
@@ -38,6 +38,8 @@ class HotkeyListener:
         self.on_start = on_start
         self.on_stop = on_stop
         self.on_cancel = on_cancel
+        # Vraca True dok aplikacija sama salje tastere (lepljenje teksta).
+        self.is_synthetic = is_synthetic or (lambda: False)
 
         self._lock = threading.Lock()
         self._active = False
@@ -82,8 +84,10 @@ class HotkeyListener:
                     self._fire(self.on_start)
                 return
 
-            # neki drugi taster dok drzimo hotkey => ovo je precica, ne diktat
-            if self._active and self.mode == "hold":
+            # Neki drugi taster dok drzimo hotkey => ovo je precica, ne diktat.
+            # Osim ako smo ga mi poslali: lepljenje segmenta usred diktata salje
+            # Cmd+V, i bez ove provere bi aplikacija otkazala sopstveni diktat.
+            if self._active and self.mode == "hold" and not self.is_synthetic():
                 self._contaminated = True
 
     def _on_release(self, key):
