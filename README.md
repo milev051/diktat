@@ -70,7 +70,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
   se oslobađa čim pustiš taster, a prepoznavanje se nastavlja u pozadini. HUD tada
   pokazuje `· obrađujem 1`. Tekst se lepi **po redosledu snimanja**, i kad se kraći
   drugi snimak prepozna pre dužeg prvog.
-- **Na dugom diktatu se snimak sam seče na pauzama.** Posle 15s, svaka pauza od
+- **Na dugom diktatu se snimak sam seče na pauzama.** Posle 10s, svaka pauza od
   ~0.7s odseca deo i šalje ga na obradu dok ti nastavljaš da pričaš. Zato više
   **nema granice od 30s** — možeš diktirati koliko hoćeš.
 - Zato se isplati diktirati u kraćim celinama — dok pričaš sledeću, prethodna se već obrađuje.
@@ -116,6 +116,7 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `engine` | `web` | `web` (besplatno) ili `cloud` (reč po reč) |
 | `web_api_key` | `""` | prazno = ugrađeni javni ključ |
 | `capitalize_first` | `true` | web motor ne vraća veliko početno slovo |
+| `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `language_codes` | `["sr-RS"]` | menja se i iz menija |
 | `hotkey` | `cmd_r` | `cmd_l`, `alt_r`, `ctrl_r`, `f13`… |
 | `mode` | `hold` | `hold` = drži taster, `toggle` = pritisni/pritisni |
@@ -126,7 +127,7 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `trailing_space` | `true` | razmak na kraju, da se rečenice nadovezuju |
 | `input_device` | `null` | `null` = sistemski mikrofon |
 | `auto_segment` | `true` | seci dug snimak na pauzama i slati u delovima |
-| `segment_after_seconds` | `15` | pre ovoga se nikad ne seče |
+| `segment_after_seconds` | `10` | pre ovoga se nikad ne seče |
 | `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
 | `web_max_seconds` | `30` | najduži pojedinačni zahtev ka endpointu |
 | `max_seconds` | `290` | granica za `cloud` motor |

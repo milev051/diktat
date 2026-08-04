@@ -22,6 +22,7 @@
   "trailing_space": true,
   "web_max_seconds": 30,
   "auto_segment": true,
-  "segment_after_seconds": 15,
-  "pause_seconds": 0.7
+  "segment_after_seconds": 10,
+  "pause_seconds": 0.7,
+  "profanity_filter": false
 }

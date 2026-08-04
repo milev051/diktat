@@ -25,8 +25,19 @@ class WebSttError(Exception):
     pass
 
 
-def recognize(pcm: bytes, language="sr-RS", sample_rate=16000, key=None, timeout=30):
-    """Salje sirov 16-bit PCM i vraca prepoznat tekst ('' ako nista)."""
+def recognize(
+    pcm: bytes,
+    language="sr-RS",
+    sample_rate=16000,
+    key=None,
+    timeout=30,
+    profanity_filter=False,
+):
+    """Salje sirov 16-bit PCM i vraca prepoznat tekst ('' ako nista).
+
+    Bez `pFilter=0` Google maskira psovke zvezdicama ("sranje" -> "s*****").
+    Ime parametra je osetljivo na velika slova — `pfilter` se ignorise.
+    """
     if not pcm:
         return ""
 
@@ -34,6 +45,7 @@ def recognize(pcm: bytes, language="sr-RS", sample_rate=16000, key=None, timeout
         f"{ENDPOINT}?client=chromium"
         f"&lang={urllib.parse.quote(language)}"
         f"&key={key or DEFAULT_KEY}"
+        f"&pFilter={1 if profanity_filter else 0}"
     )
     request = urllib.request.Request(
         url,

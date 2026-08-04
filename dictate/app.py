@@ -346,6 +346,7 @@ class DictateApp(rumps.App):
             language=(self.cfg.get("language_codes") or ["sr-RS"])[0],
             sample_rate=self.cfg["sample_rate"],
             key=self.cfg.get("web_api_key") or None,
+            profanity_filter=bool(self.cfg.get("profanity_filter", False)),
         )
         if text and self.cfg.get("capitalize_first", True):
             text = webstt.tidy(text)
@@ -463,9 +464,11 @@ class DictateApp(rumps.App):
         if phase == "recording" and not live and self.cfg.get("show_overlay", True):
             recorder = self._recorder
             if recorder is not None:
+                meter = self._meter_text(recorder)
                 if not self.hud.visible:
-                    self.hud.show("")
-                self.hud.set_text(self._meter_text(recorder))
+                    self.hud.show(meter, mono=True)
+                else:
+                    self.hud.set_text(meter, mono=True)
                 self.hud.set_state("thinking" if self._near_limit() else "recording")
                 return
 
@@ -475,7 +478,7 @@ class DictateApp(rumps.App):
         self.title = ICON.get(phase, ICON["idle"])
 
         if phase == "error":
-            self.item_status.title = f"Greska: {message[:60]}"
+            self.item_status.title = f"Greška: {message[:60]}"
         elif phase == "recording":
             self.item_status.title = "Snimanje…"
         elif phase == "thinking":
@@ -487,19 +490,19 @@ class DictateApp(rumps.App):
             return
 
         if phase in ("recording", "thinking"):
-            shown = live or ("Slusam…" if phase == "recording" else "Obrada…")
+            shown = live or ("slušam…" if phase == "recording" else self._busy_text())
             if len(shown) > HUD_MAX_CHARS:
                 shown = "…" + shown[-HUD_MAX_CHARS:]
             if not self.hud.visible:
-                self.hud.show(shown)
+                self.hud.show(shown, mono=False)
             else:
-                self.hud.set_text(shown)
+                self.hud.set_text(shown, mono=False)
             self.hud.set_state("recording" if phase == "recording" else "thinking")
         elif phase == "error":
             # Greska se pokaze kratko pa se skloni; poruka ostaje u meniju.
             if self._error_shown_at is None:
                 self._error_shown_at = time.monotonic()
-                self.hud.show(message[:HUD_MAX_CHARS])
+                self.hud.show(message[:HUD_MAX_CHARS], mono=False)
                 self.hud.set_state("error")
         else:
             self.hud.hide()
@@ -517,14 +520,20 @@ class DictateApp(rumps.App):
         )
 
         if remaining <= WARN_SECONDS:
-            clock = f"jos {math.ceil(remaining)}s"
+            clock = f"još {math.ceil(remaining)}s"
         else:
             clock = f"{int(elapsed // 60)}:{int(elapsed % 60):02d}"
 
+        # Crvena tačka već znači "snima", pa tu reč ne ponavljamo — HUD ostaje uzak.
         with self._count_lock:
             pending = self._pending
-        badge = f"   ·  obradjujem {pending}" if pending else ""
-        return f"{bar}   {clock}   slusam…{badge}"
+        badge = f"  ·  {pending} u obradi" if pending else ""
+        return f"{bar}  {clock}{badge}"
+
+    def _busy_text(self) -> str:
+        with self._count_lock:
+            pending = self._pending
+        return f"obrađujem {pending}" if pending > 1 else "obrađujem…"
 
     def _near_limit(self) -> bool:
         return (

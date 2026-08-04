@@ -16,9 +16,10 @@ DEFAULTS = {
     "engine": "web",
     "web_api_key": "",            # prazno = ugradjeni javni Chromium kljuc
     "capitalize_first": True,     # web motor ne vraca veliko pocetno slovo
+    "profanity_filter": False,    # True bi maskirao psovke ("sranje" -> "s*****")
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
     "auto_segment": True,
-    "segment_after_seconds": 15,  # pre ovoga se nikad ne sece
+    "segment_after_seconds": 10,  # pre ovoga se nikad ne sece
     "pause_seconds": 0.7,         # koliko tisine znaci "kraj misli"
 
     # --- Google Cloud (samo za engine "cloud") ---
