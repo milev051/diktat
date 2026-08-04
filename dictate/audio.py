@@ -62,12 +62,25 @@ class Recorder:
         self._q.put(data)
         self._level = peak(data)
 
+    def _resolve_device(self):
+        """Uredjaj se pamti po IMENU, ne po indeksu — indeksi se pomeraju cim
+        se nesto prikljuci ili iskljuci, pa bi zapamceni broj pokazivao na
+        pogresan mikrofon. Ako imena nema, vracamo se na sistemski."""
+        if not self.device:
+            return None
+        try:
+            sd.query_devices(self.device, "input")
+            return self.device
+        except Exception:  # noqa: BLE001
+            print(f"[diktat] mikrofon {self.device!r} nije nadjen, koristim sistemski")
+            return None
+
     def _open(self):
         blocksize = int(self.sample_rate * BLOCK_MS / 1000)
         self._stream = sd.RawInputStream(
             samplerate=self.sample_rate,
             blocksize=blocksize,
-            device=self.device,
+            device=self._resolve_device(),
             channels=1,
             dtype="int16",
             callback=self._callback,
@@ -207,6 +220,15 @@ class PauseDetector:
 
         # Bez ovoga bi duza tisina okidala u nedogled i slala prazne segmente.
         return self.heard_speech and self.quiet_for >= self.pause_seconds
+
+
+def input_devices():
+    """Imena uredjaja koji mogu da snimaju, bez duplikata."""
+    imena = []
+    for d in sd.query_devices():
+        if d["max_input_channels"] > 0 and d["name"] not in imena:
+            imena.append(d["name"])
+    return imena
 
 
 def list_devices():

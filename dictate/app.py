@@ -111,6 +111,7 @@ class DictateApp(rumps.App):
         self.item_refresh = rumps.MenuItem(
             "Osveži audio uređaje", callback=self._refresh_audio
         )
+        self.mic_menu = rumps.MenuItem("Mikrofon")
 
         mode_menu = rumps.MenuItem("Rezim")
         self.item_hold = rumps.MenuItem("Drzi taster", callback=self._set_hold)
@@ -143,6 +144,8 @@ class DictateApp(rumps.App):
             self.item_status,
             None,
             self.item_copy,
+            None,
+            self.mic_menu,
             self.item_refresh,
             None,
             engine_menu,
@@ -154,7 +157,32 @@ class DictateApp(rumps.App):
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
         ]
+        self._rebuild_mic_menu()
         self._sync_menu_marks()
+
+    def _rebuild_mic_menu(self):
+        """Lista se pravi iznova jer se uredjaji prikljucuju i iskljucuju."""
+        self.mic_menu.clear()
+        self.mic_items = {}
+        for name in [None] + audio.input_devices():
+            label = "Sistemski podrazumevani" if name is None else name
+            item = rumps.MenuItem(label, callback=self._make_mic_setter(name))
+            self.mic_items[name] = item
+            self.mic_menu.add(item)
+        self._mark_mic()
+
+    def _mark_mic(self):
+        chosen = self.cfg.get("input_device")
+        for name, item in getattr(self, "mic_items", {}).items():
+            item.state = 1 if name == chosen else 0
+
+    def _make_mic_setter(self, name):
+        def setter(_):
+            self.cfg["input_device"] = name
+            config.save(self.cfg)
+            self._mark_mic()
+
+        return setter
 
     def _sync_menu_marks(self):
         mode = self.cfg.get("mode", "hold")
@@ -212,6 +240,9 @@ class DictateApp(rumps.App):
         with self._session_lock:
             if self._recorder is not None:
                 return
+            # Lista uredjaja se osvezava pred svaki diktat (~2ms) — bez toga
+            # PortAudio i dalje gleda uredjaje od pre vadjenja slusalica.
+            audio.refresh_devices()
             recorder = audio.Recorder(
                 sample_rate=self.cfg["sample_rate"],
                 device=self.cfg.get("input_device"),
@@ -276,11 +307,14 @@ class DictateApp(rumps.App):
         if recorder.released:
             return
         recorder.released = True
+        # Strim se zatvara PRE oslobadjanja slota: sledeci diktat reinicijalizuje
+        # PortAudio, a to ne sme da se desi dok je neki strim jos otvoren.
+        # Ticket se uzima dok slot jos drzimo, da nova sesija ne preuzme nizi broj.
+        recorder.close()
+        recorder.ticket = self._next_ticket()
         with self._session_lock:
             if self._recorder is recorder:
                 self._recorder = None
-        recorder.ticket = self._next_ticket()
-        recorder.close()
         if recorder.captured == 0:
             # Strim se otvorio ali nije stigao nijedan sempl — uredjaj je
             # najverovatnije nestao pod nogama. Sledeci put krece iz cista.
@@ -608,6 +642,7 @@ class DictateApp(rumps.App):
 
     def _refresh_audio(self, _):
         audio.refresh_devices()
+        self._rebuild_mic_menu()
         self.state.set(phase="idle", message="")
         self.item_status.title = f"Mikrofon: {audio.current_input_name()[:40]}"
 

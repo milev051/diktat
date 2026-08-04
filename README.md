@@ -133,7 +133,7 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `show_overlay` | `true` | prikaz stanja preko ekrana |
 | `overlay_position` | `top-right` | `top-right` (kao notifikacija) ili `bottom` |
 | `trailing_space` | `true` | razmak na kraju, da se rečenice nadovezuju |
-| `input_device` | `null` | `null` = sistemski mikrofon |
+| `input_device` | `null` | `null` = sistemski; ili ime uređaja (bira se iz menija **Mikrofon**) |
 | `auto_segment` | `true` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | pre ovoga se nikad ne seče |
 | `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
@@ -182,10 +182,9 @@ Prvo uvek `./run.sh doctor`.
 **Hotkey ne reaguje** → nema Accessibility dozvole. Ako si već dodao aplikaciju,
 izbaci je iz liste (`−`) pa dodaj ponovo — macOS ume da zapamti stari potpis.
 
-**`Internal PortAudio error` posle vađenja/vraćanja slušalica** → PortAudio
-kešira listu uređaja pri pokretanju, pa mu keš zastari. Aplikacija to sada
-sama prepozna i osveži listu pa ponovi. Ako zaglavi, u meniju stoji
-**Osveži audio uređaje**.
+**Vađenje/vraćanje slušalica** → lista uređaja se osvežava sama pred svaki
+diktat (~2ms), pa ne treba ništa ručno. Meni **Osveži audio uređaje** postoji
+za slučaj da ipak zaglavi.
 
 **Tekst se ne lepi** → probaj `"insert_method": "type"`. Neki terminali i Java
 programi ne primaju sintetički Cmd+V. Tekst je uvek i u clipboard-u, plus u meniju
