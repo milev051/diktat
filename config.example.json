@@ -1,0 +1,24 @@
+{
+  "engine": "web",
+  "web_api_key": "",
+  "capitalize_first": true,
+  "credentials_json": "~/.config/diktat/google-key.json",
+  "project_id": "",
+  "location": "global",
+  "model": "long",
+  "language_codes": [
+    "sr-RS"
+  ],
+  "punctuation": true,
+  "sample_rate": 16000,
+  "input_device": null,
+  "max_seconds": 290,
+  "hotkey": "cmd_r",
+  "mode": "hold",
+  "min_seconds": 0.35,
+  "insert_method": "paste",
+  "restore_clipboard": true,
+  "show_overlay": true,
+  "trailing_space": true,
+  "web_max_seconds": 30
+}
