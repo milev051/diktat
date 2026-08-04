@@ -32,7 +32,7 @@ class Recorder:
             return
         data = bytes(indata)
         self._q.put(data)
-        self._level = _peak(data)
+        self._level = peak(data)
 
     def start(self):
         blocksize = int(self.sample_rate * BLOCK_MS / 1000)
@@ -100,7 +100,7 @@ class Recorder:
             yield item
 
 
-def _peak(pcm: bytes) -> float:
+def peak(pcm: bytes) -> float:
     """Priblizan vrh amplitude bez numpy-ja — gleda svaki 16. sempl."""
     if not pcm:
         return 0.0
@@ -109,6 +109,9 @@ def _peak(pcm: bytes) -> float:
         val = int.from_bytes(pcm[i : i + 2], "little", signed=True)
         top = max(top, abs(val))
     return min(1.0, top / 32768.0)
+
+
+_peak = peak   # stari naziv, koristi se u testovima
 
 
 class PauseDetector:

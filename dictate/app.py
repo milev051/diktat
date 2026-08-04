@@ -17,7 +17,7 @@ import traceback
 import AppKit
 import rumps
 
-from . import audio, config, hotkey, insert, overlay, stt, webstt
+from . import audio, config, debugdump, hotkey, insert, overlay, stt, webstt
 
 ICON = {
     "idle": "🎙",
@@ -81,8 +81,10 @@ class DictateApp(rumps.App):
         self._pending = 0        # snimci koji se prepoznaju
         self._ticket = 0         # redni broj segmenta za ubacivanje
         self._insert_q: queue.Queue = queue.Queue()
+        self._dump = None
 
         self._build_menu()
+        self._apply_debug(self.cfg.get("debug", False))
         self._preflight()
         threading.Thread(target=self._insert_worker, daemon=True).start()
 
@@ -101,6 +103,9 @@ class DictateApp(rumps.App):
 
         self.item_copy = rumps.MenuItem(
             "Kopiraj poslednji tekst", callback=self._copy_last
+        )
+        self.item_debug = rumps.MenuItem(
+            "Snimaj za debug", callback=self._toggle_debug
         )
 
         mode_menu = rumps.MenuItem("Rezim")
@@ -139,6 +144,7 @@ class DictateApp(rumps.App):
             mode_menu,
             lang_menu,
             None,
+            self.item_debug,
             rumps.MenuItem("Otvori config.json", callback=self._open_config),
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
@@ -370,39 +376,66 @@ class DictateApp(rumps.App):
         hard_cut = float(self.cfg.get("web_max_seconds", 30))
         rate = self.cfg["sample_rate"]
 
+        session = self._dump.session() if self._dump else None
+        everything: list[bytes] = []
         frames: list[bytes] = []
-        started = time.monotonic()
+        seconds = 0.0
 
         for chunk in self._tracked(recorder):
             frames.append(chunk)
-            paused = detector.feed(recorder.level, len(chunk) / 2 / rate)
-            age = time.monotonic() - started
+            if session is not None:
+                everything.append(chunk)
+            step = len(chunk) / 2 / rate
+            # Duzina segmenta se meri PO ZVUKU, ne po zidnom satu. web_max_seconds
+            # je granica koliko sekundi zvuka endpoint prima, pa ta dva moraju da
+            # budu ista mera i onda kad potrosac kasni za mikrofonom.
+            seconds += step
+            # Nivo se racuna IZ OVOG komada. `recorder.level` je nivo poslednjeg
+            # uhvacenog komada — detektor bi gledao jedan zvuk a sekao drugi.
+            paused = detector.feed(audio.peak(chunk), step)
             # Tvrdi rez postoji jer endpoint puca na zahtevima duzim od ~30s,
             # a neko moze da prica bez ijedne pauze.
-            if frames and ((paused and age >= cut_after) or age >= hard_cut):
-                self._ship_segment(b"".join(frames))
+            if frames and ((paused and seconds >= cut_after) or seconds >= hard_cut):
+                self._ship_segment(b"".join(frames), session)
                 frames = []
-                started = time.monotonic()
+                seconds = 0.0
                 detector.reset()
 
         if recorder.cancelled:
             return ""
         self._settle_phase()
-        return self._recognize(b"".join(frames))
+        tail = b"".join(frames)
+        text = self._recognize(tail)
+        if not text and self._seconds(tail) > 0.4:
+            print(f"[diktat] rep od {self._seconds(tail):.1f}s nije prepoznat")
+        if session is not None:
+            session.segment(session.next_index(), tail, text, kind="rep")
+            session.finish(b"".join(everything), text)
+        return text
 
-    def _ship_segment(self, pcm: bytes):
+    @staticmethod
+    def _seconds(pcm: bytes, rate=16000) -> float:
+        return len(pcm) / 2 / rate
+
+    def _ship_segment(self, pcm: bytes, session=None):
         """Posalji odsecen deo na prepoznavanje, a snimanje ide dalje."""
         ticket = self._next_ticket()
+        index = session.next_index() if session is not None else 0
 
         def work():
             text = ""
             try:
                 text = self._recognize(pcm)
+                if not text:
+                    # Ranije se ovo tiho gubilo — segment nestane bez traga.
+                    print(f"[diktat] segment od {self._seconds(pcm):.1f}s nije prepoznat")
                 if text:
                     text = self._finish(text)
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
             finally:
+                if session is not None:
+                    session.segment(index, pcm, text)
                 self._deliver(ticket, text)
 
         threading.Thread(target=work, daemon=True).start()
@@ -559,6 +592,24 @@ class DictateApp(rumps.App):
             self._sync_menu_marks()
 
         return setter
+
+    def _apply_debug(self, on):
+        self._dump = (
+            debugdump.DebugDump(
+                self.cfg.get("debug_dir", "~/Diktat-debug"), self.cfg["sample_rate"]
+            )
+            if on
+            else None
+        )
+        self.item_debug.state = 1 if on else 0
+
+    def _toggle_debug(self, _):
+        on = not bool(self.cfg.get("debug", False))
+        self.cfg["debug"] = on
+        config.save(self.cfg)
+        self._apply_debug(on)
+        if on:
+            AppKit.NSWorkspace.sharedWorkspace().openFile_(str(self._dump.dir))
 
     def _open_config(self, _):
         if not config.CONFIG_PATH.exists():

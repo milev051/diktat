@@ -145,6 +145,35 @@ Posle izmene fajla treba restart (motor, jezik i režim rade odmah iz menija).
 
 ---
 
+## Ako se ne prepozna sve što si rekao
+
+Uključi **Snimaj za debug** iz menija (ili `"debug": true`). Svaki diktat se
+tada snima u `~/Diktat-debug`:
+
+```
+2026-08-04_15-31-07.txt        izveštaj
+2026-08-04_15-31-07-full.wav   ceo diktat, neisečen
+2026-08-04_15-31-07-01.wav     prvi segment
+```
+
+Izveštaj sam presuđuje gde se gubi:
+
+```
+[02] segment    2.3s  ...-02.wav
+     ''   <-- PRAZNO, tekst se izgubio
+
+[CEO DIKTAT]   5.6s
+     segmenti pokrivaju 5.6s od 5.6s -> sav zvuk je poslat
+     praznih segmenata: 1
+```
+
+- **Segmenti ne pokrivaju ceo diktat** → zvuk se gubi pri sečenju.
+- **Pokrivaju ga, ali ima praznih** → Google nije prepoznao taj deo; pusti
+  taj `.wav` i čuj šta je unutra.
+- **Nema ga ni u `full.wav`** → gubi se u snimanju, ne u prepoznavanju.
+
+Ne zaboravi da isključiš — snima svaki diktat na disk.
+
 ## Ako nešto ne radi
 
 Prvo uvek `./run.sh doctor`.

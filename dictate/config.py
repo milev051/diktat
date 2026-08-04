@@ -47,6 +47,10 @@ DEFAULTS = {
     "show_overlay": True,
     "overlay_position": "top-right",  # "top-right" (kao notifikacija) | "bottom"
     "trailing_space": True,
+
+    # --- Debug ---
+    "debug": False,               # snimaj zvuk i tekst radi poredjenja
+    "debug_dir": "~/Diktat-debug",
 }
 
 

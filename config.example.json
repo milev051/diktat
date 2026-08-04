@@ -26,5 +26,7 @@
   "pause_seconds": 0.7,
   "profanity_filter": false,
   "tail_seconds": 0.8,
-  "overlay_position": "top-right"
+  "overlay_position": "top-right",
+  "debug": false,
+  "debug_dir": "~/Diktat-debug"
 }
