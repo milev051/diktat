@@ -23,6 +23,7 @@ class Recorder:
         # Postavlja ih app.py; drze se po snimku jer vise sesija moze da tece paralelno.
         self.cancelled = False
         self.released = False
+        self.ticket = 0
 
     # -- unutrasnji callback iz PortAudio niti --
     def _callback(self, indata, frames, time_info, status):  # noqa: ARG002
@@ -90,6 +91,63 @@ def _peak(pcm: bytes) -> float:
         val = int.from_bytes(pcm[i : i + 2], "little", signed=True)
         top = max(top, abs(val))
     return min(1.0, top / 32768.0)
+
+
+class PauseDetector:
+    """Prepoznaje pauzu u govoru, sa pragom koji se sam prilagodjava sobi.
+
+    Fiksni prag ne valja: u tihoj sobi je nivo pozadine ~0.01, u bucnoj ~0.08.
+    Zato se prati "pod" (najtisi nivo do sada) i pauzom se smatra sve ispod
+    `factor` puta tog poda.
+    """
+
+    FLOOR_DOWN = 0.30      # pod brzo pada ka novom minimumu
+    FLOOR_UP = 0.002       # a vrlo sporo raste, da govor ne podigne prag
+    PEAK_DECAY = 0.999     # vrh polako splasnjava
+    PEAK_FRACTION = 0.25   # prag nikad iznad ovoga puta vrh
+
+    def __init__(self, pause_seconds=0.7, factor=2.5, floor_min=0.015):
+        self.pause_seconds = pause_seconds
+        self.factor = factor
+        self.floor_min = floor_min
+        self.floor = None
+        self.peak = None
+        self.quiet_for = 0.0
+        self.heard_speech = False
+
+    def reset(self):
+        self.quiet_for = 0.0
+        self.heard_speech = False
+
+    @property
+    def threshold(self) -> float:
+        base = self.floor if self.floor is not None else 0.0
+        low = max(self.floor_min, base * self.factor)
+        if self.peak is None:
+            return low
+        # Bez ove kapice: ako snimanje pocne usred reci, pod se inicijalizuje
+        # na nivo govora, prag odleti iznad svega i nijedna pauza se ne prizna.
+        return min(low, max(self.floor_min, self.peak * self.PEAK_FRACTION))
+
+    def feed(self, level: float, dt: float) -> bool:
+        """Ubaci nivo jednog komada. Vraca True kad pauza dostigne prag."""
+        self.peak = level if self.peak is None else max(level, self.peak * self.PEAK_DECAY)
+
+        if self.floor is None:
+            self.floor = level
+        elif level < self.floor:
+            self.floor += (level - self.floor) * self.FLOOR_DOWN
+        else:
+            self.floor += (level - self.floor) * self.FLOOR_UP
+
+        if level < self.threshold:
+            self.quiet_for += dt
+        else:
+            self.quiet_for = 0.0
+            self.heard_speech = True
+
+        # Bez ovoga bi duza tisina okidala u nedogled i slala prazne segmente.
+        return self.heard_speech and self.quiet_for >= self.pause_seconds
 
 
 def list_devices():

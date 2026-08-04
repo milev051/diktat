@@ -20,5 +20,8 @@
   "restore_clipboard": true,
   "show_overlay": true,
   "trailing_space": true,
-  "web_max_seconds": 30
+  "web_max_seconds": 30,
+  "auto_segment": true,
+  "segment_after_seconds": 15,
+  "pause_seconds": 0.7
 }

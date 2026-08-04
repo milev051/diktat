@@ -21,7 +21,7 @@ Bira se u meniju (**Motor**) ili u `config.json` (`"engine"`).
 | **Kašnjenje** | ~1.3s (kratko), ~5s (24s snimak) | ~200-400ms po reči |
 | **Interpunkcija** | nema | ima |
 | **Srpski** | vrlo dobar (izmereno 0.93) | vrlo dobar |
-| **Dužina** | do ~30s po diktatu | do 5 min |
+| **Dužina** | neograničeno (seče se na pauzama) | do 5 min |
 | **Rizik** | nedokumentovan endpoint, Google ga može ugasiti | zvanično podržan |
 
 Podrazumevano je **`web`** — nema šta da se podešava.
@@ -70,6 +70,9 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
   se oslobađa čim pustiš taster, a prepoznavanje se nastavlja u pozadini. HUD tada
   pokazuje `· obrađujem 1`. Tekst se lepi **po redosledu snimanja**, i kad se kraći
   drugi snimak prepozna pre dužeg prvog.
+- **Na dugom diktatu se snimak sam seče na pauzama.** Posle 15s, svaka pauza od
+  ~0.7s odseca deo i šalje ga na obradu dok ti nastavljaš da pričaš. Zato više
+  **nema granice od 30s** — možeš diktirati koliko hoćeš.
 - Zato se isplati diktirati u kraćim celinama — dok pričaš sledeću, prethodna se već obrađuje.
 - Ako umesto diktata pritisneš **prečicu** (Cmd+V, Cmd+Tab…), snimanje se otkazuje
   i ništa se ne ubacuje. Desni Command i dalje radi kao normalan Command.
@@ -122,7 +125,10 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `show_overlay` | `true` | HUD na dnu ekrana |
 | `trailing_space` | `true` | razmak na kraju, da se rečenice nadovezuju |
 | `input_device` | `null` | `null` = sistemski mikrofon |
-| `web_max_seconds` | `30` | granica za `web` motor (endpoint puca na dužim) |
+| `auto_segment` | `true` | seci dug snimak na pauzama i slati u delovima |
+| `segment_after_seconds` | `15` | pre ovoga se nikad ne seče |
+| `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
+| `web_max_seconds` | `30` | najduži pojedinačni zahtev ka endpointu |
 | `max_seconds` | `290` | granica za `cloud` motor |
 | `credentials_json` / `location` / `model` / `punctuation` | — | samo za `cloud` |
 

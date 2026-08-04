@@ -79,7 +79,7 @@ class DictateApp(rumps.App):
         self._record_started_at = 0.0
         self._count_lock = threading.Lock()
         self._pending = 0        # snimci koji se prepoznaju
-        self._seq = 0            # redni broj diktata
+        self._ticket = 0         # redni broj segmenta za ubacivanje
         self._insert_q: queue.Queue = queue.Queue()
 
         self._build_menu()
@@ -212,14 +212,10 @@ class DictateApp(rumps.App):
                 self.state.set(phase="error", message=f"Mikrofon: {exc}")
                 return
             self._recorder = recorder
-            self._seq += 1
-            seq = self._seq
 
         self._record_started_at = time.monotonic()
         self.state.set(phase="recording", finals=[], interim="", message="")
-        threading.Thread(
-            target=self._run_session, args=(recorder, seq), daemon=True
-        ).start()
+        threading.Thread(target=self._run_session, args=(recorder,), daemon=True).start()
 
     def _on_stop(self):
         with self._session_lock:
@@ -239,10 +235,28 @@ class DictateApp(rumps.App):
         self._settle_phase(reason)
 
     def _limit_seconds(self) -> float:
-        """Gornja granica snimka — web endpoint puca na duzim od ~30s."""
+        """Koliko sme da traje JEDAN pritisak tastera."""
         if self.cfg.get("engine", "web") == "cloud":
             return float(self.cfg.get("max_seconds", 290))
+        if self.cfg.get("auto_segment", True):
+            # Segmenti drze pojedinacne zahteve kratkim, pa granica od 30s pada.
+            return float(self.cfg.get("max_seconds", 290))
         return float(self.cfg.get("web_max_seconds", 30))
+
+    def _next_ticket(self) -> int:
+        """Redni broj za ubacivanje.
+
+        Dodeljuje se u trenutku kad se AUDIO tog segmenta zavrsi, ne kad se
+        prepoznavanje zavrsi. Posto mikrofon moze da snima samo jedno po jedno,
+        taj redosled je uvek hronoloski — pa tekst stigne onako kako si govorio.
+        """
+        with self._count_lock:
+            self._ticket += 1
+            self._pending += 1
+            return self._ticket
+
+    def _deliver(self, ticket: int, text: str):
+        self._insert_q.put((ticket, text))
 
     def _release_recorder(self, recorder):
         """Audio je gotov: pusti mikrofon ODMAH da moze sledeci diktat,
@@ -253,8 +267,7 @@ class DictateApp(rumps.App):
         with self._session_lock:
             if self._recorder is recorder:
                 self._recorder = None
-        with self._count_lock:
-            self._pending += 1
+        recorder.ticket = self._next_ticket()
         recorder.close()
 
     def _settle_phase(self, message=""):
@@ -279,7 +292,7 @@ class DictateApp(rumps.App):
         finally:
             self._release_recorder(recorder)
 
-    def _run_session(self, recorder, seq):
+    def _run_session(self, recorder):
         text = ""
         error = None
         try:
@@ -300,9 +313,11 @@ class DictateApp(rumps.App):
         finally:
             self._release_recorder(recorder)
 
-        # Svaka sesija MORA da preda tacno jedan rezultat, inace red stane.
+        # Ticket dodeljen u _release_recorder mora da se preda tacno jednom,
+        # inace red ubacivanja stane zauvek.
+        ticket = recorder.ticket
         if recorder.cancelled or error:
-            self._insert_q.put((seq, ""))
+            self._deliver(ticket, "")
             if error and not recorder.cancelled:
                 self.state.set(phase="error", interim="", message=error)
             else:
@@ -311,23 +326,23 @@ class DictateApp(rumps.App):
 
         text = text.strip()
         if not text:
-            self._insert_q.put((seq, ""))
+            self._deliver(ticket, "")
             self._settle_phase("(nista)")
             return
 
+        self._deliver(ticket, self._finish(text))
+
+    def _finish(self, text: str) -> str:
         if self.cfg.get("trailing_space", True):
             text += " "
         self.state.set(last_text=text)
-        self._insert_q.put((seq, text))
+        return text
 
-    def _run_web(self, recorder):
-        """Web motor: skupi ceo snimak pa ga posalji odjednom."""
-        frames = list(self._tracked(recorder))
-        if recorder.cancelled:
+    def _recognize(self, pcm: bytes) -> str:
+        if not pcm:
             return ""
-        self._settle_phase()
         text = webstt.recognize(
-            b"".join(frames),
+            pcm,
             language=(self.cfg.get("language_codes") or ["sr-RS"])[0],
             sample_rate=self.cfg["sample_rate"],
             key=self.cfg.get("web_api_key") or None,
@@ -335,6 +350,60 @@ class DictateApp(rumps.App):
         if text and self.cfg.get("capitalize_first", True):
             text = webstt.tidy(text)
         return text
+
+    def _run_web(self, recorder):
+        """Web motor. Na dugom diktatu sece snimak na pauzama i salje delove
+        na obradu dok ti jos pricas — tako nema cekanja na kraju."""
+        if not self.cfg.get("auto_segment", True):
+            frames = list(self._tracked(recorder))
+            if recorder.cancelled:
+                return ""
+            self._settle_phase()
+            return self._recognize(b"".join(frames))
+
+        detector = audio.PauseDetector(
+            pause_seconds=float(self.cfg.get("pause_seconds", 0.7))
+        )
+        cut_after = float(self.cfg.get("segment_after_seconds", 15))
+        hard_cut = float(self.cfg.get("web_max_seconds", 30))
+        rate = self.cfg["sample_rate"]
+
+        frames: list[bytes] = []
+        started = time.monotonic()
+
+        for chunk in self._tracked(recorder):
+            frames.append(chunk)
+            paused = detector.feed(recorder.level, len(chunk) / 2 / rate)
+            age = time.monotonic() - started
+            # Tvrdi rez postoji jer endpoint puca na zahtevima duzim od ~30s,
+            # a neko moze da prica bez ijedne pauze.
+            if frames and ((paused and age >= cut_after) or age >= hard_cut):
+                self._ship_segment(b"".join(frames))
+                frames = []
+                started = time.monotonic()
+                detector.reset()
+
+        if recorder.cancelled:
+            return ""
+        self._settle_phase()
+        return self._recognize(b"".join(frames))
+
+    def _ship_segment(self, pcm: bytes):
+        """Posalji odsecen deo na prepoznavanje, a snimanje ide dalje."""
+        ticket = self._next_ticket()
+
+        def work():
+            text = ""
+            try:
+                text = self._recognize(pcm)
+                if text:
+                    text = self._finish(text)
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+            finally:
+                self._deliver(ticket, text)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _insert_worker(self):
         """Lepi tekst strogo po redosledu snimanja.
