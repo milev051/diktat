@@ -1,4 +1,10 @@
-"""Plutajuci HUD koji prikazuje stanje diktata na dnu ekrana.
+"""Mala obojena pilula koja pokazuje stanje diktata.
+
+Bez teksta i bez ikonice — boja pozadine je citav indikator:
+
+    crveno   snima          sadrzaj: proteklo vreme
+    zuto     obradjuje      sadrzaj: vreme zamrznuto na kraju snimanja
+    narandzasto  greska     sadrzaj: poruka
 
 Panel je `NSWindowStyleMaskNonactivatingPanel` i nikad ne preuzima fokus —
 to je bitno jer se prepoznat tekst na kraju lepi u aplikaciju koja je bila
@@ -6,71 +12,63 @@ aktivna pre diktata.
 
 Dve stvari koje nisu ocigledne:
 
-  * Uglovi se zaobljavaju preko `setMaskImage_`, ne preko `cornerRadius`.
-    `masksToBounds` sece samo slojeve iznad, a ne i zamucenu pozadinu koju
-    crta window server — otud vidljiv providan pravougaonik na uglovima.
+  * Okvir labele mora da bude siri od izmerene sirine teksta. `sizeWithAttributes_`
+    zaokruzuje nanize, a `NSLineBreakByTruncatingHead` onda odsece POCETAK i
+    zalepi "…" — pa "snimam" postane "…imam".
 
-  * Merac koristi monospace font. Sa proporcionalnim, znaci ▁▂▃ i · nemaju
-    istu sirinu pa ceo red poskakuje levo-desno kako se nivo menja.
+  * Pozadina je obican sloj sa `cornerRadius`, ne `NSVisualEffectView`. Za
+    zamucenu pozadinu je bila potrebna `maskImage` jer `masksToBounds` ne
+    sece backdrop koji crta window server; sa punom bojom to otpada.
 
 Svi metodi se smeju zvati SAMO sa glavne niti (rumps Timer je na njoj).
 """
 
+import math
+
 import AppKit
 import Quartz
-from Foundation import NSMakeRect, NSMakeSize
+from Foundation import NSMakeRect
 
-HEIGHT = 46
-RADIUS = 14.0
-PAD_X = 18.0
-DOT = 9.0
-DOT_GAP = 11.0
-MIN_WIDTH = 150.0
-MAX_WIDTH = 720.0
+HEIGHT = 34.0
+PAD_X = 16.0
+MIN_WIDTH = 74.0
+MAX_WIDTH = 640.0
+SLACK = 3.0              # rezerva da se tekst nikad ne odseca
 
 BOTTOM_MARGIN = 150      # za position="bottom"
 EDGE_MARGIN = 12         # za position="top-right"
 
-DOT_COLORS = {
-    "recording": (1.00, 0.23, 0.19),    # crveno — snima
-    "processing": (1.00, 0.78, 0.00),   # zuto — nesto se obradjuje
-    "done": (0.20, 0.78, 0.35),
-    "error": (1.00, 0.45, 0.05),
+# stanje -> (pozadina, boja teksta)
+STATES = {
+    "recording": ((0.91, 0.21, 0.17), (1.00, 1.00, 1.00)),
+    "processing": ((1.00, 0.76, 0.03), (0.14, 0.11, 0.02)),
+    "error": ((0.95, 0.44, 0.05), (1.00, 1.00, 1.00)),
+    "done": ((0.16, 0.70, 0.32), (1.00, 1.00, 1.00)),
 }
-DOT_COLORS["thinking"] = DOT_COLORS["processing"]
+STATES["thinking"] = STATES["processing"]
 
 
 def _cgcolor(rgb):
     return Quartz.CGColorCreateGenericRGB(rgb[0], rgb[1], rgb[2], 1.0)
 
 
-def _rounded_mask(size, radius=RADIUS):
-    """Maska za NSVisualEffectView — jedini nacin da se zamucena pozadina zaobli."""
-    image = AppKit.NSImage.alloc().initWithSize_(size)
-    image.lockFocus()
-    AppKit.NSColor.blackColor().set()
-    AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-        NSMakeRect(0, 0, size.width, size.height), radius, radius
-    ).fill()
-    image.unlockFocus()
-    image.setCapInsets_(AppKit.NSEdgeInsetsMake(radius, radius, radius, radius))
-    image.setResizingMode_(AppKit.NSImageResizingModeStretch)
-    return image
+def _nscolor(rgb):
+    return AppKit.NSColor.colorWithSRGBRed_green_blue_alpha_(rgb[0], rgb[1], rgb[2], 1.0)
 
 
 class Overlay:
     def __init__(self, position="bottom"):
         self.position = position if position in ("bottom", "top-right") else "bottom"
         self._panel = None
-        self._blur = None
+        self._pill = None
         self._label = None
-        self._dot = None
         self._visible = False
+        self._state = "recording"
         self._mono_font = AppKit.NSFont.monospacedSystemFontOfSize_weight_(
-            14, AppKit.NSFontWeightMedium
+            14, AppKit.NSFontWeightSemibold
         )
         self._text_font = AppKit.NSFont.systemFontOfSize_weight_(
-            16, AppKit.NSFontWeightMedium
+            14, AppKit.NSFontWeightMedium
         )
 
     # ------------------------------------------------------------------
@@ -104,43 +102,33 @@ class Overlay:
             | AppKit.NSWindowCollectionBehaviorIgnoresCycle
         )
 
-        blur = AppKit.NSVisualEffectView.alloc().initWithFrame_(
+        pill = AppKit.NSView.alloc().initWithFrame_(
             NSMakeRect(0, 0, MIN_WIDTH, HEIGHT)
         )
-        blur.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
-        blur.setBlendingMode_(AppKit.NSVisualEffectBlendingModeBehindWindow)
-        blur.setState_(AppKit.NSVisualEffectStateActive)
-        blur.setMaskImage_(_rounded_mask(NSMakeSize(MIN_WIDTH, HEIGHT)))
-        panel.setContentView_(blur)
-
-        dot = AppKit.NSView.alloc().initWithFrame_(
-            NSMakeRect(PAD_X, (HEIGHT - DOT) / 2, DOT, DOT)
-        )
-        dot.setWantsLayer_(True)
-        dot.layer().setCornerRadius_(DOT / 2)
-        dot.layer().setBackgroundColor_(_cgcolor(DOT_COLORS["recording"]))
-        blur.addSubview_(dot)
+        pill.setWantsLayer_(True)
+        pill.layer().setCornerRadius_(HEIGHT / 2)
+        pill.layer().setBackgroundColor_(_cgcolor(STATES["recording"][0]))
+        panel.setContentView_(pill)
 
         label = AppKit.NSTextField.alloc().initWithFrame_(
-            NSMakeRect(PAD_X + DOT + DOT_GAP, 0, 10, HEIGHT)
+            NSMakeRect(PAD_X, 0, MIN_WIDTH - PAD_X * 2, HEIGHT)
         )
         label.setBezeled_(False)
         label.setDrawsBackground_(False)
         label.setEditable_(False)
         label.setSelectable_(False)
         label.setFont_(self._mono_font)
-        label.setTextColor_(AppKit.NSColor.labelColor())
-        label.setAlignment_(AppKit.NSTextAlignmentLeft)
+        label.setTextColor_(_nscolor(STATES["recording"][1]))
+        label.setAlignment_(AppKit.NSTextAlignmentCenter)
         label.setLineBreakMode_(AppKit.NSLineBreakByTruncatingHead)
         label.setUsesSingleLineMode_(True)
         label.setMaximumNumberOfLines_(1)
         label.setStringValue_("")
-        blur.addSubview_(label)
+        pill.addSubview_(label)
 
         self._panel = panel
-        self._blur = blur
+        self._pill = pill
         self._label = label
-        self._dot = dot
 
     # ------------------------------------------------------------------
 
@@ -167,30 +155,17 @@ class Overlay:
         )
 
     def _layout(self, text, mono):
-        """Sirina se prilagodjava tekstu, a tackica i tekst se drze kao jedna
-        celina centrirana u panelu — inace, kad MIN_WIDTH rastegne panel,
-        levo poravnat tekst ostavi sav visak sa desne strane."""
         font = self._mono_font if mono else self._text_font
         if self._label.font() is not font:
             self._label.setFont_(font)
 
-        text_w = self._measure(text, font)
-        width = min(MAX_WIDTH, max(MIN_WIDTH, PAD_X * 2 + DOT + DOT_GAP + text_w))
-        label_w = min(text_w, width - PAD_X * 2 - DOT - DOT_GAP)
-        group_w = DOT + DOT_GAP + label_w
-        group_x = (width - group_w) / 2
+        text_w = math.ceil(self._measure(text, font)) + SLACK
+        width = min(MAX_WIDTH, max(MIN_WIDTH, text_w + PAD_X * 2))
 
-        # Vertikalno: tackica ide na sredinu visine cifara (cap height), ne na
-        # geometrijsku sredinu reda — tako oko vidi da su poravnate.
         line_h = font.ascender() - font.descender()
-        label_y = (HEIGHT - line_h) / 2
-        baseline = label_y - font.descender()
-        dot_y = baseline + font.capHeight() / 2 - DOT / 2
-
         self._label.setFrame_(
-            NSMakeRect(group_x + DOT + DOT_GAP, label_y, label_w, line_h)
+            NSMakeRect(PAD_X, (HEIGHT - line_h) / 2, width - PAD_X * 2, line_h)
         )
-        self._dot.setFrame_(NSMakeRect(group_x, dot_y, DOT, DOT))
 
         origin = self._origin(width)
         if origin is None:
@@ -199,8 +174,7 @@ class Overlay:
         current = self._panel.frame()
         if abs(current.size.width - width) > 0.5 or abs(current.origin.x - x) > 0.5:
             self._panel.setFrame_display_(NSMakeRect(x, y, width, HEIGHT), True)
-            self._blur.setFrame_(NSMakeRect(0, 0, width, HEIGHT))
-            self._blur.setMaskImage_(_rounded_mask(NSMakeSize(width, HEIGHT)))
+            self._pill.setFrame_(NSMakeRect(0, 0, width, HEIGHT))
 
     # ------------------------------------------------------------------
 
@@ -218,12 +192,13 @@ class Overlay:
             self._label.setStringValue_(text)
             self._layout(text, mono)
 
-    def set_state(self, color):
-        if self._dot is None:
+    def set_state(self, state):
+        if self._pill is None or state == self._state:
             return
-        self._dot.layer().setBackgroundColor_(
-            _cgcolor(DOT_COLORS.get(color, DOT_COLORS["recording"]))
-        )
+        background, foreground = STATES.get(state, STATES["recording"])
+        self._pill.layer().setBackgroundColor_(_cgcolor(background))
+        self._label.setTextColor_(_nscolor(foreground))
+        self._state = state
 
     def hide(self):
         if self._panel is not None and self._visible:

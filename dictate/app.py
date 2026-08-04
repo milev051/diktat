@@ -76,6 +76,7 @@ class DictateApp(rumps.App):
         self._policy_set = False
         self._error_shown_at = None
         self._record_started_at = 0.0
+        self._last_clock = ""
         self._count_lock = threading.Lock()
         self._pending = 0        # snimci koji se prepoznaju
         self._ticket = 0         # redni broj segmenta za ubacivanje
@@ -464,15 +465,17 @@ class DictateApp(rumps.App):
         if phase == "recording" and not live and self.cfg.get("show_overlay", True):
             recorder = self._recorder
             if recorder is not None:
-                meter = self._meter_text()
+                clock = self._clock_text()
+                self._last_clock = clock   # ostaje na ekranu i dok se obradjuje
                 if not self.hud.visible:
-                    self.hud.show(meter, mono=True)
+                    self.hud.show(clock, mono=True)
                 else:
-                    self.hud.set_text(meter, mono=True)
-                with self._count_lock:
-                    pending = self._pending
-                # Zuta tackica umesto teksta: nesto se obradjuje u pozadini.
-                self.hud.set_state("processing" if pending else "recording")
+                    self.hud.set_text(clock, mono=True)
+                self.hud.set_state("recording")
+                # Ova grana izlazi pre osvezavanja naslova, pa ga postavlja sama.
+                if self.title != ICON["recording"]:
+                    self.title = ICON["recording"]
+                    self.item_status.title = "Snimanje…"
                 return
 
         if not dirty:
@@ -493,14 +496,16 @@ class DictateApp(rumps.App):
             return
 
         if phase in ("recording", "thinking"):
-            shown = live or ("slušam…" if phase == "recording" else self._busy_text())
+            # Bez teksta uzivo (web motor) pilula nosi samo vreme; posle
+            # pustanja tastera ono se zamrzne i stoji dok obrada ne prodje.
+            shown, mono = (live, False) if live else (self._last_clock or "0:00", True)
             if len(shown) > HUD_MAX_CHARS:
                 shown = "…" + shown[-HUD_MAX_CHARS:]
             if not self.hud.visible:
-                self.hud.show(shown, mono=False)
+                self.hud.show(shown, mono=mono)
             else:
-                self.hud.set_text(shown, mono=False)
-            self.hud.set_state("recording" if phase == "recording" else "thinking")
+                self.hud.set_text(shown, mono=mono)
+            self.hud.set_state("recording" if phase == "recording" else "processing")
         elif phase == "error":
             # Greska se pokaze kratko pa se skloni; poruka ostaje u meniju.
             if self._error_shown_at is None:
@@ -510,9 +515,9 @@ class DictateApp(rumps.App):
         else:
             self.hud.hide()
 
-    def _meter_text(self) -> str:
-        """Samo stanje i vreme. Broji naviše, a tek pred sam kraj prelazi u
-        odbrojavanje — da kratki diktati ne trpe lazan pritisak vremena."""
+    def _clock_text(self) -> str:
+        """Samo vreme. Broji naviše, a tek pred sam kraj prelazi u odbrojavanje
+        — da kratki diktati ne trpe lazan pritisak vremena."""
         elapsed = time.monotonic() - self._record_started_at
         remaining = max(0.0, self._limit_seconds() - elapsed)
 
@@ -522,10 +527,7 @@ class DictateApp(rumps.App):
             clock = f"{int(elapsed // 60)}:{int(elapsed % 60):02d}"
 
         # Crvena tačka već znači "snima", pa tu reč ne ponavljamo — HUD ostaje uzak.
-        return f"snimam  {clock}"
-
-    def _busy_text(self) -> str:
-        return "obrađujem…"
+        return clock
 
     def _near_limit(self) -> bool:
         return (
