@@ -21,8 +21,8 @@ from . import audio, config, hotkey, insert, overlay, stt, webstt
 
 ICON = {
     "idle": "🎙",
-    "recording": "🔴",
-    "thinking": "✳️",
+    "recording": "🟢",
+    "thinking": "🟡",
     "error": "⚠️",
 }
 

@@ -4,8 +4,8 @@ Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se poja
 u kojoj si trenutno. U menu baru ikonica pokazuje stanje.
 
 ```
-menu bar:   🎙 spremno    🔴 snima    ✳️ obrađuje    ⚠️ greška
-na ekranu:  ( 0:12 ) crveno = snima      ( 0:12 ) žuto = obrađuje
+menu bar:   🎙 spremno    🟢 snima    🟡 obrađuje    ⚠️ greška
+na ekranu:  ( 0:12 ) zeleno = snima     ( 0:12 ) žuto = obrađuje
 ```
 
 ---
@@ -67,7 +67,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
 - Gore desno se pojavi mala pilula sa vremenom. **Boja je ceo indikator:**
-  crvena dok snima, žuta dok se obrađuje. Vreme se na kraju snimanja zamrzne
+  zelena dok snima, žuta dok se obrađuje. Vreme se na kraju snimanja zamrzne
   i stoji na žutoj dok tekst ne stigne.
   Za prikaz na dnu sredine: `"overlay_position": "bottom"`.
 - **Snimanje se ne prekida naglo kad pustiš taster** — nastavlja još `tail_seconds`

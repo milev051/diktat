@@ -2,8 +2,8 @@
 
 Bez teksta i bez ikonice — boja pozadine je citav indikator:
 
-    crveno   snima          sadrzaj: proteklo vreme
-    zuto     obradjuje      sadrzaj: vreme zamrznuto na kraju snimanja
+    zeleno       snima      sadrzaj: proteklo vreme
+    zuto         obradjuje  sadrzaj: vreme zamrznuto na kraju snimanja
     narandzasto  greska     sadrzaj: poruka
 
 Panel je `NSWindowStyleMaskNonactivatingPanel` i nikad ne preuzima fokus —
@@ -34,16 +34,17 @@ PAD_X = 16.0
 MIN_WIDTH = 74.0
 MAX_WIDTH = 640.0
 SLACK = 3.0              # rezerva da se tekst nikad ne odseca
+MONO_TEMPLATE = "još 99s"   # najsiri sadrzaj tajmera; po njemu je fiksna sirina
 
 BOTTOM_MARGIN = 150      # za position="bottom"
 EDGE_MARGIN = 12         # za position="top-right"
 
 # stanje -> (pozadina, boja teksta)
 STATES = {
-    "recording": ((0.91, 0.21, 0.17), (1.00, 1.00, 1.00)),
+    "recording": ((0.11, 0.57, 0.24), (1.00, 1.00, 1.00)),
     "processing": ((1.00, 0.76, 0.03), (0.14, 0.11, 0.02)),
-    "error": ((0.95, 0.44, 0.05), (1.00, 1.00, 1.00)),
-    "done": ((0.16, 0.70, 0.32), (1.00, 1.00, 1.00)),
+    "error": ((0.82, 0.31, 0.02), (1.00, 1.00, 1.00)),
+    "done": ((0.11, 0.57, 0.24), (1.00, 1.00, 1.00)),
 }
 STATES["thinking"] = STATES["processing"]
 
@@ -64,6 +65,7 @@ class Overlay:
         self._label = None
         self._visible = False
         self._state = "recording"
+        self._fixed_mono_w = None
         self._mono_font = AppKit.NSFont.monospacedSystemFontOfSize_weight_(
             14, AppKit.NSFontWeightSemibold
         )
@@ -154,12 +156,27 @@ class Overlay:
             v.origin.y + BOTTOM_MARGIN,
         )
 
+    def _mono_width(self) -> float:
+        """Fiksna sirina za tajmer.
+
+        Sadrzaj je uvek nekoliko cifara, pa nema razloga da se pilula siri i
+        skuplja — meri se jednom po najsirem mogucem tekstu i tu ostaje.
+        """
+        if self._fixed_mono_w is None:
+            self._fixed_mono_w = (
+                math.ceil(self._measure(MONO_TEMPLATE, self._mono_font)) + SLACK
+            )
+        return self._fixed_mono_w
+
     def _layout(self, text, mono):
         font = self._mono_font if mono else self._text_font
         if self._label.font() is not font:
             self._label.setFont_(font)
 
-        text_w = math.ceil(self._measure(text, font)) + SLACK
+        if mono:
+            text_w = self._mono_width()
+        else:
+            text_w = math.ceil(self._measure(text, font)) + SLACK
         width = min(MAX_WIDTH, max(MIN_WIDTH, text_w + PAD_X * 2))
 
         line_h = font.ascender() - font.descender()
