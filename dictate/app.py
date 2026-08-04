@@ -66,7 +66,7 @@ class DictateApp(rumps.App):
         super().__init__("Diktat", title=ICON["idle"], quit_button=None)
         self.cfg = config.load()
         self.state = State()
-        self.hud = overlay.Overlay()
+        self.hud = overlay.Overlay(self.cfg.get("overlay_position", "bottom"))
 
         self._client = None
         self._project = None
@@ -469,7 +469,10 @@ class DictateApp(rumps.App):
                     self.hud.show(meter, mono=True)
                 else:
                     self.hud.set_text(meter, mono=True)
-                self.hud.set_state("thinking" if self._near_limit() else "recording")
+                with self._count_lock:
+                    pending = self._pending
+                # Zuta tackica umesto teksta: nesto se obradjuje u pozadini.
+                self.hud.set_state("processing" if pending else "recording")
                 return
 
         if not dirty:
@@ -519,15 +522,10 @@ class DictateApp(rumps.App):
             clock = f"{int(elapsed // 60)}:{int(elapsed % 60):02d}"
 
         # Crvena tačka već znači "snima", pa tu reč ne ponavljamo — HUD ostaje uzak.
-        with self._count_lock:
-            pending = self._pending
-        badge = f"  ·  {pending} u obradi" if pending else ""
-        return f"snimam  {clock}{badge}"
+        return f"snimam  {clock}"
 
     def _busy_text(self) -> str:
-        with self._count_lock:
-            pending = self._pending
-        return f"obrađujem {pending}" if pending > 1 else "obrađujem…"
+        return "obrađujem…"
 
     def _near_limit(self) -> bool:
         return (

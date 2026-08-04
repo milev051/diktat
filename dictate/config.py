@@ -45,6 +45,7 @@ DEFAULTS = {
     "insert_method": "paste",     # "paste" | "type" | "clipboard_only"
     "restore_clipboard": True,
     "show_overlay": True,
+    "overlay_position": "top-right",  # "top-right" (kao notifikacija) | "bottom"
     "trailing_space": True,
 }
 

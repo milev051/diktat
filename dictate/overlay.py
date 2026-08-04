@@ -20,21 +20,24 @@ import AppKit
 import Quartz
 from Foundation import NSMakeRect, NSMakeSize
 
-HEIGHT = 54
-RADIUS = 16.0
-PAD_X = 20.0
+HEIGHT = 46
+RADIUS = 14.0
+PAD_X = 18.0
 DOT = 9.0
-DOT_GAP = 12.0
-MIN_WIDTH = 200.0
+DOT_GAP = 11.0
+MIN_WIDTH = 150.0
 MAX_WIDTH = 720.0
-BOTTOM_MARGIN = 150
+
+BOTTOM_MARGIN = 150      # za position="bottom"
+EDGE_MARGIN = 12         # za position="top-right"
 
 DOT_COLORS = {
-    "recording": (1.00, 0.23, 0.19),
-    "thinking": (1.00, 0.80, 0.00),
+    "recording": (1.00, 0.23, 0.19),    # crveno — snima
+    "processing": (1.00, 0.78, 0.00),   # zuto — nesto se obradjuje
     "done": (0.20, 0.78, 0.35),
-    "error": (1.00, 0.58, 0.00),
+    "error": (1.00, 0.45, 0.05),
 }
+DOT_COLORS["thinking"] = DOT_COLORS["processing"]
 
 
 def _cgcolor(rgb):
@@ -56,17 +59,18 @@ def _rounded_mask(size, radius=RADIUS):
 
 
 class Overlay:
-    def __init__(self):
+    def __init__(self, position="bottom"):
+        self.position = position if position in ("bottom", "top-right") else "bottom"
         self._panel = None
         self._blur = None
         self._label = None
         self._dot = None
         self._visible = False
         self._mono_font = AppKit.NSFont.monospacedSystemFontOfSize_weight_(
-            15, AppKit.NSFontWeightMedium
+            14, AppKit.NSFontWeightMedium
         )
         self._text_font = AppKit.NSFont.systemFontOfSize_weight_(
-            17, AppKit.NSFontWeightMedium
+            16, AppKit.NSFontWeightMedium
         )
 
     # ------------------------------------------------------------------
@@ -146,43 +150,57 @@ class Overlay:
             attrs
         ).width
 
-    def _center_label(self, font):
-        """NSTextField ne centrira tekst vertikalno u svom okviru — okvir se
-        zato skuplja na tacnu visinu reda i tek onda centrira. Bez ovoga tekst
-        sedi vise od tackice."""
-        line_h = font.ascender() - font.descender()
-        frame = self._label.frame()
-        self._label.setFrame_(
-            NSMakeRect(frame.origin.x, (HEIGHT - line_h) / 2, frame.size.width, line_h)
+    def _origin(self, width):
+        screen = AppKit.NSScreen.mainScreen()
+        if screen is None:
+            return None
+        v = screen.visibleFrame()
+        if self.position == "top-right":
+            # visibleFrame vec iskljucuje menu bar, pa je ovo tacno ispod njega.
+            return (
+                v.origin.x + v.size.width - width - EDGE_MARGIN,
+                v.origin.y + v.size.height - HEIGHT - EDGE_MARGIN,
+            )
+        return (
+            v.origin.x + (v.size.width - width) / 2,
+            v.origin.y + BOTTOM_MARGIN,
         )
 
     def _layout(self, text, mono):
-        """Prilagodi sirinu tekstu i drzi sadrzaj centriran na ekranu."""
+        """Sirina se prilagodjava tekstu, a tackica i tekst se drze kao jedna
+        celina centrirana u panelu — inace, kad MIN_WIDTH rastegne panel,
+        levo poravnat tekst ostavi sav visak sa desne strane."""
         font = self._mono_font if mono else self._text_font
         if self._label.font() is not font:
             self._label.setFont_(font)
-        self._center_label(font)
 
         text_w = self._measure(text, font)
         width = min(MAX_WIDTH, max(MIN_WIDTH, PAD_X * 2 + DOT + DOT_GAP + text_w))
-        label_w = width - PAD_X * 2 - DOT - DOT_GAP
+        label_w = min(text_w, width - PAD_X * 2 - DOT - DOT_GAP)
+        group_w = DOT + DOT_GAP + label_w
+        group_x = (width - group_w) / 2
 
-        screen = AppKit.NSScreen.mainScreen()
-        if screen is None:
+        # Vertikalno: tackica ide na sredinu visine cifara (cap height), ne na
+        # geometrijsku sredinu reda — tako oko vidi da su poravnate.
+        line_h = font.ascender() - font.descender()
+        label_y = (HEIGHT - line_h) / 2
+        baseline = label_y - font.descender()
+        dot_y = baseline + font.capHeight() / 2 - DOT / 2
+
+        self._label.setFrame_(
+            NSMakeRect(group_x + DOT + DOT_GAP, label_y, label_w, line_h)
+        )
+        self._dot.setFrame_(NSMakeRect(group_x, dot_y, DOT, DOT))
+
+        origin = self._origin(width)
+        if origin is None:
             return
-        visible = screen.visibleFrame()
-        x = visible.origin.x + (visible.size.width - width) / 2
-        y = visible.origin.y + BOTTOM_MARGIN
-
+        x, y = origin
         current = self._panel.frame()
         if abs(current.size.width - width) > 0.5 or abs(current.origin.x - x) > 0.5:
             self._panel.setFrame_display_(NSMakeRect(x, y, width, HEIGHT), True)
             self._blur.setFrame_(NSMakeRect(0, 0, width, HEIGHT))
             self._blur.setMaskImage_(_rounded_mask(NSMakeSize(width, HEIGHT)))
-            lf = self._label.frame()
-            self._label.setFrame_(
-                NSMakeRect(PAD_X + DOT + DOT_GAP, lf.origin.y, label_w, lf.size.height)
-            )
 
     # ------------------------------------------------------------------
 

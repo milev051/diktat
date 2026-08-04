@@ -65,7 +65,9 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-- HUD na dnu ekrana pokazuje `snimam` i vreme; na `cloud` motoru ispisuje tekst uživo.
+- HUD gore desno pokazuje `snimam` i vreme; na `cloud` motoru ispisuje tekst uživo.
+  Tačkica je crvena dok snima, **žuta kad se nešto obrađuje** u pozadini.
+  Za prikaz na dnu sredine: `"overlay_position": "bottom"`.
 - **Snimanje se ne prekida naglo kad pustiš taster** — nastavlja još `tail_seconds`
   (0.8s), jer se taster pušta tačno na kraju poslednje reči pa bi se ona izgubila.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.** Mikrofon
@@ -125,7 +127,8 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
-| `show_overlay` | `true` | HUD na dnu ekrana |
+| `show_overlay` | `true` | prikaz stanja preko ekrana |
+| `overlay_position` | `top-right` | `top-right` (kao notifikacija) ili `bottom` |
 | `trailing_space` | `true` | razmak na kraju, da se rečenice nadovezuju |
 | `input_device` | `null` | `null` = sistemski mikrofon |
 | `auto_segment` | `true` | seci dug snimak na pauzama i slati u delovima |
