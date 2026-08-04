@@ -162,7 +162,10 @@ class DictateApp(rumps.App):
 
     def _rebuild_mic_menu(self):
         """Lista se pravi iznova jer se uredjaji prikljucuju i iskljucuju."""
-        self.mic_menu.clear()
+        # rumps pravi NSMenu tek kad se doda prva stavka, pa clear() na jos
+        # praznom podmeniju pada na None.removeAllItems().
+        if getattr(self.mic_menu, "_menu", None) is not None:
+            self.mic_menu.clear()
         self.mic_items = {}
         for name in [None] + audio.input_devices():
             label = "Sistemski podrazumevani" if name is None else name
