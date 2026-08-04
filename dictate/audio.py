@@ -8,6 +8,32 @@ import sounddevice as sd
 
 BLOCK_MS = 100
 
+_pa_lock = threading.Lock()
+
+
+def refresh_devices():
+    """Ponovo ucitaj listu audio uredjaja iz sistema.
+
+    PortAudio kesira uredjaje pri inicijalizaciji. Kad se slusalice izvuku ili
+    vrate, taj kes zastari i otvaranje strima puca sa "Internal PortAudio error"
+    — ili, gore, strim se otvori na uredjaju kog vise nema i ne stigne nijedan
+    sempl. Reinicijalizacija traje oko 2ms, pa je jeftino uraditi je i naslepo.
+    """
+    with _pa_lock:
+        try:
+            sd._terminate()
+        except Exception:  # noqa: BLE001 - ako vec nije inicijalizovan, svejedno
+            pass
+        sd._initialize()
+
+
+def current_input_name() -> str:
+    try:
+        return sd.query_devices(kind="input")["name"]
+    except Exception:  # noqa: BLE001
+        return "nepoznat"
+
+
 
 class Recorder:
     """Otvara mikrofon i izbacuje sirove PCM bajtove kroz `chunks()`."""
@@ -25,16 +51,18 @@ class Recorder:
         self.released = False
         self.ticket = 0
         self._tail_timer = None
+        self.captured = 0
 
     # -- unutrasnji callback iz PortAudio niti --
     def _callback(self, indata, frames, time_info, status):  # noqa: ARG002
         if self._stop.is_set():
             return
         data = bytes(indata)
+        self.captured += len(data)
         self._q.put(data)
         self._level = peak(data)
 
-    def start(self):
+    def _open(self):
         blocksize = int(self.sample_rate * BLOCK_MS / 1000)
         self._stream = sd.RawInputStream(
             samplerate=self.sample_rate,
@@ -45,6 +73,16 @@ class Recorder:
             callback=self._callback,
         )
         self._stream.start()
+
+    def start(self):
+        try:
+            self._open()
+        except Exception:  # noqa: BLE001
+            # Skoro uvek znaci da je lista uredjaja zastarela — slusalice su
+            # izvucene ili vracene. Osvezi je i probaj jos jednom.
+            print("[diktat] mikrofon nije otvoren, osvezavam listu uredjaja")
+            refresh_devices()
+            self._open()
 
     def stop(self, tail=0.0):
         """Zavrsi snimanje, ali tek posle `tail` sekundi.

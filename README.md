@@ -182,6 +182,11 @@ Prvo uvek `./run.sh doctor`.
 **Hotkey ne reaguje** → nema Accessibility dozvole. Ako si već dodao aplikaciju,
 izbaci je iz liste (`−`) pa dodaj ponovo — macOS ume da zapamti stari potpis.
 
+**`Internal PortAudio error` posle vađenja/vraćanja slušalica** → PortAudio
+kešira listu uređaja pri pokretanju, pa mu keš zastari. Aplikacija to sada
+sama prepozna i osveži listu pa ponovi. Ako zaglavi, u meniju stoji
+**Osveži audio uređaje**.
+
 **Tekst se ne lepi** → probaj `"insert_method": "type"`. Neki terminali i Java
 programi ne primaju sintetički Cmd+V. Tekst je uvek i u clipboard-u, plus u meniju
 stoji „Kopiraj poslednji tekst".

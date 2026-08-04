@@ -108,6 +108,9 @@ class DictateApp(rumps.App):
         self.item_debug = rumps.MenuItem(
             "Snimaj za debug", callback=self._toggle_debug
         )
+        self.item_refresh = rumps.MenuItem(
+            "Osveži audio uređaje", callback=self._refresh_audio
+        )
 
         mode_menu = rumps.MenuItem("Rezim")
         self.item_hold = rumps.MenuItem("Drzi taster", callback=self._set_hold)
@@ -140,6 +143,7 @@ class DictateApp(rumps.App):
             self.item_status,
             None,
             self.item_copy,
+            self.item_refresh,
             None,
             engine_menu,
             mode_menu,
@@ -277,6 +281,11 @@ class DictateApp(rumps.App):
                 self._recorder = None
         recorder.ticket = self._next_ticket()
         recorder.close()
+        if recorder.captured == 0:
+            # Strim se otvorio ali nije stigao nijedan sempl — uredjaj je
+            # najverovatnije nestao pod nogama. Sledeci put krece iz cista.
+            print("[diktat] nijedan sempl nije stigao, osvezavam audio uredjaje")
+            audio.refresh_devices()
 
     def _settle_phase(self, message=""):
         """Ne gasi ekran ako je u medjuvremenu poceo nov diktat."""
@@ -596,6 +605,11 @@ class DictateApp(rumps.App):
             self._sync_menu_marks()
 
         return setter
+
+    def _refresh_audio(self, _):
+        audio.refresh_devices()
+        self.state.set(phase="idle", message="")
+        self.item_status.title = f"Mikrofon: {audio.current_input_name()[:40]}"
 
     def _apply_debug(self, on):
         self._dump = (
