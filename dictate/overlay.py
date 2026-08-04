@@ -146,11 +146,22 @@ class Overlay:
             attrs
         ).width
 
+    def _center_label(self, font):
+        """NSTextField ne centrira tekst vertikalno u svom okviru — okvir se
+        zato skuplja na tacnu visinu reda i tek onda centrira. Bez ovoga tekst
+        sedi vise od tackice."""
+        line_h = font.ascender() - font.descender()
+        frame = self._label.frame()
+        self._label.setFrame_(
+            NSMakeRect(frame.origin.x, (HEIGHT - line_h) / 2, frame.size.width, line_h)
+        )
+
     def _layout(self, text, mono):
         """Prilagodi sirinu tekstu i drzi sadrzaj centriran na ekranu."""
         font = self._mono_font if mono else self._text_font
         if self._label.font() is not font:
             self._label.setFont_(font)
+        self._center_label(font)
 
         text_w = self._measure(text, font)
         width = min(MAX_WIDTH, max(MIN_WIDTH, PAD_X * 2 + DOT + DOT_GAP + text_w))
@@ -168,8 +179,9 @@ class Overlay:
             self._panel.setFrame_display_(NSMakeRect(x, y, width, HEIGHT), True)
             self._blur.setFrame_(NSMakeRect(0, 0, width, HEIGHT))
             self._blur.setMaskImage_(_rounded_mask(NSMakeSize(width, HEIGHT)))
+            lf = self._label.frame()
             self._label.setFrame_(
-                NSMakeRect(PAD_X + DOT + DOT_GAP, 0, label_w, HEIGHT)
+                NSMakeRect(PAD_X + DOT + DOT_GAP, lf.origin.y, label_w, lf.size.height)
             )
 
     # ------------------------------------------------------------------

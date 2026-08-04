@@ -65,7 +65,9 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-- Na `web` motoru HUD pokazuje merač nivoa i vreme; na `cloud` ispisuje tekst uživo.
+- HUD na dnu ekrana pokazuje `snimam` i vreme; na `cloud` motoru ispisuje tekst uživo.
+- **Snimanje se ne prekida naglo kad pustiš taster** — nastavlja još `tail_seconds`
+  (0.8s), jer se taster pušta tačno na kraju poslednje reči pa bi se ona izgubila.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.** Mikrofon
   se oslobađa čim pustiš taster, a prepoznavanje se nastavlja u pozadini. HUD tada
   pokazuje `· obrađujem 1`. Tekst se lepi **po redosledu snimanja**, i kad se kraći
@@ -131,6 +133,7 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
 | `web_max_seconds` | `30` | najduži pojedinačni zahtev ka endpointu |
 | `max_seconds` | `290` | granica za `cloud` motor |
+| `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
 | `credentials_json` / `location` / `model` / `punctuation` | — | samo za `cloud` |
 
 Posle izmene fajla treba restart (motor, jezik i režim rade odmah iz menija).

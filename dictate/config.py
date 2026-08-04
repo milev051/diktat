@@ -34,6 +34,7 @@ DEFAULTS = {
     "sample_rate": 16000,
     "input_device": None,         # None = sistemski podrazumevani mikrofon
     "max_seconds": 290,           # Google sece stream na 5 min
+    "tail_seconds": 0.8,          # koliko jos snima posle pustanja tastera
 
     # --- Hotkey ---
     "hotkey": "cmd_r",            # cmd_r | cmd_l | alt_r | ctrl_r | f13 ...

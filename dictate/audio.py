@@ -24,6 +24,7 @@ class Recorder:
         self.cancelled = False
         self.released = False
         self.ticket = 0
+        self._tail_timer = None
 
     # -- unutrasnji callback iz PortAudio niti --
     def _callback(self, indata, frames, time_info, status):  # noqa: ARG002
@@ -45,12 +46,29 @@ class Recorder:
         )
         self._stream.start()
 
-    def stop(self):
-        """Signalizira kraj — `chunks()` se posle ovoga zavrsi."""
+    def stop(self, tail=0.0):
+        """Zavrsi snimanje, ali tek posle `tail` sekundi.
+
+        Bez repa se gubi poslednja rec: PortAudio isporucuje zvuk u blokovima
+        od BLOCK_MS, pa blok koji je u tom trenutku u letu biva odbacen — a
+        korisnik ionako pusta taster tacno na kraju poslednje reci.
+        """
+        if tail > 0 and not self._stop.is_set():
+            if self._tail_timer is None:
+                self._tail_timer = threading.Timer(tail, self._finish)
+                self._tail_timer.daemon = True
+                self._tail_timer.start()
+            return
+        self._finish()
+
+    def _finish(self):
         self._stop.set()
         self._q.put(None)
 
     def close(self):
+        if self._tail_timer is not None:
+            self._tail_timer.cancel()
+            self._tail_timer = None
         self._stop.set()
         if self._stream is not None:
             try:

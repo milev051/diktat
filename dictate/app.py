@@ -28,7 +28,6 @@ ICON = {
 
 HUD_MAX_CHARS = 90
 ERROR_HUD_SECONDS = 4.0
-METER_BLOCKS = "▁▂▃▄▅▆▇█▇▆▅▄"
 WARN_SECONDS = 10.0   # kad se predje u odbrojavanje
 
 _WEB = object()   # oznaka da je motor "web" (nema klijenta za pravljenje)
@@ -223,7 +222,8 @@ class DictateApp(rumps.App):
         if recorder is None:
             return
         self.state.set(phase="thinking")
-        recorder.stop()
+        # Rep hvata poslednju rec — taster se pusta tacno na njenom kraju.
+        recorder.stop(tail=float(self.cfg.get("tail_seconds", 0.8)))
 
     def _on_cancel(self, reason="otkazano"):
         with self._session_lock:
@@ -464,7 +464,7 @@ class DictateApp(rumps.App):
         if phase == "recording" and not live and self.cfg.get("show_overlay", True):
             recorder = self._recorder
             if recorder is not None:
-                meter = self._meter_text(recorder)
+                meter = self._meter_text()
                 if not self.hud.visible:
                     self.hud.show(meter, mono=True)
                 else:
@@ -507,17 +507,11 @@ class DictateApp(rumps.App):
         else:
             self.hud.hide()
 
-    def _meter_text(self, recorder) -> str:
-        """Nivo signala + vreme. Broji naviše, a tek pred sam kraj prelazi u
+    def _meter_text(self) -> str:
+        """Samo stanje i vreme. Broji naviše, a tek pred sam kraj prelazi u
         odbrojavanje — da kratki diktati ne trpe lazan pritisak vremena."""
         elapsed = time.monotonic() - self._record_started_at
         remaining = max(0.0, self._limit_seconds() - elapsed)
-
-        filled = int(min(1.0, recorder.level * 3.0) * len(METER_BLOCKS))
-        bar = "".join(
-            METER_BLOCKS[min(i, len(METER_BLOCKS) - 1)] if i < filled else "·"
-            for i in range(len(METER_BLOCKS))
-        )
 
         if remaining <= WARN_SECONDS:
             clock = f"još {math.ceil(remaining)}s"
@@ -528,7 +522,7 @@ class DictateApp(rumps.App):
         with self._count_lock:
             pending = self._pending
         badge = f"  ·  {pending} u obradi" if pending else ""
-        return f"{bar}  {clock}{badge}"
+        return f"snimam  {clock}{badge}"
 
     def _busy_text(self) -> str:
         with self._count_lock:

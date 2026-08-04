@@ -24,5 +24,6 @@
   "auto_segment": true,
   "segment_after_seconds": 10,
   "pause_seconds": 0.7,
-  "profanity_filter": false
+  "profanity_filter": false,
+  "tail_seconds": 0.8
 }
