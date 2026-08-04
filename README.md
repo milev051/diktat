@@ -68,7 +68,8 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
 - Gore desno se pojavi mala pilula sa vremenom. **Boja je ceo indikator:**
   zelena dok snima, žuta dok se obrađuje. Vreme se na kraju snimanja zamrzne
-  i stoji na žutoj dok tekst ne stigne.
+  i stoji na žutoj dok tekst ne stigne. **Žuti prsten oko zelene** znači da
+  snimaš, a prethodni segment se još obrađuje u pozadini.
   Za prikaz na dnu sredine: `"overlay_position": "bottom"`.
 - **Snimanje se ne prekida naglo kad pustiš taster** — nastavlja još `tail_seconds`
   (0.8s), jer se taster pušta tačno na kraju poslednje reči pa bi se ona izgubila.

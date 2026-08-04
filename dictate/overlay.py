@@ -34,6 +34,7 @@ PAD_X = 16.0
 MIN_WIDTH = 74.0
 MAX_WIDTH = 640.0
 SLACK = 3.0              # rezerva da se tekst nikad ne odseca
+RING_WIDTH = 3.0         # zuti prsten kad se nesto obradjuje u pozadini
 MONO_TEMPLATE = "još 99s"   # najsiri sadrzaj tajmera; po njemu je fiksna sirina
 
 BOTTOM_MARGIN = 150      # za position="bottom"
@@ -66,6 +67,7 @@ class Overlay:
         self._visible = False
         self._state = "recording"
         self._fixed_mono_w = None
+        self._busy = False
         self._mono_font = AppKit.NSFont.monospacedSystemFontOfSize_weight_(
             14, AppKit.NSFontWeightSemibold
         )
@@ -217,7 +219,24 @@ class Overlay:
         self._label.setTextColor_(_nscolor(foreground))
         self._state = state
 
+    def set_busy(self, busy: bool):
+        """Zuti prsten oko zelene pilule: snima, a nesto se paralelno obradjuje.
+
+        Bez ovoga se tokom snimanja uopste ne vidi da prethodni segment jos
+        putuje — pilula je zelena i dok se u pozadini nesto obradjuje.
+        """
+        if self._pill is None or busy == self._busy:
+            return
+        layer = self._pill.layer()
+        if busy:
+            layer.setBorderWidth_(RING_WIDTH)
+            layer.setBorderColor_(_cgcolor(STATES["processing"][0]))
+        else:
+            layer.setBorderWidth_(0.0)
+        self._busy = busy
+
     def hide(self):
+        self.set_busy(False)
         if self._panel is not None and self._visible:
             self._panel.orderOut_(None)
         self._visible = False

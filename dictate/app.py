@@ -506,6 +506,9 @@ class DictateApp(rumps.App):
                 else:
                     self.hud.set_text(clock, mono=True)
                 self.hud.set_state("recording")
+                with self._count_lock:
+                    pending = self._pending
+                self.hud.set_busy(pending > 0)
                 # Ova grana izlazi pre osvezavanja naslova, pa ga postavlja sama.
                 if self.title != ICON["recording"]:
                     self.title = ICON["recording"]
