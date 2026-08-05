@@ -22,10 +22,15 @@ from . import audio, config, debugdump, hotkey, insert, overlay, webstt
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
 ICON = {
     "idle": "00",
-    "thinking": "🟡",
     "error": "⚠️",
 }
-RED_AFTER = 10.0   # od ove sekunde cifre postaju crvene
+RED_AFTER = 10.0   # od ove sekunde cifre snimanja postaju crvene
+
+# Naranđasta umesto ciste zute: zuta je na svetlom menu baru jedva citljiva.
+TITLE_COLORS = {
+    "recording": AppKit.NSColor.systemRedColor,
+    "busy": AppKit.NSColor.systemOrangeColor,
+}
 
 ERROR_HUD_SECONDS = 4.0
 
@@ -189,10 +194,29 @@ class DictateApp(rumps.App):
 
     # ------------------------------------------------- hotkey callbacks
 
+    def _await_slot(self) -> bool:
+        """Sacekaj da se mikrofon oslobodi.
+
+        Posle pustanja tastera snimanje jos traje `tail_seconds`, pa bi pritisak
+        odmah zatim bio tiho progutan — a bas tako se i koristi: stanes, pa
+        odmah krenes ponovo dok se prethodni tekst jos obradjuje.
+        """
+        deadline = time.monotonic() + float(self.cfg.get("tail_seconds", 0.8)) + 0.7
+        while True:
+            with self._session_lock:
+                if self._recorder is None:
+                    return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.03)
+
     def _on_start(self):
+        """Vraca False ako snimanje nije poceto — hotkey tada vrati svoje stanje."""
+        if not self._await_slot():
+            return False
         with self._session_lock:
             if self._recorder is not None:
-                return
+                return False
             # Lista uredjaja se osvezava pred svaki diktat (~2ms) — bez toga
             # PortAudio i dalje gleda uredjaje od pre vadjenja slusalica.
             audio.refresh_devices()
@@ -205,12 +229,15 @@ class DictateApp(rumps.App):
                 recorder.start()
             except Exception as exc:  # noqa: BLE001
                 self.state.set(phase="error", message=f"Mikrofon: {exc}")
-                return
+                return False
             self._recorder = recorder
+            self._record_started_at = time.monotonic()
+            # Faza se upisuje pod katancem, da je _settle_phase prethodne
+            # sesije ne prepise natrag na "obradjuje".
+            self.state.set(phase="recording", message="")
 
-        self._record_started_at = time.monotonic()
-        self.state.set(phase="recording", message="")
         threading.Thread(target=self._run_session, args=(recorder,), daemon=True).start()
+        return True
 
     def _on_stop(self):
         with self._session_lock:
@@ -273,14 +300,18 @@ class DictateApp(rumps.App):
             audio.refresh_devices()
 
     def _settle_phase(self, message=""):
-        """Ne gasi ekran ako je u medjuvremenu poceo nov diktat."""
+        """Ne gasi ekran ako je u medjuvremenu poceo nov diktat.
+
+        Provera i upis idu pod istim katancem koji drzi i _on_start: inace se
+        moze ubaciti izmedju, videti mikrofon jos slobodan, pa prepisati
+        "snima" preko "obradjuje" iako je nov diktat vec poceo.
+        """
         with self._session_lock:
-            recording = self._recorder is not None
-        if recording:
-            return
-        with self._count_lock:
-            busy = self._pending > 0
-        self.state.set(phase="thinking" if busy else "idle", message=message)
+            if self._recorder is not None:
+                return
+            with self._count_lock:
+                busy = self._pending > 0
+            self.state.set(phase="thinking" if busy else "idle", message=message)
 
     # --------------------------------------------------------- sesija
 
@@ -489,7 +520,7 @@ class DictateApp(rumps.App):
             clock = self._clock_text()
             self._last_clock = clock   # ostaje i dok se posle obradjuje
             elapsed = time.monotonic() - self._record_started_at
-            self._set_menubar(clock, red=elapsed >= RED_AFTER)
+            self._set_menubar(clock, "recording" if elapsed >= RED_AFTER else None)
             self.item_status.title = "Snimanje…"
             if self.cfg.get("show_overlay", True):
                 if not self.hud.visible:
@@ -505,7 +536,12 @@ class DictateApp(rumps.App):
         if not dirty:
             return
 
-        self._set_menubar(ICON.get(phase, ICON["idle"]))
+        if phase == "thinking":
+            # Cifre ostaju, samo pozute — obrada traje par sekundi i tako se
+            # vidi da jos nesto radi, umesto da naslov skoci na ikonicu.
+            self._set_menubar(self._last_clock or ICON["idle"], "busy")
+        else:
+            self._set_menubar(ICON.get(phase, ICON["idle"]))
 
         if phase == "error":
             self.item_status.title = f"Greška: {message[:60]}"
@@ -543,15 +579,15 @@ class DictateApp(rumps.App):
         elapsed = time.monotonic() - self._record_started_at
         return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
 
-    def _set_menubar(self, text: str, red=False):
+    def _set_menubar(self, text: str, color=None):
         """rumps.title ne ume boju, pa naslov ide kao attributed string.
 
         Cifre su u monospacedDigit fontu — inace se sirina naslova menja svakom
         promenom sekunde i ostale ikonice u menu baru poskakuju.
         """
-        if (text, red) == self._menubar:
+        if (text, color) == self._menubar:
             return
-        self._menubar = (text, red)
+        self._menubar = (text, color)
         nsapp = getattr(self, "_nsapp", None)
         item = getattr(nsapp, "nsstatusitem", None) if nsapp else None
         button = item.button() if item is not None else None
@@ -564,8 +600,8 @@ class DictateApp(rumps.App):
                     0, AppKit.NSFontWeightRegular
                 )
         }
-        if red:
-            attrs[AppKit.NSForegroundColorAttributeName] = AppKit.NSColor.systemRedColor()
+        if color is not None:
+            attrs[AppKit.NSForegroundColorAttributeName] = TITLE_COLORS[color]()
         button.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(text, attrs)
         )

@@ -74,14 +74,14 @@ class HotkeyListener:
                         self._active = True
                         self._contaminated = False
                         self._pressed_at = time.monotonic()
-                        self._fire(self.on_start)
+                        self._start()
                     return
                 # hold: ignorisi auto-repeat dok je vec aktivno
                 if not self._active:
                     self._active = True
                     self._contaminated = False
                     self._pressed_at = time.monotonic()
-                    self._fire(self.on_start)
+                    self._start()
                 return
 
             # Neki drugi taster dok drzimo hotkey => ovo je precica, ne diktat.
@@ -104,6 +104,17 @@ class HotkeyListener:
                 self._fire(self.on_cancel, "prekratko")
             else:
                 self._fire(self.on_stop)
+
+    def _start(self):
+        """Pokreni snimanje; ako aplikacija ne moze (mikrofon jos zauzet),
+        vrati _active na False da prekidac ne ostane obrnut."""
+
+        def work():
+            if self.on_start() is False:
+                with self._lock:
+                    self._active = False
+
+        threading.Thread(target=work, daemon=True).start()
 
     @staticmethod
     def _fire(fn, *args):

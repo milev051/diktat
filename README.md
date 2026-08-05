@@ -4,7 +4,7 @@ Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se poja
 aplikaciji u kojoj si trenutno. Bez naloga, bez ključeva, bez podešavanja.
 
 ```
-00 spremno    01…30 snima (crveno od 10s)    🟡 obrađuje    ⚠️ greška
+00 spremno    01…30 snima (crveno od 10s)    žuto = obrađuje    ⚠️ greška
 ```
 
 Prepoznavanje ide preko Google Web Speech endpointa — onog koji koristi Chromium,
