@@ -35,7 +35,7 @@ class MainActivity : Activity() {
             setPadding(48, 48, 48, 64)
         }
 
-        root.addView(heading("Diktat"))
+        root.addView(heading("Diktat  v" + versionName()))
         root.addView(
             body(
                 "Zadrži bočni taster, pričaj, pa ga zadrži ponovo. Tekst se upiše " +
@@ -131,6 +131,13 @@ class MainActivity : Activity() {
                 if (!focused) cfg.abbreviationRules = text.toString()
             }
         })
+        root.addView(
+            body(
+                "Nova verzija donosi nova podrazumevana pravila (valute i " +
+                    "slično), ali tvoja sačuvana ostaju netaknuta. Pritisni " +
+                    "dugme ispod da pokupiš nova — pazi, briše tvoje izmene."
+            )
+        )
         root.addView(action("Vrati podrazumevane skraćenice") {
             cfg.abbreviationRules = Abbreviations.defaultText()
             recreate()
@@ -222,6 +229,11 @@ class MainActivity : Activity() {
         ) missing += Manifest.permission.POST_NOTIFICATIONS
         if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
     }
+
+    /** Da se na prvi pogled vidi koja je verzija instalirana. */
+    private fun versionName(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+    }.getOrDefault("?")
 
     private fun heading(text: String) = TextView(this).apply {
         this.text = text

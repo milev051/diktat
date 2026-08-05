@@ -33,6 +33,15 @@ traži ništa osim mikrofona ali radi samo iz tastature.
 
 ---
 
+## Koja je verzija instalirana
+
+Piše na vrhu ekrana aplikacije, pored imena — `Diktat v0.4`. Ako se ne poklapa
+sa `versionName` u `app/build.gradle.kts`, instalacija je stara.
+
+**Nova verzija ne menja tvoja sačuvana pravila skraćenica.** Ako donese nova
+podrazumevana (valute i slično), pokupićeš ih tek dugmetom *Vrati podrazumevane
+skraćenice* — a ono briše tvoje izmene, pa ih prvo prepiši.
+
 ## Instalacija
 
 ```bash
