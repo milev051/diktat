@@ -4,7 +4,7 @@ Ovaj projekat održavaju modeli, ne ljudi. Ovde su odluke i **razlozi** za njih,
 plus greške koje su već napravljene — da se ne ponavljaju.
 
 Dva dela, isti Google Web Speech endpoint (Chromium, javni ključ):
-`dictate/` (macOS, Python) i `android/` (Kotlin).
+`dictate/` (macOS, Python — desni Option) i `android/` (Kotlin — bočni taster).
 
 ---
 

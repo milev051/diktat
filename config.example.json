@@ -5,6 +5,8 @@
   "capitalize_first": false,
   "lowercase": true,
   "strip_punctuation": true,
+  "join_thousands": true,
+  "ascii_diacritics": false,
   "auto_segment": false,
   "segment_after_seconds": 10,
   "pause_seconds": 0.7,
@@ -13,7 +15,7 @@
   "sample_rate": 16000,
   "input_device": null,
   "tail_seconds": 0.8,
-  "hotkey": "cmd_r",
+  "hotkey": "alt_r",
   "mode": "hold",
   "min_seconds": 0.35,
   "insert_method": "paste",
@@ -23,5 +25,6 @@
   "show_overlay": false,
   "overlay_position": "top-right",
   "debug": false,
-  "debug_dir": "~/Diktat-debug"
+  "debug_dir": "~/Diktat-debug",
+  "pending_dir": "~/Diktat-neuspeli"
 }

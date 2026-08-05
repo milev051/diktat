@@ -30,7 +30,7 @@ DEFAULTS = {
     "tail_seconds": 0.8,          # koliko jos snima posle pustanja tastera
 
     # --- Hotkey ---
-    "hotkey": "cmd_r",            # cmd_l | alt_r | ctrl_r | f13 ...
+    "hotkey": "alt_r",            # desni Option; cmd_r | ctrl_r | f13 ...
     "mode": "hold",               # "hold" = drzi da snimas | "toggle"
     "min_seconds": 0.35,          # kraci pritisak se tretira kao obican Cmd
 

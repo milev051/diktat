@@ -16,7 +16,7 @@ i greške koje su već napravljene.
 
 ## macOS
 
-Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se pojavi u
+Diktiranje na macOS-u: **drži desni Option**, pričaj, pusti — tekst se pojavi u
 aplikaciji u kojoj si trenutno. Bez naloga, bez ključeva, bez podešavanja.
 
 ```
@@ -51,7 +51,7 @@ macOS traži dve. Ako si napravio `Diktat.app`, pokreni ga dvoklikom pa odobri:
 | Dozvola | Gde | Čemu služi |
 |---|---|---|
 | **Microphone** | System Settings → Privacy & Security → Microphone | snimanje govora |
-| **Accessibility** | System Settings → Privacy & Security → Accessibility | čitanje desnog Command-a i lepljenje |
+| **Accessibility** | System Settings → Privacy & Security → Accessibility | čitanje desnog Option-a i lepljenje |
 
 **Zašto `.app` a ne `./run.sh`:** iz terminala macOS veže dozvole za Terminal,
 pa ti hotkey pukne čim promeniš terminal ili ga apdejtuješ. `Diktat.app` je
@@ -63,7 +63,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 
 ## Korišćenje
 
-- **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
+- **Drži desni Option**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
 - **Snimanje uvek staje na 30 sekundi** i tekst ide na obradu; nastavak traži
   nov pritisak. Tako slučajno pokrenut diktat ne može da snima satima. Do tada se ne seče —
   ceo diktat se prepoznaje odjednom. Brojač u menu baru postaje crven na 15s, a žut dok se prethodni tekst obrađuje.
@@ -72,8 +72,8 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
   i kad se kraći drugi snimak prepozna pre dužeg prvog.
 - **Snimanje se ne prekida naglo kad pustiš taster** — nastavlja još `tail_seconds`
   (0.8s), jer se taster pušta tačno na kraju poslednje reči pa bi se ona izgubila.
-- Ako umesto diktata pritisneš **prečicu** (Cmd+V, Cmd+Tab…), snimanje se otkazuje
-  i ništa se ne ubacuje. Desni Command i dalje radi kao normalan Command.
+- Ako umesto diktata pritisneš **prečicu** (Option+E i slično), snimanje se otkazuje
+  i ništa se ne ubacuje. Desni Option i dalje kuca specijalne znake normalno.
 
 ### Meni
 
@@ -107,7 +107,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 | `max_seconds` | `290` | gornja granica jednog pritiska tastera |
 | `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
-| `hotkey` | `cmd_r` | `cmd_l`, `alt_r`, `ctrl_r`, `f13`… |
+| `hotkey` | `alt_r` | desni Option; `cmd_r`, `ctrl_r`, `f13`… |
 | `mode` | `hold` | `hold` = drži taster, `toggle` = pritisni/pritisni |
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
