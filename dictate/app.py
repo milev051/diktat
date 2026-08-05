@@ -8,7 +8,6 @@ Niti:
 AppKit se dira iskljucivo iz glavne niti; radne niti samo upisuju u `State`.
 """
 
-import math
 import queue
 import threading
 import time
@@ -16,19 +15,19 @@ import traceback
 
 import AppKit
 import rumps
+from Foundation import NSAttributedString
 
 from . import audio, config, debugdump, hotkey, insert, overlay, webstt
 
-# Dok snima, naslov je proteklo vreme ("0:12") umesto ikonice.
+# Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
 ICON = {
-    "idle": "⚪",
+    "idle": "00",
     "thinking": "🟡",
     "error": "⚠️",
 }
+RED_AFTER = 10.0   # od ove sekunde cifre postaju crvene
 
-HUD_MAX_CHARS = 90
 ERROR_HUD_SECONDS = 4.0
-WARN_SECONDS = 10.0   # kad se predje u odbrojavanje
 
 
 class State:
@@ -67,6 +66,7 @@ class DictateApp(rumps.App):
         self._error_shown_at = None
         self._record_started_at = 0.0
         self._last_clock = ""
+        self._menubar = (None, None)
         self._count_lock = threading.Lock()
         self._pending = 0        # snimci koji se prepoznaju
         self._ticket = 0         # redni broj segmenta za ubacivanje
@@ -336,19 +336,28 @@ class DictateApp(rumps.App):
             key=self.cfg.get("api_key") or None,
             profanity_filter=bool(self.cfg.get("profanity_filter", False)),
         )
-        if text and self.cfg.get("capitalize_first", True):
-            text = webstt.tidy(text)
+        if not text:
+            return text
+        if self.cfg.get("lowercase", False):
+            return text.lower()
+        if self.cfg.get("capitalize_first", True):
+            return webstt.tidy(text)
         return text
 
     def _transcribe(self, recorder):
         """Na dugom diktatu sece snimak na pauzama i salje delove na obradu
         dok ti jos pricas — tako nema cekanja na kraju."""
         if not self.cfg.get("auto_segment", True):
-            frames = list(self._tracked(recorder))
+            session = self._dump.session() if self._dump else None
+            pcm = b"".join(self._tracked(recorder))
             if recorder.cancelled:
                 return ""
             self._settle_phase()
-            return self._recognize(b"".join(frames))
+            text = self._recognize(pcm)
+            if session is not None:
+                session.segment(session.next_index(), pcm, text, kind="ceo")
+                session.finish(pcm, text)
+            return text
 
         detector = audio.PauseDetector(
             pause_seconds=float(self.cfg.get("pause_seconds", 0.7))
@@ -479,9 +488,9 @@ class DictateApp(rumps.App):
         if phase == "recording" and self._recorder is not None:
             clock = self._clock_text()
             self._last_clock = clock   # ostaje i dok se posle obradjuje
-            if self.title != clock:    # naslov se dira samo kad se sekunda promeni
-                self.title = clock
-                self.item_status.title = "Snimanje…"
+            elapsed = time.monotonic() - self._record_started_at
+            self._set_menubar(clock, red=elapsed >= RED_AFTER)
+            self.item_status.title = "Snimanje…"
             if self.cfg.get("show_overlay", True):
                 if not self.hud.visible:
                     self.hud.show(clock, mono=True)
@@ -496,7 +505,7 @@ class DictateApp(rumps.App):
         if not dirty:
             return
 
-        self.title = ICON.get(phase, ICON["idle"])
+        self._set_menubar(ICON.get(phase, ICON["idle"]))
 
         if phase == "error":
             self.item_status.title = f"Greška: {message[:60]}"
@@ -523,29 +532,44 @@ class DictateApp(rumps.App):
             # Greska se pokaze kratko pa se skloni; poruka ostaje u meniju.
             if self._error_shown_at is None:
                 self._error_shown_at = time.monotonic()
-                self.hud.show(message[:HUD_MAX_CHARS], mono=False)
+                self.hud.show(message[:90], mono=False)
                 self.hud.set_state("error")
         else:
             self.hud.hide()
 
     def _clock_text(self) -> str:
-        """Samo vreme. Broji naviše, a tek pred sam kraj prelazi u odbrojavanje
-        — da kratki diktati ne trpe lazan pritisak vremena."""
+        """Proteklo vreme u sekundama, dve cifre. Snimanje ionako staje na
+        granici, pa minuti nemaju sta da rade u naslovu."""
         elapsed = time.monotonic() - self._record_started_at
-        remaining = max(0.0, self._limit_seconds() - elapsed)
+        return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
 
-        if remaining <= WARN_SECONDS:
-            clock = f"još {math.ceil(remaining)}s"
-        else:
-            clock = f"{int(elapsed // 60)}:{int(elapsed % 60):02d}"
+    def _set_menubar(self, text: str, red=False):
+        """rumps.title ne ume boju, pa naslov ide kao attributed string.
 
-        # Crvena tačka već znači "snima", pa tu reč ne ponavljamo — HUD ostaje uzak.
-        return clock
+        Cifre su u monospacedDigit fontu — inace se sirina naslova menja svakom
+        promenom sekunde i ostale ikonice u menu baru poskakuju.
+        """
+        if (text, red) == self._menubar:
+            return
+        self._menubar = (text, red)
+        nsapp = getattr(self, "_nsapp", None)
+        item = getattr(nsapp, "nsstatusitem", None) if nsapp else None
+        button = item.button() if item is not None else None
+        if button is None:
+            self.title = text        # pre nego sto rumps napravi status stavku
+            return
+        attrs = {
+            AppKit.NSFontAttributeName:
+                AppKit.NSFont.monospacedDigitSystemFontOfSize_weight_(
+                    0, AppKit.NSFontWeightRegular
+                )
+        }
+        if red:
+            attrs[AppKit.NSForegroundColorAttributeName] = AppKit.NSColor.systemRedColor()
+        button.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(text, attrs)
+        )
 
-    def _near_limit(self) -> bool:
-        return (
-            self._limit_seconds() - (time.monotonic() - self._record_started_at)
-        ) <= WARN_SECONDS
 
     # -------------------------------------------------- menu callbacks
 

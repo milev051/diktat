@@ -11,13 +11,14 @@ DEFAULTS = {
     "language": "sr-RS",
     "api_key": "",                # prazno = ugradjeni javni Chromium kljuc
     "profanity_filter": False,    # True bi maskirao psovke ("sranje" -> "s*****")
-    "capitalize_first": True,     # endpoint ne vraca veliko pocetno slovo
+    "capitalize_first": False,    # veliko pocetno slovo
+    "lowercase": True,            # sve malim slovima
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
-    "auto_segment": True,
-    "segment_after_seconds": 10,  # pre ovoga se nikad ne sece
+    "auto_segment": False,
+    "segment_after_seconds": 10,  # samo uz auto_segment
     "pause_seconds": 0.7,         # koliko tisine znaci "kraj misli"
-    "max_request_seconds": 30,    # endpoint odbija zahteve duze od ovoga
+    "max_request_seconds": 30,    # snimanje staje ovde; endpoint odbija duze
     "max_seconds": 290,           # gornja granica jednog pritiska tastera
 
     # --- Audio ---

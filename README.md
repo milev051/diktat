@@ -4,7 +4,7 @@ Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se poja
 aplikaciji u kojoj si trenutno. Bez naloga, bez ključeva, bez podešavanja.
 
 ```
-⚪ spremno    0:12 snima (vreme teče u menu baru)    🟡 obrađuje    ⚠️ greška
+00 spremno    01…30 snima (crveno od 10s)    🟡 obrađuje    ⚠️ greška
 ```
 
 Prepoznavanje ide preko Google Web Speech endpointa — onog koji koristi Chromium,
@@ -48,9 +48,8 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-- **Na dugom diktatu se snimak sam seče na pauzama.** Posle 10s, svaka pauza od
-  ~0.7s odseca deo i šalje ga na obradu dok ti nastavljaš da pričaš. Zato nema
-  gornje granice — možeš diktirati koliko hoćeš.
+- **Snimanje staje na 30 sekundi** i tekst ide na obradu. Do tada se ne seče —
+  ceo diktat se prepoznaje odjednom. Brojač u menu baru postaje crven na 10s.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.**
   Mikrofon se oslobađa čim pustiš taster. Tekst se lepi **po redosledu snimanja**,
   i kad se kraći drugi snimak prepozna pre dužeg prvog.
@@ -79,11 +78,12 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 | `language` | `sr-RS` | menja se i iz menija |
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
-| `capitalize_first` | `true` | servis ne vraća veliko početno slovo |
-| `auto_segment` | `true` | seci dug snimak na pauzama i slati u delovima |
-| `segment_after_seconds` | `10` | pre ovoga se nikad ne seče |
+| `lowercase` | `true` | ceo tekst malim slovima |
+| `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |
+| `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
+| `segment_after_seconds` | `10` | samo uz `auto_segment` |
 | `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
-| `max_request_seconds` | `30` | najduži pojedinačni zahtev ka servisu |
+| `max_request_seconds` | `30` | **snimanje staje ovde**; servis odbija duže |
 | `max_seconds` | `290` | gornja granica jednog pritiska tastera |
 | `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
