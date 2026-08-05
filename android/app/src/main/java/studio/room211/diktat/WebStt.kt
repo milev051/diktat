@@ -20,7 +20,15 @@ object WebStt {
     private const val ENDPOINT = "https://www.google.com/speech-api/v2/recognize"
     private const val DEFAULT_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 
-    class SttException(message: String) : Exception(message)
+    /**
+     * `retryable` je true samo za prolazne smetnje — mrezu, 429 i 5xx.
+     * Odbijen kljuc (403) i neispravan zahtev (400) se ne ponavljaju: drugi
+     * pokusaj bi dao isto, a diktat bi samo duze cekao.
+     */
+    class SttException(message: String, val retryable: Boolean = false) :
+        Exception(message)
+
+    private const val RETRY_WAIT_MS = 1_000L
 
     /**
      * Prvo se proba FLAC (oko 40% manje podataka), pa PCM ako ne prodje.
@@ -35,7 +43,19 @@ object WebStt {
                 runCatching { return send(flac, "audio/x-flac; rate=${cfg.sampleRate}", cfg, pcm.size) }
             }
         }
-        return send(pcm, "audio/l16; rate=${cfg.sampleRate}", cfg, pcm.size)
+        return withRetry { send(pcm, "audio/l16; rate=${cfg.sampleRate}", cfg, pcm.size) }
+    }
+
+    private fun withRetry(block: () -> String): String {
+        try {
+            return block()
+        } catch (exc: SttException) {
+            if (!exc.retryable) throw exc
+        } catch (exc: java.io.IOException) {
+            // mreza pukla usred zahteva
+        }
+        Thread.sleep(RETRY_WAIT_MS)
+        return block()
     }
 
     private fun send(body: ByteArray, contentType: String, cfg: Config, pcmSize: Int): String {
@@ -59,7 +79,9 @@ object WebStt {
         try {
             conn.outputStream.use { it.write(body) }
             val code = conn.responseCode
-            if (code != 200) throw SttException(explain(code))
+            if (code != 200) {
+                throw SttException(explain(code), retryable = code == 429 || code >= 500)
+            }
             val reply = conn.inputStream.bufferedReader().readText()
             // Zvuk je daleko najveci deo; odgovor je par stotina bajtova.
             cfg.addTraffic(

@@ -17,7 +17,7 @@ import AppKit
 import rumps
 from Foundation import NSAttributedString
 
-from . import audio, config, debugdump, hotkey, insert, overlay, webstt
+from . import audio, config, debugdump, hotkey, insert, overlay, pending, webstt
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
 ICON = {
@@ -77,6 +77,10 @@ class DictateApp(rumps.App):
         self._ticket = 0         # redni broj segmenta za ubacivanje
         self._insert_q: queue.Queue = queue.Queue()
         self._dump = None
+        self._pending_store = pending.PendingStore(
+            self.cfg.get("pending_dir", "~/Diktat-neuspeli"),
+            self.cfg["sample_rate"],
+        )
         self._hist_lock = threading.Lock()
         self._history: list[str] = []
         self._history_dirty = True
@@ -101,6 +105,9 @@ class DictateApp(rumps.App):
         self.item_status.set_callback(None)
 
         self.history_menu = rumps.MenuItem("Istorija")
+        self.item_pending = rumps.MenuItem(
+            "Ponovi neuspele", callback=self._retry_pending
+        )
         self.item_debug = rumps.MenuItem(
             "Snimaj za debug", callback=self._toggle_debug
         )
@@ -134,6 +141,7 @@ class DictateApp(rumps.App):
             self.item_status,
             None,
             self.history_menu,
+            self.item_pending,
             None,
             self.mic_menu,
             self.item_refresh,
@@ -149,6 +157,7 @@ class DictateApp(rumps.App):
         ]
         self._rebuild_mic_menu()
         self._rebuild_history_menu()
+        self._sync_pending()
         self._sync_menu_marks()
 
     def _rebuild_mic_menu(self):
@@ -363,6 +372,17 @@ class DictateApp(rumps.App):
             text += " "
         return text
 
+    def _recognize_or_keep(self, pcm: bytes) -> str:
+        """Ako prepoznavanje padne, snimak ide na disk pa moze da se ponovi."""
+        try:
+            return self._recognize(pcm)
+        except Exception:
+            saved = self._pending_store.save(pcm)
+            if saved is not None:
+                print(f"[diktat] snimak sacuvan za ponovni pokusaj: {saved}")
+                self._history_dirty = True
+            raise
+
     def _recognize(self, pcm: bytes) -> str:
         if not pcm:
             return ""
@@ -398,7 +418,7 @@ class DictateApp(rumps.App):
             if recorder.cancelled:
                 return ""
             self._settle_phase()
-            text = self._recognize(pcm)
+            text = self._recognize_or_keep(pcm)
             if session is not None:
                 session.segment(session.next_index(), pcm, text, kind="ceo")
                 session.finish(pcm, text)
@@ -440,7 +460,7 @@ class DictateApp(rumps.App):
             return ""
         self._settle_phase()
         tail = b"".join(frames)
-        text = self._recognize(tail)
+        text = self._recognize_or_keep(tail)
         if not text and self._seconds(tail) > 0.4:
             print(f"[diktat] rep od {self._seconds(tail):.1f}s nije prepoznat")
         if session is not None:
@@ -460,7 +480,7 @@ class DictateApp(rumps.App):
         def work():
             text = ""
             try:
-                text = self._recognize(pcm)
+                text = self._recognize_or_keep(pcm)
                 if not text:
                     # Ranije se ovo tiho gubilo — segment nestane bez traga.
                     print(f"[diktat] segment od {self._seconds(pcm):.1f}s nije prepoznat")
@@ -518,6 +538,7 @@ class DictateApp(rumps.App):
         if self._history_dirty:
             self._history_dirty = False
             self._rebuild_history_menu()
+            self._sync_pending()
 
         phase, message, dirty = self.state.snapshot()
 
@@ -630,6 +651,34 @@ class DictateApp(rumps.App):
 
 
     # -------------------------------------------------- menu callbacks
+
+    def _retry_pending(self, _):
+        """Posalji ponovo sve sto ranije nije proslo, po redu snimanja."""
+        files = self._pending_store.list()
+        if not files:
+            return
+        self.item_status.title = f"Ponavljam {len(files)}…"
+        threading.Thread(target=self._do_retry, args=(files,), daemon=True).start()
+
+    def _do_retry(self, files):
+        for path in files:
+            try:
+                text = self._recognize(self._pending_store.load(path))
+            except Exception as exc:  # noqa: BLE001
+                self.state.set(phase="error", message=_short_error(exc))
+                return
+            self._pending_store.remove(path)
+            if text:
+                self._deliver(self._next_ticket(), self._finish(text))
+        self._history_dirty = True
+        self._settle_phase()
+
+    def _sync_pending(self):
+        count = len(self._pending_store.list())
+        self.item_pending.title = (
+            f"Ponovi neuspele ({count})" if count else "Ponovi neuspele"
+        )
+        self.item_pending.set_callback(self._retry_pending if count else None)
 
     def _remember(self, text: str):
         """Zapamti ubacen tekst. Zove se iz radne niti, pa meni ne dira —

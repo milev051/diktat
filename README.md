@@ -167,7 +167,9 @@ programi ne primaju sintetički Cmd+V. Tekst je uvek i u **Istoriji** u meniju.
 **Vađenje/vraćanje slušalica** → lista uređaja se osvežava sama pred svaki diktat
 (~2ms). Meni **Osveži audio uređaje** postoji za slučaj da ipak zaglavi.
 
-**Servis vraća 403 ili prazno** → Google je verovatno stegao endpoint.
+**Servis vraća 403 ili prazno** → Google je verovatno stegao endpoint. Snimak
+nije izgubljen: čuva se u `~/Diktat-neuspeli` i šalje ponovo stavkom
+**Ponovi neuspele** u meniju.
 
 ---
 

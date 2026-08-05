@@ -40,6 +40,10 @@ izgovoreno „pet hiljada". Tačka se briše samo ako je prate **tačno tri cifr
 i tu se broj završava — tako `verzija 2.0` i `android 4.4` ostaju celi. Zarez se
 ne dira, on je decimalni.
 
+**Neuspeo diktat se ne sme izgubiti.** Endpoint može da zakaže bez najave, pa
+se snimak čuva na disk i šalje ponovo iz menija. Prolazne greške (mreža, 429,
+5xx) se ponavljaju jednom; 400 i 403 nikad — drugi pokušaj bi dao isto.
+
 **Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
 separator (`3,5`) i dvotačku kao satnicu (`10:00`). Tačka, zarez **i dvotačka**
 brišu se **samo kad nisu između cifara**; crtica samo kad stoji sama, da
@@ -62,6 +66,8 @@ grupu — inače tiho pokvari brojeve.
 | Slot za mikrofon oslobođen pre zatvaranja strima | sledeći diktat reinicijalizuje PortAudio nad živim strimom | zatvori strim **prvi** |
 | Skraćenice: `<` bez `trim()` posle skidanja | `dinara=< RSD` ostavi razmak iz same zamene | `substring(1).trim()` |
 | Skraćenice: ista fraza navedena dvaput | stari red iznad novog tiho pojede reč | dedupe, **poslednji pobeđuje** |
+| Ime fajla samo od vremena | dva zapisa u istoj sekundi se prepišu | milisekunde **plus brojač** |
+| `self._pending` iskorišćeno dvaput | brojač i prodavnica se sudarili, pad u `_tick` | `_pending_store` odvojeno |
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 | …ali **bezuslovno** preuzimanje pokreta | veliko polje zaglavi celu stranicu, donje sekcije nedostupne | preuzmi samo ako `layout.height > vidljiva visina` |
 

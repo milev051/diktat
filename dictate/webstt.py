@@ -14,6 +14,7 @@ Ogranicenja, znaj ih:
 
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,7 +24,18 @@ DEFAULT_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 
 
 class WebSttError(Exception):
-    pass
+    """`retryable` je True samo za prolazne smetnje — mrezu, 429 i 5xx.
+
+    Odbijen kljuc (403) ili neispravan zahtev (400) se ne ponavljaju: drugi
+    pokusaj bi dao isto, a diktat bi samo duze cekao.
+    """
+
+    def __init__(self, message, retryable=False):
+        super().__init__(message)
+        self.retryable = retryable
+
+
+RETRY_WAIT = 1.0
 
 
 def recognize(
@@ -33,6 +45,7 @@ def recognize(
     key=None,
     timeout=30,
     profanity_filter=False,
+    retries=1,
 ):
     """Salje sirov 16-bit PCM i vraca prepoznat tekst ('' ako nista).
 
@@ -42,6 +55,18 @@ def recognize(
     if not pcm:
         return ""
 
+    for attempt in range(retries + 1):
+        try:
+            return _request(pcm, language, sample_rate, key, timeout, profanity_filter)
+        except WebSttError as exc:
+            if attempt >= retries or not exc.retryable:
+                raise
+            print(f"[diktat] {exc} — pokusavam ponovo")
+            time.sleep(RETRY_WAIT)
+    return ""
+
+
+def _request(pcm, language, sample_rate, key, timeout, profanity_filter):
     url = (
         f"{ENDPOINT}?client=chromium"
         f"&lang={urllib.parse.quote(language)}"
@@ -57,9 +82,16 @@ def recognize(
     try:
         raw = urllib.request.urlopen(request, timeout=timeout).read()
     except urllib.error.HTTPError as exc:
-        raise WebSttError(_explain_http(exc.code)) from exc
+        raise WebSttError(
+            _explain_http(exc.code),
+            retryable=exc.code == 429 or exc.code >= 500,
+        ) from exc
     except urllib.error.URLError as exc:
-        raise WebSttError(f"Nema veze sa internetom ({exc.reason}).") from exc
+        raise WebSttError(
+            f"Nema veze sa internetom ({exc.reason}).", retryable=True
+        ) from exc
+    except TimeoutError as exc:
+        raise WebSttError("Isteklo vreme cekanja.", retryable=True) from exc
 
     return _parse(raw.decode("utf-8", "replace"))
 

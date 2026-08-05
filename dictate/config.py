@@ -45,6 +45,7 @@ DEFAULTS = {
     # --- Debug ---
     "debug": False,               # snimaj zvuk i tekst radi poredjenja
     "debug_dir": "~/Diktat-debug",
+    "pending_dir": "~/Diktat-neuspeli",  # snimci koje prepoznavanje nije primilo
 }
 
 

@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
     private lateinit var previewOut: TextView
+    private lateinit var pendingLine: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -209,6 +210,11 @@ class MainActivity : Activity() {
             recreate()
         })
 
+        root.addView(heading("Neuspeli diktati"))
+        pendingLine = body("")
+        root.addView(pendingLine)
+        root.addView(action("Pošalji ponovo") { retryPending() })
+
         root.addView(heading("Potrošnja podataka"))
         trafficLine = body("")
         root.addView(trafficLine)
@@ -230,6 +236,7 @@ class MainActivity : Activity() {
         root.addView(action("Poništi brojač") {
             cfg.resetTraffic()
             showTraffic()
+        showPending()
         })
 
         root.addView(heading("Proba"))
@@ -277,6 +284,42 @@ class MainActivity : Activity() {
         } else {
             "Pristupačnost NIJE uključena — tekst će završiti u clipboard-u."
         }
+    }
+
+    private fun showPending() {
+        val n = PendingStore(this).count()
+        pendingLine.text = if (n == 0) {
+            "Nema neuspelih snimaka."
+        } else {
+            "$n snimak(a) nije prepoznato — pošalji ponovo da se ne izgube."
+        }
+    }
+
+    private fun retryPending() {
+        val store = PendingStore(this)
+        val files = store.list()
+        if (files.isEmpty()) return
+        pendingLine.text = "Šaljem ${files.size}…"
+        Thread {
+            var ubaceno = 0
+            for (file in files) {
+                val text = runCatching {
+                    TextPolish.apply(WebStt.recognize(store.load(file), cfg), cfg)
+                }.getOrNull() ?: break
+                store.remove(file)
+                if (text.isNotBlank() && InsertService.insert(text, cfg.restoreClipboard)) {
+                    ubaceno++
+                }
+            }
+            runOnUiThread {
+                showPending()
+                Toast.makeText(
+                    this,
+                    if (ubaceno > 0) "Ubačeno: $ubaceno" else "Tekst je u clipboard-u",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }.start()
     }
 
     private fun showTraffic() {

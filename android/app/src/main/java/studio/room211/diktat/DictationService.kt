@@ -107,6 +107,10 @@ class DictationService : Service() {
                 text = TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
             } catch (exc: Exception) {
                 problem = exc.message ?: "greška u prepoznavanju"
+                // Snimak se cuva da izgovoreno ne propadne; salje se ponovo
+                // dugmetom u aplikaciji.
+                PendingStore(this).save(pcm)
+                problem += " — snimak sačuvan za ponovni pokušaj"
             }
             handler.post { deliver(text, problem) }
         }

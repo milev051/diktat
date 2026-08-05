@@ -98,6 +98,12 @@ Podrazumevane skraćenice su u `Abbreviations.kt`, lista `DEFAULT`. Menjanje te
 liste utiče samo na **nove instalacije** — postojeća instalacija ima svoja
 pravila sačuvana, dok se ne pritisne *Vrati podrazumevane skraćenice*.
 
+## Ako prepoznavanje zakaže
+
+Prolazne greške (mreža, 429, 5xx) se ponavljaju jednom automatski. Ako i drugi
+pokušaj padne, **snimak se čuva** — sekcija *Neuspeli diktati* pokazuje koliko
+ih ima i šalje ih ponovo. Drži se poslednjih 5.
+
 ## Potrošnja podataka
 
 Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.
