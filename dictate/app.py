@@ -24,7 +24,7 @@ ICON = {
     "idle": "00",
     "error": "⚠️",
 }
-RED_AFTER = 10.0   # od ove sekunde cifre snimanja postaju crvene
+RED_AFTER = 15.0   # od ove sekunde cifre snimanja postaju crvene
 
 # Naranđasta umesto ciste zute: zuta je na svetlom menu baru jedva citljiva.
 TITLE_COLORS = {
@@ -519,8 +519,7 @@ class DictateApp(rumps.App):
         if phase == "recording" and self._recorder is not None:
             clock = self._clock_text()
             self._last_clock = clock   # ostaje i dok se posle obradjuje
-            elapsed = time.monotonic() - self._record_started_at
-            self._set_menubar(clock, "recording" if elapsed >= RED_AFTER else None)
+            self._set_menubar(clock, self._title_color())
             self.item_status.title = "Snimanje…"
             if self.cfg.get("show_overlay", True):
                 if not self.hud.visible:
@@ -578,6 +577,15 @@ class DictateApp(rumps.App):
         granici, pa minuti nemaju sta da rade u naslovu."""
         elapsed = time.monotonic() - self._record_started_at
         return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
+
+    def _title_color(self):
+        """Zuta ima prednost: ako se prethodni tekst jos obradjuje, to je
+        vaznije od toga koliko dugo traje novo snimanje."""
+        with self._count_lock:
+            if self._pending > 0:
+                return "busy"
+        elapsed = time.monotonic() - self._record_started_at
+        return "recording" if elapsed >= RED_AFTER else None
 
     def _set_menubar(self, text: str, color=None):
         """rumps.title ne ume boju, pa naslov ide kao attributed string.

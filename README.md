@@ -4,7 +4,7 @@ Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se poja
 aplikaciji u kojoj si trenutno. Bez naloga, bez ključeva, bez podešavanja.
 
 ```
-00 spremno    01…30 snima (crveno od 10s)    žuto = obrađuje    ⚠️ greška
+00 spremno    01…30 snima (crveno od 15s)    žuto = nešto se obrađuje    ⚠️ greška
 ```
 
 Prepoznavanje ide preko Google Web Speech endpointa — onog koji koristi Chromium,
@@ -49,7 +49,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
 - **Snimanje staje na 30 sekundi** i tekst ide na obradu. Do tada se ne seče —
-  ceo diktat se prepoznaje odjednom. Brojač u menu baru postaje crven na 10s.
+  ceo diktat se prepoznaje odjednom. Brojač u menu baru postaje crven na 15s, a žut dok se prethodni tekst obrađuje.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.**
   Mikrofon se oslobađa čim pustiš taster. Tekst se lepi **po redosledu snimanja**,
   i kad se kraći drugi snimak prepozna pre dužeg prvog.
