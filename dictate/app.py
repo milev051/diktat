@@ -137,6 +137,13 @@ class DictateApp(rumps.App):
         self.item_polish_correct = rumps.MenuItem(
             "…i ispravi očigledne greške", callback=self._toggle_polish_level
         )
+        self.item_polish_para = rumps.MenuItem(
+            "…i podeli na pasuse", callback=self._toggle_polish_paragraphs
+        )
+
+        # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
+        # preostala kvota, pa aplikacija broji svoje pozive sama.
+        self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
 
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
@@ -166,6 +173,8 @@ class DictateApp(rumps.App):
             self.item_continuous,
             self.item_polish,
             self.item_polish_correct,
+            self.item_polish_para,
+            self.item_polish_count,
             lang_menu,
             self.item_ascii,
             None,
@@ -215,10 +224,14 @@ class DictateApp(rumps.App):
         self.item_polish_correct.state = (
             1 if self.cfg.get("polish_level", "correct") == "correct" else 0
         )
+        self.item_polish_para.state = (
+            1 if self.cfg.get("polish_paragraphs", True) else 0
+        )
         self.item_polish.title = (
             "Formalni režim (doteruje AI)" if polish.available(self.cfg)
             else "Formalni režim — nema API ključa"
         )
+        self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
         current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
@@ -576,6 +589,26 @@ class DictateApp(rumps.App):
             self._maybe_polish()
             self._settle_phase()
 
+    def _polish_today(self) -> int:
+        import datetime
+        if self.cfg.get("polish_count_day") != datetime.date.today().isoformat():
+            return 0
+        return int(self.cfg.get("polish_count", 0))
+
+    def _count_polish(self):
+        """Brojac poziva po danu — Google ne nudi nacin da se vidi preostala kvota."""
+        import datetime
+
+        danas = datetime.date.today().isoformat()
+        if self.cfg.get("polish_count_day") != danas:
+            self.cfg["polish_count_day"] = danas
+            self.cfg["polish_count"] = 0
+        self.cfg["polish_count"] = int(self.cfg.get("polish_count", 0)) + 1
+        config.save(self.cfg)
+        # Naslov se osvezava odmah: _sync_menu_marks se zove samo na izmenu iz
+        # menija, pa bi brojac inace stajao na staroj vrednosti do sledeceg klika.
+        self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
+
     def _maybe_polish(self):
         """Kad je ceo diktat prepoznat, posalji ga modelu pa tek onda zalepi."""
         if not self._formal():
@@ -600,6 +633,7 @@ class DictateApp(rumps.App):
     def _do_polish(self, tekst: str):
         try:
             doteran = polish.polish(tekst, self.cfg)
+            self._count_polish()
         except Exception as exc:  # noqa: BLE001
             # Nedoteran tekst je bolji nego nikakav — model je dodatak, ne uslov.
             print(f"[diktat] doterivanje nije uspelo: {exc}")
@@ -845,6 +879,13 @@ class DictateApp(rumps.App):
     def _toggle_polish_level(self, _):
         nivo = "format" if self.cfg.get("polish_level", "correct") == "correct" else "correct"
         self.cfg["polish_level"] = nivo
+        config.save(self.cfg)
+        self._sync_menu_marks()
+
+    def _toggle_polish_paragraphs(self, _):
+        self.cfg["polish_paragraphs"] = not bool(
+            self.cfg.get("polish_paragraphs", True)
+        )
         config.save(self.cfg)
         self._sync_menu_marks()
 

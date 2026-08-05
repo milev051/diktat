@@ -148,12 +148,33 @@ ključa nema i režim se ne može uključiti.
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
 | `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
+| `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
+| `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i
 izmišljao krajeve rečenica, a broj poziva bi za deset minuta diktata skočio sa
 jednog na oko sto pedeset.
 
 Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
+
+### Kvota i rezervni plan
+
+Google **ne nudi** način da se vidi koliko je zahteva preostalo — ni u API-ju ni
+u AI Studio-u. Zato aplikacija sama broji: stavka *Poziva danas: N* u meniju,
+brojač se resetuje u ponoć. `gemini-flash-lite-latest` na besplatnom ključu ima
+red veličine 500 poziva dnevno, a jedan diktat je jedan poziv.
+
+Šta se dešava kad nešto pukne:
+
+| slučaj | ponašanje |
+|---|---|
+| potrošena kvota (429) | lepi se nedoteran tekst, poruka kaže zašto |
+| podešeni model ukinut ili preimenovan (404) | automatski se ponovo pokušava sa `gemini-flash-lite-latest` |
+| i podrazumevani nestao | isključi formalni režim; diktat radi kao pre, model je samo dodatak |
+| filter odbije tekst | lepi se nedoteran tekst |
+
+Prepoznavanje govora ne zavisi od ovog ključa — formalni režim može da otkaže u
+celini, a diktat i dalje radi.
 
 ## Ako se ne prepozna sve što si rekao
 

@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
     private lateinit var pendingLine: TextView
+    private lateinit var polishLine: TextView
     private lateinit var previewOut: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,10 +82,13 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(scroll)
 
-        // Sadrzaj ide ispod statusne trake, pa se razmak dodaje rucno.
+        // Sadrzaj ide ispod statusne trake, pa se razmak dodaje rucno. Visina
+        // tastature se mora dodati na dno: bez toga tastatura prekrije polje u
+        // koje se kuca i ne vidi se sta pises.
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(0, bars.top, 0, bars.bottom)
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            view.setPadding(0, bars.top, 0, maxOf(bars.bottom, ime.bottom))
             insets
         }
     }
@@ -98,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         }
         showTraffic()
         showPending()
+        polishLine.text = "Poziva modelu danas: ${cfg.polishCountToday}"
     }
 
     // ------------------------------------------------------------ kartice
@@ -167,6 +172,11 @@ class MainActivity : AppCompatActivity() {
                     "pogrešna se ne može ispraviti; tu rečenica nema greške.",
             )
         )
+        box.addView(switch(this, "…i podeli na pasuse", cfg.polishParagraphs) {
+            cfg.polishParagraphs = it
+        })
+        polishLine = body(this, "")
+        box.addView(polishLine)
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
         val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {

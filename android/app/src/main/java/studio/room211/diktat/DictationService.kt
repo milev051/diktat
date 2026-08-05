@@ -221,7 +221,9 @@ class DictationService : Service() {
         // Korisnik mora da zna da je otislo modelu i da se ceka odgovor.
         handler.post { updatePill(elapsed(), busy = true) }
         thread {
-            val doteran = runCatching { Polish.polish(tekst, cfg) }.getOrElse { exc ->
+            val doteran = runCatching {
+                Polish.polish(tekst, cfg).also { cfg.countPolish() }
+            }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.
                 handler.post { toast(exc.message ?: "doterivanje nije uspelo") }
                 tekst

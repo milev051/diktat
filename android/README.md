@@ -121,7 +121,13 @@ interpunkciju, velika slova i kvačice, a reči ne dira. Dok se čeka, pilula
 pokazuje plavo **AI**.
 
 Prekidač *…i ispravi očigledne greške* dodatno sređuje gramatička neslaganja
-(`sa kolega` → `sa kolegom`). Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
+(`sa kolega` → `sa kolegom`), a *…i podeli na pasuse* traži prazan red između
+smisaonih celina.
+
+Ispod prekidača stoji **Poziva modelu danas: N** — Google ne nudi način da se
+vidi preostala kvota, pa aplikacija broji sama; brojač se resetuje u ponoć. Ako
+podešeni model nestane (404), automatski se pokušava sa
+`gemini-flash-lite-latest`; ako i to padne, lepi se **nedoteran** tekst. Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
 preživljava instalaciju preko postojeće dok su paket i potpis isti.
 
 ## Potrošnja podataka

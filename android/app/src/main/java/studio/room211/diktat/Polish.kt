@@ -60,6 +60,13 @@ object Polish {
         Vrati samo oblikovan tekst, bez ikakvog uvoda i bez navodnika.
     """.trimIndent()
 
+    // Dopuna uputstva, kaci se na kraj osnovnog. Prazan red na pocetku mora da
+    // ide kao "\n\n": trimIndent bi ga pojeo da stoji unutar navodnika.
+    private val PASUSI = "\n\n" + """
+        Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa.
+        Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno.
+    """.trimIndent()
+
     class PolishException(message: String) : Exception(message)
 
     fun available(cfg: Config) = cfg.polishApiKey.isNotBlank()
@@ -70,8 +77,21 @@ object Polish {
         if (key.isBlank()) throw PolishException("Nema API ključa za doterivanje.")
 
         val model = cfg.polishModel.ifBlank { DEFAULT_MODEL }
+        return try {
+            call(model, text, cfg, key)
+        } catch (exc: PolishException) {
+            // Ako podeseni model nestane ili se preimenuje, probaj podrazumevani
+            // — inace bi jedna Google-ova izmena ugasila ceo formalni rezim.
+            if (exc.message?.contains("ne postoji") == true && model != DEFAULT_MODEL) {
+                call(DEFAULT_MODEL, text, cfg, key)
+            } else throw exc
+        }
+    }
+
+    private fun call(model: String, text: String, cfg: Config, key: String): String {
         val payload = JSONObject().apply {
-            val uputstvo = if (cfg.polishCorrect) PROMPT_CORRECT else PROMPT
+            val osnova = if (cfg.polishCorrect) PROMPT_CORRECT else PROMPT
+            val uputstvo = if (cfg.polishParagraphs) osnova + PASUSI else osnova
             put("systemInstruction", JSONObject().put("parts",
                 org.json.JSONArray().put(JSONObject().put("text", uputstvo))))
             put("contents", org.json.JSONArray().put(

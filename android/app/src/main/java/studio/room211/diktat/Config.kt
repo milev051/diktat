@@ -121,6 +121,25 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_correct", true)
         set(v) = prefs.edit().putBoolean("polish_correct", v).apply()
 
+    /** Podeli doteran tekst na pasuse, prazan red izmedju. */
+    var polishParagraphs: Boolean
+        get() = prefs.getBoolean("polish_paragraphs", true)
+        set(v) = prefs.edit().putBoolean("polish_paragraphs", v).apply()
+
+    /** Poziva modelu danas — Google ne nudi nacin da se vidi preostala kvota. */
+    fun countPolish() {
+        val danas = java.time.LocalDate.now().toString()
+        val e = prefs.edit()
+        if (prefs.getString("polish_day", "") != danas) {
+            e.putString("polish_day", danas).putInt("polish_count", 0)
+        }
+        e.putInt("polish_count", polishCountToday + 1).apply()
+    }
+
+    val polishCountToday: Int
+        get() = if (prefs.getString("polish_day", "") == java.time.LocalDate.now().toString())
+            prefs.getInt("polish_count", 0) else 0
+
     var polishModel: String
         get() = prefs.getString("polish_model", "")!!
         set(v) = prefs.edit().putString("polish_model", v.trim()).apply()

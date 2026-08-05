@@ -172,6 +172,15 @@ interpunkcije mora da se poklopi sa ulazom.
 nema greške pa model nema po čemu da posumnja. Ne pokušavaj to jačim promptom;
 tada počne da prepravlja ono što je bilo tačno.
 
+**Google ne nudi uvid u preostalu kvotu.** Ni jedan endpoint ne vraća koliko je
+zahteva ostalo, pa se broji lokalno (`polish_count` + `polish_count_day` na
+Mac-u, `polish_count` + `polish_day` u `SharedPreferences` na Androidu). Ne
+troši pozive na „proveru stanja" — takve provere nema.
+
+**Svaki otkaz modela mora da završi nedoteranim tekstom.** 404 povlači jedan
+pokušaj sa `DEFAULT_MODEL` (model se ukine ili preimenuje), sve ostalo pada na
+sirov transkript. Diktat ne sme da propadne zato što je AI dodatak zakazao.
+
 **Filter sadržaja ume da odbije bezazlen tekst.** Izmereno: „deca su otisao u
 skolu" → `PROHIBITED_CONTENT`, odgovor bez `parts`. Uvek proveri `finishReason`
 i vrati nedoteran tekst — diktat zbog toga ne sme da propadne.

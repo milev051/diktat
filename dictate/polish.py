@@ -72,6 +72,18 @@ def polish(text: str, cfg, timeout=60) -> str:
         raise PolishError("Nema API ključa za doterivanje.")
 
     model = cfg.get("polish_model") or DEFAULT_MODEL
+    try:
+        return _pozovi(model, text, key, cfg, timeout)
+    except PolishError as exc:
+        # Ako podeseni model nestane ili se preimenuje, probaj podrazumevani —
+        # inace bi jedna Google-ova izmena ugasila ceo formalni rezim.
+        if "ne postoji" in str(exc) and model != DEFAULT_MODEL:
+            print(f"[diktat] model {model} ne postoji, prelazim na {DEFAULT_MODEL}")
+            return _pozovi(DEFAULT_MODEL, text, key, cfg, timeout)
+        raise
+
+
+def _pozovi(model, text, key, cfg, timeout):
     url = f"{ENDPOINT}/{model}:generateContent?key={key}"
     payload = {
         "systemInstruction": {"parts": [{"text": _uputstvo(cfg)}]},
@@ -117,10 +129,17 @@ def polish(text: str, cfg, timeout=60) -> str:
     return out or text
 
 
+PASUSI = """
+
+Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa.
+Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."""
+
+
 def _uputstvo(cfg) -> str:
     if cfg.get("polish_prompt"):
         return cfg["polish_prompt"]
-    return PROMPT_CORRECT if cfg.get("polish_level", "correct") == "correct" else PROMPT
+    osnova = PROMPT_CORRECT if cfg.get("polish_level", "correct") == "correct" else PROMPT
+    return osnova + PASUSI if cfg.get("polish_paragraphs", True) else osnova
 
 
 def _explain(code: int) -> str:
