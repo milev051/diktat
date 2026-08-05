@@ -22,6 +22,7 @@ import android.widget.Toast
 class MainActivity : Activity() {
 
     private lateinit var cfg: Config
+    private lateinit var statusLine: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +44,8 @@ class MainActivity : Activity() {
         )
 
         root.addView(heading("Dozvole"))
+        statusLine = body("")
+        root.addView(statusLine)
         root.addView(action("Postavi kao digitalnog asistenta") {
             openAny("android.settings.VOICE_INPUT_SETTINGS",
                 Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, Settings.ACTION_SETTINGS)
@@ -89,6 +92,26 @@ class MainActivity : Activity() {
             cfg.asciiDiacritics = it
         })
 
+        root.addView(heading("Skraćenice"))
+        root.addView(toggle("Skraćuj česte fraze", cfg.abbreviations) { cfg.abbreviations = it })
+        root.addView(body("Jedno pravilo po redu, oblik  fraza=skraćenica"))
+        root.addView(EditText(this).apply {
+            setText(cfg.abbreviationRules)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setLines(6)
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setOnFocusChangeListener { _, focused ->
+                if (!focused) cfg.abbreviationRules = text.toString()
+            }
+        })
+        root.addView(action("Vrati podrazumevane skraćenice") {
+            cfg.abbreviationRules = Abbreviations.defaultText()
+            recreate()
+        })
+
         root.addView(heading("Jezik"))
         root.addView(EditText(this).apply {
             setText(cfg.language)
@@ -116,7 +139,13 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        title = if (InsertService.isRunning) "Diktat — spreman" else "Diktat"
+        val ready = InsertService.isRunning
+        title = if (ready) "Diktat — spreman" else "Diktat"
+        statusLine.text = if (ready) {
+            "Pristupačnost je uključena — tekst se upisuje gde je kursor."
+        } else {
+            "Pristupačnost NIJE uključena — tekst će završiti u clipboard-u."
+        }
     }
 
     private fun askForMicrophone() {

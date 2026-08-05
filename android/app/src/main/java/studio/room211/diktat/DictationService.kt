@@ -106,16 +106,34 @@ class DictationService : Service() {
     private fun deliver(text: String, problem: String?) {
         busy = false
         hidePill()
-        when {
-            problem != null -> toast(problem)
-            text.isBlank() -> toast("Ništa nije prepoznato")
-            InsertService.insert(text) -> Unit           // upisano gde je kursor
-            else -> {
-                copyToClipboard(text)
-                toast("Nema gde da upišem — tekst je u clipboard-u")
+        if (problem != null) {
+            toast(problem)
+            stopSelf()
+            return
+        }
+        if (text.isBlank()) {
+            toast("Ništa nije prepoznato")
+            stopSelf()
+            return
+        }
+        // Uvek i u clipboard: to je i rezerva ako upis ne prodje, a PASTE
+        // ionako cita odatle.
+        copyToClipboard(text)
+
+        if (!InsertService.isRunning) {
+            toast("Uključi Pristupačnost — tekst je u clipboard-u")
+            stopSelf()
+            return
+        }
+
+        // Upis ceka da se fokus vrati u polje, pa ne sme na glavnu nit.
+        thread {
+            val upisano = InsertService.insert(text)
+            handler.post {
+                if (!upisano) toast("Nema gde da upišem — tekst je u clipboard-u")
+                stopSelf()
             }
         }
-        stopSelf()
     }
 
     // ------------------------------------------------------- tajmer

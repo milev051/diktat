@@ -38,6 +38,9 @@ object TextPolish {
         if (text.isEmpty()) return text
         if (cfg.stripPunctuation) text = stripPunctuation(text)
         if (cfg.lowercase) text = text.lowercase()
+        if (cfg.abbreviations) {
+            text = Abbreviations.apply(text, Abbreviations.parse(cfg.abbreviationRules))
+        }
         if (cfg.asciiDiacritics) text = toAscii(text)
         if (cfg.trailingSpace) text = "$text "
         return text

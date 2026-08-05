@@ -58,6 +58,7 @@ Samsungu zakopana.
 3. **Pristupačnost** → uključi Diktat (upis u polje)
 
 Bez trećeg tekst i dalje radi, ali završi u clipboard-u pa ga lepiš ručno.
+Ekran aplikacije jasno kaže da li je Pristupačnost uključena.
 
 **Za mikrofon na tastaturi:** *Voice input* → izaberi Diktat. Radi sa Samsung
 tastaturom; Gboard po pravilu ignoriše sistemski izbor i koristi svoje
@@ -76,6 +77,10 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | Razmak na kraju | uključeno | da se rečenice nadovezuju |
 | Maskiraj psovke | isključeno | `pFilter=0` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
+| Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
+
+Skraćenice se poklapaju samo kao **cele reči** — `znamenito` i `poznam` ostaju
+netaknuti — a duže fraze idu prve, da pravilo za `znam` ne pojede `ne znam`.
 
 Pravilo za interpunkciju je isto ono provereno na Mac-u: tačka i zarez se brišu
 samo kad **nisu između cifara**, jer ih endpoint vraća kao decimalni separator

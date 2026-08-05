@@ -32,6 +32,15 @@ class Config(context: Context) {
         get() = prefs.getBoolean("ascii_diacritics", false)
         set(v) = prefs.edit().putBoolean("ascii_diacritics", v).apply()
 
+    var abbreviations: Boolean
+        get() = prefs.getBoolean("abbreviations", true)
+        set(v) = prefs.edit().putBoolean("abbreviations", v).apply()
+
+    /** Pravila, jedno po redu, oblik `fraza=skracenica`. */
+    var abbreviationRules: String
+        get() = prefs.getString("abbreviation_rules", null) ?: Abbreviations.defaultText()
+        set(v) = prefs.edit().putString("abbreviation_rules", v).apply()
+
     var trailingSpace: Boolean
         get() = prefs.getBoolean("trailing_space", true)
         set(v) = prefs.edit().putBoolean("trailing_space", v).apply()

@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  typeAllMask + flagRetrieveInteractiveWindows: bez toga servis ne vidi prozor
+  u kome je polje kad se vrati fokus posle bocnog tastera.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewFocused"
+    android:accessibilityEventTypes="typeAllMask"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
     android:description="@string/insert_service_description"
-    android:notificationTimeout="100"
+    android:notificationTimeout="50"
     android:settingsActivity="studio.room211.diktat.MainActivity" />
