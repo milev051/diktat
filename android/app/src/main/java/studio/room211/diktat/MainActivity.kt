@@ -81,6 +81,21 @@ class MainActivity : Activity() {
             openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS)
         })
 
+        root.addView(heading("Ponašanje"))
+        root.addView(toggle("Snimaj samo kad ima polja za unos", cfg.requireInputField) {
+            cfg.requireInputField = it
+        })
+        root.addView(toggle("Ne ostavljaj tekst u clipboard-u", cfg.restoreClipboard) {
+            cfg.restoreClipboard = it
+        })
+        root.addView(
+            body(
+                "Kad je drugo uključeno, clipboard se posle upisa vrati kakav je " +
+                    "bio, pa izdiktirano ne ostaje u istoriji. Ako upis ne prođe, " +
+                    "tekst ipak ostane u clipboard-u — bolje nego da se izgubi."
+            )
+        )
+
         root.addView(heading("Obrada teksta"))
         root.addView(toggle("Sve malim slovima", cfg.lowercase) { cfg.lowercase = it })
         root.addView(toggle("Bez interpunkcije", cfg.stripPunctuation) { cfg.stripPunctuation = it })

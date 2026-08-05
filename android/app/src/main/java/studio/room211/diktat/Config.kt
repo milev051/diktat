@@ -41,6 +41,17 @@ class Config(context: Context) {
         get() = prefs.getString("abbreviation_rules", null) ?: Abbreviations.defaultText()
         set(v) = prefs.edit().putString("abbreviation_rules", v).apply()
 
+    /** Ne snimaj ako nema polja u koje bi tekst usao. */
+    var requireInputField: Boolean
+        get() = prefs.getBoolean("require_input_field", true)
+        set(v) = prefs.edit().putBoolean("require_input_field", v).apply()
+
+    /** Posle uspesnog upisa vrati clipboard kakav je bio — da izdiktirano ne
+     *  ostane u istoriji clipboard-a. */
+    var restoreClipboard: Boolean
+        get() = prefs.getBoolean("restore_clipboard", true)
+        set(v) = prefs.edit().putBoolean("restore_clipboard", v).apply()
+
     var trailingSpace: Boolean
         get() = prefs.getBoolean("trailing_space", true)
         set(v) = prefs.edit().putBoolean("trailing_space", v).apply()

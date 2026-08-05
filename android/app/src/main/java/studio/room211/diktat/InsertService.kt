@@ -27,6 +27,7 @@ class InsertService : AccessibilityService() {
     companion object {
         private const val TRIES = 12
         private const val WAIT_MS = 120L
+        private const val CLIP_RESTORE_MS = 450L
 
         @Volatile
         private var instance: InsertService? = null
@@ -34,7 +35,17 @@ class InsertService : AccessibilityService() {
         val isRunning: Boolean get() = instance != null
 
         /** Vraca true ako je tekst zaista negde upisan. */
-        fun insert(text: String): Boolean = instance?.insertNow(text) ?: false
+        fun insert(text: String, restoreClipboard: Boolean = false): Boolean =
+            instance?.insertNow(text, restoreClipboard) ?: false
+
+        /**
+         * Ima li uopste polja u koje bi tekst mogao da udje.
+         * Bez pokusaja i cekanja — zove se pre snimanja, mora da bude trenutno.
+         */
+        fun hasInputField(): Boolean = instance?.findEditable()?.let {
+            runCatching { @Suppress("DEPRECATION") it.recycle() }
+            true
+        } ?: false
     }
 
     override fun onServiceConnected() {
@@ -52,7 +63,9 @@ class InsertService : AccessibilityService() {
 
     // ------------------------------------------------------------------
 
-    private fun insertNow(text: String): Boolean {
+    private fun insertNow(text: String, restoreClipboard: Boolean): Boolean {
+        val previous = if (restoreClipboard) currentClip() else null
+
         // PASTE cita iz clipboard-a, pa mora da bude popunjen pre pokusaja.
         putOnClipboard(text)
 
@@ -61,12 +74,28 @@ class InsertService : AccessibilityService() {
             if (node != null) {
                 val done = paste(node) || setText(node, text)
                 runCatching { @Suppress("DEPRECATION") node.recycle() }
-                if (done) return true
+                if (done) {
+                    if (restoreClipboard) {
+                        // Ciljna aplikacija jos cita iz clipboard-a kad PASTE
+                        // prodje, pa se ne sme vratiti odmah.
+                        Thread.sleep(CLIP_RESTORE_MS)
+                        putOnClipboard(previous ?: "")
+                    }
+                    return true
+                }
             }
             Thread.sleep(WAIT_MS)
         }
+        // Upis nije prosao — tekst ostaje u clipboard-u i kad je vracanje
+        // ukljuceno, jer je izgubiti ga gore od toga da ostane zapisan.
         return false
     }
+
+    private fun currentClip(): String =
+        getSystemService(ClipboardManager::class.java)
+            ?.primaryClip?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)?.coerceToText(this)?.toString()
+            ?: ""
 
     private fun paste(node: AccessibilityNodeInfo): Boolean =
         runCatching {
@@ -103,7 +132,7 @@ class InsertService : AccessibilityService() {
     // ------------------------------------------------------------------
 
     /** Prvo pravi fokus unosa, pa tek onda trazenje po stablu prozora. */
-    private fun findEditable(): AccessibilityNodeInfo? {
+    internal fun findEditable(): AccessibilityNodeInfo? {
         runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }
             .getOrNull()
             ?.let { if (it.isEditable) return it }

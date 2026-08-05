@@ -72,6 +72,21 @@ na to odgovara. Gboard to ne pita.
 
 ---
 
+## Ponašanje
+
+| | podrazumevano | |
+|---|---|---|
+| Snimaj samo kad ima polja za unos | uključeno | bez toga se diktat pokrene i sa početnog ekrana pa završi u prazno |
+| Ne ostavljaj tekst u clipboard-u | uključeno | clipboard se posle upisa vrati kakav je bio |
+
+Ako upis **ne prođe**, tekst svejedno ostane u clipboard-u — izgubiti diktat je
+gore nego da ostane zapisan. Zato drugi prekidač znači „ne ostavljaj kad ne
+moraš", a ne „nikad".
+
+Podrazumevane skraćenice su u `Abbreviations.kt`, lista `DEFAULT`. Menjanje te
+liste utiče samo na **nove instalacije** — postojeća instalacija ima svoja
+pravila sačuvana, dok se ne pritisne *Vrati podrazumevane skraćenice*.
+
 ## Obrada teksta
 
 Isto što radi i macOS verzija, sve se menja u aplikaciji:

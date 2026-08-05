@@ -69,6 +69,15 @@ class DictationService : Service() {
 
     private fun startRecording() {
         cfg = Config(this)
+        // Bez polja u koje bi tekst usao snimanje nema smisla — inace se
+        // diktat pokrene i sa pocetnog ekrana, pa zavrsi u praznom.
+        if (cfg.requireInputField && InsertService.isRunning &&
+            !InsertService.hasInputField()
+        ) {
+            toast("Nema polja za unos — klikni u polje pa probaj ponovo")
+            stopSelf()
+            return
+        }
         try {
             recorder = Recorder(cfg.sampleRate).also { it.start() }
         } catch (exc: Exception) {
@@ -116,11 +125,9 @@ class DictationService : Service() {
             stopSelf()
             return
         }
-        // Uvek i u clipboard: to je i rezerva ako upis ne prodje, a PASTE
-        // ionako cita odatle.
-        copyToClipboard(text)
-
         if (!InsertService.isRunning) {
+            // Nema ko da upise — clipboard je jedini nacin da tekst ne propadne.
+            copyToClipboard(text)
             toast("Uključi Pristupačnost — tekst je u clipboard-u")
             stopSelf()
             return
@@ -128,7 +135,7 @@ class DictationService : Service() {
 
         // Upis ceka da se fokus vrati u polje, pa ne sme na glavnu nit.
         thread {
-            val upisano = InsertService.insert(text)
+            val upisano = InsertService.insert(text, cfg.restoreClipboard)
             handler.post {
                 if (!upisano) toast("Nema gde da upišem — tekst je u clipboard-u")
                 stopSelf()
