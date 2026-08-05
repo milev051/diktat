@@ -64,7 +64,11 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Option**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-- **Snimanje uvek staje na 30 sekundi** i tekst ide na obradu; nastavak traži
+**Režim „Neprekidno"** (meni → Režim) ukida granicu od 30s: seče na pauzama i
+šalje delove dok pričaš dalje, pa tekst stiže usput. Ostatak ide kad ručno
+zaustaviš. Ponaša se kao prekidač — držati taster minutima nema smisla.
+
+- **U običnom režimu snimanje staje na 30 sekundi** i tekst ide na obradu; nastavak traži
   nov pritisak. Tako slučajno pokrenut diktat ne može da snima satima. Do tada se ne seče —
   ceo diktat se prepoznaje odjednom. Brojač u menu baru postaje crven na 15s, a žut dok se prethodni tekst obrađuje.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.**
@@ -108,7 +112,8 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 | `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
 | `hotkey` | `alt_r` | desni Option; `cmd_r`, `ctrl_r`, `f13`… |
-| `mode` | `hold` | `hold` = drži taster, `toggle` = pritisni/pritisni |
+| `mode` | `hold` | `hold`, `toggle`, `continuous` |
+| `continuous_max_seconds` | `3600` | sigurnosna granica i za neprekidni režim |
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |

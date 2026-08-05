@@ -32,6 +32,22 @@ class Config(context: Context) {
         get() = prefs.getBoolean("ascii_diacritics", false)
         set(v) = prefs.edit().putBoolean("ascii_diacritics", v).apply()
 
+    /**
+     * "obicno"     — jedan snimak do maxSeconds, pa obrada
+     * "neprekidno" — bez vremenskog ogranicenja; sece na pauzama i salje
+     *                delove dok snimanje tece dalje
+     */
+    var continuous: Boolean
+        get() = prefs.getBoolean("continuous", false)
+        set(v) = prefs.edit().putBoolean("continuous", v).apply()
+
+    /** U neprekidnom rezimu: posle koliko sekundi pauza sme da sece. */
+    val segmentAfterSeconds get() = prefs.getInt("segment_after_seconds", 10)
+    val pauseSeconds get() = prefs.getFloat("pause_seconds", 0.7f).toDouble()
+
+    /** Sigurnosna granica i za neprekidni rezim — da zaboravljen diktat stane. */
+    val continuousMaxSeconds get() = prefs.getInt("continuous_max_seconds", 3600)
+
     /** Salji FLAC umesto sirovog PCM-a: oko 40% manje podataka. */
     var compressAudio: Boolean
         get() = prefs.getBoolean("compress_audio", true)
@@ -110,6 +126,7 @@ class Config(context: Context) {
     }
 
     val sampleRate = 16_000
-    val maxSeconds = 30          // endpoint odbija duze zahteve
+    val maxSeconds = 30          // obican rezim: koliko traje jedan snimak
+    val maxRequestSeconds = 30   // najduzi pojedinacni zahtev ka servisu
     val redAfterSeconds = 15     // od ove sekunde tajmer pocrveni
 }

@@ -87,3 +87,69 @@ class TextRulesTest {
         assertEquals("Cacak zuti djak", TextPolish.toAscii("Čačak žuti đak"))
     }
 }
+
+class PauseDetectorTest {
+
+    private fun run(plan: List<Pair<Double, Double>>, pause: Double = 0.7): List<Double> {
+        val d = PauseDetector(pauseSeconds = pause)
+        val hits = mutableListOf<Double>()
+        var t = 0.0
+        for ((level, seconds) in plan) {
+            repeat((seconds / 0.1).toInt()) {
+                t += 0.1
+                if (d.feed(level, 0.1)) {
+                    hits.add(Math.round(t * 10) / 10.0)
+                    d.reset()
+                }
+            }
+        }
+        return hits
+    }
+
+    private val tiho = 0.012
+    private val bucno = 0.075
+    private val govor = 0.45
+
+    @Test
+    fun `tiha soba - jedna pauza`() {
+        assertEquals(listOf(4.7), run(listOf(tiho to 1.0, govor to 3.0, tiho to 1.0, govor to 2.0)))
+    }
+
+    @Test
+    fun `bucna soba - pozadina se ne broji kao govor`() {
+        assertEquals(listOf(4.7), run(listOf(bucno to 1.0, govor to 3.0, bucno to 1.0, govor to 2.0)))
+    }
+
+    @Test
+    fun `snimanje pocinje usred govora`() {
+        assertEquals(
+            listOf(2.2, 4.7),
+            run(listOf(govor to 1.5, tiho to 1.0, govor to 1.5, tiho to 1.0, govor to 1.0)),
+        )
+    }
+
+    @Test
+    fun `kratki predasi izmedju reci ne seku`() {
+        val plan = mutableListOf(tiho to 1.0)
+        repeat(6) { plan.add(govor to 0.8); plan.add(tiho to 0.3) }
+        assertEquals(emptyList<Double>(), run(plan))
+    }
+
+    @Test
+    fun `neprekidan govor ne sece`() {
+        assertEquals(emptyList<Double>(), run(listOf(tiho to 1.0, govor to 10.0)))
+    }
+
+    @Test
+    fun `duga tisina ne okida u nedogled`() {
+        assertEquals(
+            listOf(3.7, 8.2),
+            run(listOf(tiho to 1.0, govor to 2.0, tiho to 2.5, govor to 2.0, tiho to 1.0)),
+        )
+    }
+
+    @Test
+    fun `sama tisina bez govora ne sece`() {
+        assertEquals(emptyList<Double>(), run(listOf(tiho to 5.0)))
+    }
+}

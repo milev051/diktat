@@ -10,7 +10,11 @@ verzija.
 30        obrađuje          (žuto)
 ```
 
-Staje na 30s — i zato što endpoint odbija duže zahteve, i da slučajno
+**Režim „Neprekidno"** (u aplikaciji) ukida granicu: seče na pauzama i šalje
+delove dok snimanje teče dalje, pa tekst stiže usput; ostatak ide kad ručno
+zaustaviš. Sigurnosna granica ostaje na sat vremena.
+
+U običnom režimu staje na 30s — i zato što endpoint odbija duže zahteve, i da slučajno
 pokrenut diktat ne snima satima. Nastavak traži nov pritisak.
 
 ---

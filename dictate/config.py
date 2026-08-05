@@ -31,7 +31,8 @@ DEFAULTS = {
 
     # --- Hotkey ---
     "hotkey": "alt_r",            # desni Option; cmd_r | ctrl_r | f13 ...
-    "mode": "hold",               # "hold" = drzi da snimas | "toggle"
+    "mode": "hold",               # "hold" | "toggle" | "continuous"
+    "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni
     "min_seconds": 0.35,          # kraci pritisak se tretira kao obican Cmd
 
     # --- Izlaz ---

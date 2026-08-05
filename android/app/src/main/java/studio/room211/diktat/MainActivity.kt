@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(dozvole())
+        root.addView(rezim())
         root.addView(tastatura())
         root.addView(ponasanje())
         root.addView(obrada())
@@ -123,6 +124,21 @@ class MainActivity : AppCompatActivity() {
         box.addView(button(this, "Unos teksta (Pristupačnost)") {
             openAny(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         })
+        return card
+    }
+
+    private fun rezim(): ViewGroup {
+        val (card, box) = card(this, "Režim snimanja")
+        box.addView(switch(this, "Neprekidno", cfg.continuous) { cfg.continuous = it })
+        box.addView(
+            body(
+                this,
+                "Bez vremenskog ograničenja. Seče na pauzama i šalje delove dok " +
+                    "snimanje teče dalje, pa tekst stiže usput; ostatak ide kad " +
+                    "ručno zaustaviš.\n\n" +
+                    "Isključeno: jedan snimak do 30s, pa obrada.",
+            )
+        )
         return card
     }
 

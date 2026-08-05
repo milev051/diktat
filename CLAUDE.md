@@ -40,6 +40,10 @@ izgovoreno „pet hiljada". Tačka se briše samo ako je prate **tačno tri cifr
 i tu se broj završava — tako `verzija 2.0` i `android 4.4` ostaju celi. Zarez se
 ne dira, on je decimalni.
 
+**Neprekidni režim ne sme da gomila zvuk u memoriji.** Sat vremena je preko
+100 MB. Zato Android `Recorder` izbacuje komade kroz red, a potrošač drži samo
+tekući segment i pušta ga čim ga pošalje.
+
 **Snimanje uvek staje na granici.** Slučajno pokrenut diktat bi inače snimao
 satima i poslao ogromnu količinu podataka. Posle prekida se **traži nov
 pritisak** — a prekidač se mora vratiti u mirovanje (`listener.reset()`), inače

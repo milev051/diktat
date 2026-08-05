@@ -48,6 +48,10 @@ class DictationService : Service() {
     private var windows: WindowManager? = null
     private var startedAt = 0L
     private var busy = false
+    private var nextTicket = 0
+    private var expected = 0
+    private val buffered = HashMap<Int, String>()
+    private val pending = java.util.concurrent.atomic.AtomicInteger(0)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -89,62 +93,129 @@ class DictationService : Service() {
         startedAt = System.currentTimeMillis()
         showPill()
         tick()
+        if (cfg.continuous) thread { segmentLoop() }
     }
 
     private fun stopRecording() {
         if (!isRecording) return
         isRecording = false
         handler.removeCallbacksAndMessages(null)
-        val pcm = recorder?.stop() ?: ByteArray(0)
-        recorder = null
         busy = true
         updatePill(elapsed(), busy = true)
 
-        thread {
-            var text = ""
-            var problem: String? = null
-            try {
-                text = TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
-            } catch (exc: Exception) {
-                problem = exc.message ?: "greška u prepoznavanju"
-                // Snimak se cuva da izgovoreno ne propadne; salje se ponovo
-                // dugmetom u aplikaciji.
-                PendingStore(this).save(pcm)
-                problem += " — snimak sačuvan za ponovni pokušaj"
+        if (cfg.continuous) {
+            // Petlja sama pokupi ostatak iz reda i posalje rep; ovde se samo
+            // trazi kraj, da se poslednji komadi ne izgube.
+            recorder?.requestStop()
+            return
+        }
+
+        val pcm = recorder?.stop() ?: ByteArray(0)
+        recorder = null
+        thread { recognizeAndDeliver(pcm, last = true) }
+    }
+
+    /**
+     * Neprekidni rezim: sece na pauzama i salje delove dok snimanje tece
+     * dalje. Segment se pusta iz memorije cim ode — inace bi dug diktat
+     * nagomilao sve u baferu.
+     */
+    private fun segmentLoop() {
+        val rec = recorder ?: return
+        val detector = PauseDetector(pauseSeconds = cfg.pauseSeconds)
+        val cutAfter = cfg.segmentAfterSeconds.toDouble()
+        val hardCut = cfg.maxRequestSeconds.toDouble()
+        var frames = java.io.ByteArrayOutputStream()
+        var seconds = 0.0
+        var bytesInSegment = 0
+
+        while (true) {
+            val chunk = rec.nextChunk() ?: break
+            if (chunk.isEmpty()) continue
+            frames.write(chunk)
+            bytesInSegment += chunk.size
+            val step = chunk.size / 2.0 / cfg.sampleRate
+            seconds += step
+            val paused = detector.feed(peakLevel(chunk), step)
+            // Tvrdi rez postoji jer endpoint odbija zahteve duze od ~30s, a
+            // neko moze da prica bez ijedne pauze.
+            if (bytesInSegment > 0 && ((paused && seconds >= cutAfter) || seconds >= hardCut)) {
+                ship(frames.toByteArray(), last = false)
+                frames = java.io.ByteArrayOutputStream()
+                bytesInSegment = 0
+                seconds = 0.0
+                detector.reset()
             }
-            handler.post { deliver(text, problem) }
+        }
+
+        val rest = rec.stop()
+        recorder = null
+        frames.write(rest)
+        ship(frames.toByteArray(), last = true)
+    }
+
+    private fun ship(pcm: ByteArray, last: Boolean) {
+        if (pcm.isEmpty()) {
+            if (last) handler.post { finishSession() }
+            return
+        }
+        val myTicket = nextTicket++
+        pending.incrementAndGet()
+        thread { recognizeAndDeliver(pcm, last = last, ticket = myTicket) }
+    }
+
+    private fun recognizeAndDeliver(pcm: ByteArray, last: Boolean, ticket: Int = 0) {
+        var text = ""
+        var problem: String? = null
+        try {
+            text = TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
+        } catch (exc: Exception) {
+            problem = exc.message ?: "greška u prepoznavanju"
+            // Snimak se cuva da izgovoreno ne propadne.
+            PendingStore(this).save(pcm)
+            problem += " — snimak sačuvan za ponovni pokušaj"
+        }
+        handler.post { deliver(text, problem, ticket, last) }
+    }
+
+    /**
+     * Ubacuje strogo po redosledu snimanja. Prepoznavanja teku paralelno i mogu
+     * da se zavrse van reda — kratak drugi segment lako stigne pre dugog prvog.
+     */
+    private fun deliver(text: String, problem: String?, ticket: Int, last: Boolean) {
+        buffered[ticket] = text
+        if (problem != null) toast(problem)
+
+        while (buffered.containsKey(expected)) {
+            val ready = buffered.remove(expected)!!
+            expected++
+            pending.decrementAndGet()
+            if (ready.isNotBlank()) insertNow(ready)
+        }
+        if (last) {
+            isRecording = false
+            handler.post { finishSession() }
         }
     }
 
-    private fun deliver(text: String, problem: String?) {
-        busy = false
-        hidePill()
-        if (problem != null) {
-            toast(problem)
-            stopSelf()
-            return
-        }
-        if (text.isBlank()) {
-            toast("Ništa nije prepoznato")
-            stopSelf()
-            return
-        }
+    private fun insertNow(text: String) {
         if (!InsertService.isRunning) {
-            // Nema ko da upise — clipboard je jedini nacin da tekst ne propadne.
             copyToClipboard(text)
             toast("Uključi Pristupačnost — tekst je u clipboard-u")
-            stopSelf()
             return
         }
-
         // Upis ceka da se fokus vrati u polje, pa ne sme na glavnu nit.
         thread {
             val upisano = InsertService.insert(text, cfg.restoreClipboard)
-            handler.post {
-                if (!upisano) toast("Nema gde da upišem — tekst je u clipboard-u")
-                stopSelf()
-            }
+            if (!upisano) handler.post { toast("Nema gde da upišem — tekst je u clipboard-u") }
         }
+    }
+
+    private fun finishSession() {
+        if (isRecording || pending.get() > 0) return
+        busy = false
+        hidePill()
+        stopSelf()
     }
 
     // ------------------------------------------------------- tajmer
@@ -154,10 +225,11 @@ class DictationService : Service() {
     private fun tick() {
         if (!isRecording) return
         val sec = elapsed()
-        if (sec >= cfg.maxSeconds) {
-            // Bez granice bi slucajno pokrenut diktat mogao da snima satima i
-            // posalje ogromnu kolicinu podataka. Nastavak trazi nov pritisak.
-            toast("Granica od ${cfg.maxSeconds}s — snimanje zaustavljeno")
+        val limit = if (cfg.continuous) cfg.continuousMaxSeconds else cfg.maxSeconds
+        if (sec >= limit) {
+            // Bez granice bi slucajno pokrenut diktat mogao da snima satima.
+            // Nastavak trazi nov pritisak.
+            toast("Granica od ${limit}s — snimanje zaustavljeno")
             stopRecording()
             return
         }
@@ -204,7 +276,12 @@ class DictationService : Service() {
 
     private fun updatePill(seconds: Int, busy: Boolean) {
         val view = pill ?: return
-        view.text = "%02d".format(minOf(seconds, cfg.maxSeconds))
+        val limit = if (cfg.continuous) cfg.continuousMaxSeconds else cfg.maxSeconds
+        view.text = if (seconds >= 60) {
+            "%d:%02d".format(seconds / 60, seconds % 60)
+        } else {
+            "%02d".format(minOf(seconds, limit))
+        }
         val color = when {
             busy -> "#E08A00"                                   // obrada
             seconds >= cfg.redAfterSeconds -> "#C62828"         // pred kraj

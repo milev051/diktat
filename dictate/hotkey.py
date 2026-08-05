@@ -32,7 +32,11 @@ class HotkeyListener:
                 f"Nepoznat hotkey '{key_name}'. Dozvoljeni: {', '.join(KEY_MAP)}"
             )
         self.target = KEY_MAP[key_name]
+        # Neprekidni rezim se ponasa kao prekidac: drzati taster minutima
+        # nema smisla.
         self.mode = cfg.get("mode", "hold")
+        if self.mode == "continuous":
+            self.mode = "toggle"
         self.min_seconds = float(cfg.get("min_seconds", 0.35))
 
         self.on_start = on_start
