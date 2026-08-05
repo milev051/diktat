@@ -73,6 +73,16 @@ class TextRulesTest {
     }
 
     @Test
+    fun `dvotacka u satnici ostaje`() {
+        assertEquals("sastanak u 10:00 h",
+            TextPolish.stripPunctuation("sastanak u 10:00 h"))
+        assertEquals("tajmer 01:02:03", TextPolish.stripPunctuation("tajmer 01:02:03"))
+        assertEquals("odnos je 2:1", TextPolish.stripPunctuation("odnos je 2:1"))
+        assertEquals("Rekao je zdravo", TextPolish.stripPunctuation("Rekao je: zdravo!"))
+        assertEquals("napomena ovako", TextPolish.stripPunctuation("napomena : ovako"))
+    }
+
+    @Test
     fun `kvacice`() {
         assertEquals("Cacak zuti djak", TextPolish.toAscii("Čačak žuti đak"))
     }

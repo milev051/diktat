@@ -41,8 +41,10 @@ i tu se broj završava — tako `verzija 2.0` i `android 4.4` ostaju celi. Zarez
 ne dira, on je decimalni.
 
 **Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
-separator (`3,5`, `20,5 RSD`). Tačka i zarez se brišu **samo kad nisu između
-cifara**; crtica samo kad stoji sama, da `crno-beli` ostane celo.
+separator (`3,5`) i dvotačku kao satnicu (`10:00`). Tačka, zarez **i dvotačka**
+brišu se **samo kad nisu između cifara**; crtica samo kad stoji sama, da
+`crno-beli` ostane celo. Svaki znak koji može da stoji između cifara mora u tu
+grupu — inače tiho pokvari brojeve.
 
 ---
 

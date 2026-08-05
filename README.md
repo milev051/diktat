@@ -95,7 +95,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `lowercase` | `true` | ceo tekst malim slovima |
-| `strip_punctuation` | `true` | ukloni tačke i zareze; brojevi kao `3,5` ostaju celi |
+| `strip_punctuation` | `true` | ukloni interpunkciju; `3,5`, `10:00` i `2.0` ostaju celi |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
 | `join_thousands` | `true` | `5.000` → `5000`; zarez ostaje decimalni |
 | `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |

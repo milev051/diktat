@@ -127,7 +127,7 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | | podrazumevano | |
 |---|---|---|
 | Sve malim slovima | uključeno | |
-| Bez interpunkcije | uključeno | brojevi ostaju celi — `3,5` se ne kvari |
+| Bez interpunkcije | uključeno | brojevi ostaju celi — `3,5`, `10:00`, `2.0` |
 | Razmak na kraju | uključeno | da se rečenice nadovezuju |
 | Maskiraj psovke | isključeno | `pFilter=0` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |

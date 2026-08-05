@@ -95,13 +95,14 @@ def _explain_http(code: int) -> str:
     return f"Google je vratio HTTP {code}."
 
 
-# Tacka i zarez se brisu samo kad NISU izmedju cifara: endpoint ih vraca kao
-# decimalni separator ("3,5", "20,5 RSD"), pa bi ih slepo brisanje spojilo u 35.
-# Crtica se brise samo kad stoji sama, da "crno-beli" ostane celo.
+# Tacka, zarez i dvotacka se brisu samo kad NISU izmedju cifara: endpoint ih
+# vraca kao decimalni separator ("3,5") i kao satnicu ("10:00"), pa bi ih slepo
+# brisanje spojilo u 35 i 1000. Crtica se brise samo kad stoji sama, da
+# "crno-beli" ostane celo.
 _PUNCT = re.compile(
-    r"(?<!\d)[.,]"      # tacka/zarez bez cifre ispred
-    r"|[.,](?!\d)"      # ili bez cifre iza
-    r"|[!?;:…«»„“”\"()\[\]{}]"
+    r"(?<!\d)[.,:]"     # tacka/zarez/dvotacka bez cifre ispred
+    r"|[.,:](?!\d)"     # ili bez cifre iza
+    r"|[!?;…«»„“”\"()\[\]{}]"
     r"|(?<=\s)[-–—](?=\s)"
 )
 

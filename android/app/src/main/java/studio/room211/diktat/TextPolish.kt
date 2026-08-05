@@ -6,17 +6,17 @@ package studio.room211.diktat
 object TextPolish {
 
     /**
-     * Tacka i zarez se brisu samo kad NISU izmedju cifara: endpoint ih vraca
-     * kao decimalni separator ("3,5", "20,5 RSD"), pa bi ih slepo brisanje
-     * spojilo u 35. Crtica se brise samo kad stoji sama, da "crno-beli"
-     * ostane celo.
+     * Tacka, zarez i dvotacka se brisu samo kad NISU izmedju cifara: endpoint
+     * ih vraca kao decimalni separator ("3,5") i kao satnicu ("10:00"), pa bi
+     * ih slepo brisanje spojilo u 35 i 1000. Crtica se brise samo kad stoji
+     * sama, da "crno-beli" ostane celo.
      */
     private val PUNCT = Regex(
         // Znaci su pisani kao \uXXXX namerno: krivi navodnici i crte se lako
         // izgube pri kopiranju izmedju alata, a onda pravilo tiho oslabi.
-        """(?<!\d)[.,]""" +                                  // tacka/zarez bez cifre ispred
-            """|[.,](?!\d)""" +                              // ili bez cifre iza
-            """|[!?;:\u2026\u00AB\u00BB\u201E\u201C\u201D"()\[\]{}]""" +
+        """(?<!\d)[.,:]""" +                                 // tacka/zarez/dvotacka bez cifre ispred
+            """|[.,:](?!\d)""" +                             // ili bez cifre iza
+            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D"()\[\]{}]""" +
             """|(?<=\s)[-\u2013\u2014](?=\s)"""
     )
 
