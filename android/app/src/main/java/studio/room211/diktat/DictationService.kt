@@ -155,6 +155,9 @@ class DictationService : Service() {
         if (!isRecording) return
         val sec = elapsed()
         if (sec >= cfg.maxSeconds) {
+            // Bez granice bi slucajno pokrenut diktat mogao da snima satima i
+            // posalje ogromnu kolicinu podataka. Nastavak trazi nov pritisak.
+            toast("Granica od ${cfg.maxSeconds}s — snimanje zaustavljeno")
             stopRecording()
             return
         }

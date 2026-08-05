@@ -10,7 +10,8 @@ verzija.
 30        obrađuje          (žuto)
 ```
 
-Staje samo na 30s, jer endpoint odbija duže zahteve.
+Staje na 30s — i zato što endpoint odbija duže zahteve, i da slučajno
+pokrenut diktat ne snima satima. Nastavak traži nov pritisak.
 
 ---
 

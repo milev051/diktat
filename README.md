@@ -64,7 +64,8 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-- **Snimanje staje na 30 sekundi** i tekst ide na obradu. Do tada se ne seče —
+- **Snimanje uvek staje na 30 sekundi** i tekst ide na obradu; nastavak traži
+  nov pritisak. Tako slučajno pokrenut diktat ne može da snima satima. Do tada se ne seče —
   ceo diktat se prepoznaje odjednom. Brojač u menu baru postaje crven na 15s, a žut dok se prethodni tekst obrađuje.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.**
   Mikrofon se oslobađa čim pustiš taster. Tekst se lepi **po redosledu snimanja**,

@@ -40,6 +40,11 @@ izgovoreno „pet hiljada". Tačka se briše samo ako je prate **tačno tri cifr
 i tu se broj završava — tako `verzija 2.0` i `android 4.4` ostaju celi. Zarez se
 ne dira, on je decimalni.
 
+**Snimanje uvek staje na granici.** Slučajno pokrenut diktat bi inače snimao
+satima i poslao ogromnu količinu podataka. Posle prekida se **traži nov
+pritisak** — a prekidač se mora vratiti u mirovanje (`listener.reset()`), inače
+sledeći pritisak radi STOP umesto START i korisnik pritiska dvaput.
+
 **Neuspeo diktat se ne sme izgubiti.** Endpoint može da zakaže bez najave, pa
 se snimak čuva na disk i šalje ponovo iz menija. Prolazne greške (mreža, 429,
 5xx) se ponavljaju jednom; 400 i 403 nikad — drugi pokušaj bi dao isto.

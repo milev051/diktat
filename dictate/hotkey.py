@@ -105,6 +105,17 @@ class HotkeyListener:
             else:
                 self._fire(self.on_stop)
 
+    def reset(self):
+        """Vrati prekidac u mirovanje.
+
+        Zove se kad se snimanje samo prekine na granici: bez toga bi prekidac
+        ostao "aktivan" pa bi sledeci pritisak radio STOP umesto START, i
+        korisnik bi morao dvaput.
+        """
+        with self._lock:
+            self._active = False
+            self._contaminated = False
+
     def _start(self):
         """Pokreni snimanje; ako aplikacija ne moze (mikrofon jos zauzet),
         vrati _active na False da prekidac ne ostane obrnut."""

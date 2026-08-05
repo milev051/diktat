@@ -52,6 +52,7 @@ class Recorder:
         self.ticket = 0
         self._tail_timer = None
         self.captured = 0
+        self.hit_limit = False   # snimanje prekinuto granicom, ne korisnikom
 
     # -- unutrasnji callback iz PortAudio niti --
     def _callback(self, indata, frames, time_info, status):  # noqa: ARG002
@@ -139,6 +140,7 @@ class Recorder:
         deadline = time.monotonic() + self.max_seconds
         while True:
             if time.monotonic() > deadline:
+                self.hit_limit = True
                 return
             try:
                 item = self._q.get(timeout=0.25)

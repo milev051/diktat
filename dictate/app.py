@@ -308,6 +308,13 @@ class DictateApp(rumps.App):
         with self._session_lock:
             if self._recorder is recorder:
                 self._recorder = None
+        # Prekidac se vraca u mirovanje: ako se snimanje samo prekinulo na
+        # granici, sledeci pritisak mora da POKRENE, a ne da zaustavi.
+        listener = getattr(self, "listener", None)
+        if listener is not None:
+            listener.reset()
+        if recorder.hit_limit:
+            print(f"[diktat] granica od {self._limit_seconds():.0f}s — snimanje prekinuto")
         if recorder.captured == 0:
             # Strim se otvorio ali nije stigao nijedan sempl — uredjaj je
             # najverovatnije nestao pod nogama. Sledeci put krece iz cista.
