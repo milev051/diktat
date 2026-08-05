@@ -37,7 +37,6 @@ object Abbreviations {
         "minuta" to "<min",
         "minut" to "<min",
         "procenata" to "<%",
-        "posto" to "<%",
         // Dolar ide ispred cifre, pa treba premestanje — otud regularni izraz.
         """~(\d+(?:[.,]\d+)?)\s*dolara?""" to "\${1}",
         "dolara" to "$",

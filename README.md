@@ -151,7 +151,7 @@ interpunkciju i kvačice **ne dira**:
 | …i ispravi očigledne greške | uključeno | gramatička neslaganja; radi samo uz sređivanje |
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
-| …emotikoni | isključeno | gustina: na kraju pasusa / rečenice / na svake dve-tri reči |
+| …emotikoni | isključeno | gustina: na kraju pasusa / rečenice / dva-tri po rečenici / na svake dve-tri reči |
 
 Emotikoni se **ne ponavljaju**: poslednjih 15 znakova se pamti i šalje modelu
 kao spisak koji treba izbeći, a ako se neki ipak ponovi unutar istog teksta,
@@ -180,7 +180,7 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `polish_concise` | `false` | skrati i pojednostavi |
 | `polish_emoji` | `false` | emotikoni u tekstu |
-| `polish_emoji_rate` | `paragraph` | `paragraph` \| `sentence` \| `dense` |
+| `polish_emoji_rate` | `paragraph` | `paragraph` \| `sentence` \| `sentence3` \| `dense` |
 | `polish_emoji_recent` | `[]` | poslednjih 15 znakova; upisuje ih aplikacija |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 

@@ -46,6 +46,8 @@ object Polish {
             "ide na sam kraj"),
         "sentence" to ("na kraj svake rečenice dodaj tačno jedan emoji znak koji odgovara " +
             "onome što ta rečenica kaže"),
+        "sentence3" to ("na kraj svake rečenice dodaj dva do tri emoji znaka koji odgovaraju " +
+            "onome što ta rečenica kaže — svi različiti, jedan do drugog"),
         "dense" to ("posle svake dve do tri reči ubaci po jedan emoji znak koji odgovara " +
             "upravo rečenom — ne posle svake reči, nego na svake dve-tri"),
     )

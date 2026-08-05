@@ -160,6 +160,7 @@ class DictateApp(rumps.App):
             (None, "Isključeno"),
             ("paragraph", "Na kraju pasusa"),
             ("sentence", "Na kraju rečenice"),
+            ("sentence3", "Dva-tri po rečenici"),
             ("dense", "Na svakih par reči"),
         ):
             stavka = rumps.MenuItem(naziv, callback=self._make_emoji_setter(kljuc))

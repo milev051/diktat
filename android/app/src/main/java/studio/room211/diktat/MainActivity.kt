@@ -215,7 +215,12 @@ class MainActivity : AppCompatActivity() {
         )
         val gustina = choice(
             this,
-            listOf("paragraph" to "Pasus", "sentence" to "Rečenica", "dense" to "Gusto"),
+            listOf(
+                "paragraph" to "Pasus",
+                "sentence" to "Rečenica",
+                "sentence3" to "2–3",
+                "dense" to "Gusto",
+            ),
             cfg.polishEmojiRate,
         ) { cfg.polishEmojiRate = it }
         val emotikoni = indent(this, switch(this, "Emotikoni", cfg.polishEmoji) {
@@ -228,7 +233,7 @@ class MainActivity : AppCompatActivity() {
         box.addView(indent(this, gustina))
         box.addView(
             indent(this, body(this, "Koliko često: jedan na kraju pasusa, jedan po rečenici, " +
-                "ili na svake dve-tri reči."))
+                "dva do tri po rečenici, ili na svake dve-tri reči."))
         )
         setBranchEnabled(listOf(gustina), cfg.polishEmoji && cfg.polish)
         polishLine = indent(this, body(this, ""))

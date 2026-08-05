@@ -117,6 +117,10 @@ Gboard to ne pita.
 `rumps.title` ne ume boju. Font mora biti `monospacedDigit` — inače se širina
 naslova menja svake sekunde i ostale ikonice poskakuju.
 
+**„Pošto" ne ide u podrazumevane skraćenice.** Znači i „procenata" i „budući
+da", pa bi zamena pokvarila drugu upotrebu. U listi stoji samo `procenata=<%`,
+koje je jednoznačno. Isto pravilo važi za svaku reč sa dva značenja.
+
 **Podrazumevane skraćenice utiču samo na nove instalacije.** Postojeća ima svoja
 pravila sačuvana; pokupi nova tek dugmetom u aplikaciji.
 
