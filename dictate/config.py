@@ -13,6 +13,7 @@ DEFAULTS = {
     "profanity_filter": False,    # True bi maskirao psovke ("sranje" -> "s*****")
     "capitalize_first": False,    # veliko pocetno slovo
     "lowercase": True,            # sve malim slovima
+    "strip_punctuation": True,    # skloni tacke i zareze (brojevi ostaju celi)
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
     "auto_segment": False,

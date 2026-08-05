@@ -79,6 +79,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `lowercase` | `true` | ceo tekst malim slovima |
+| `strip_punctuation` | `true` | ukloni tačke i zareze; brojevi kao `3,5` ostaju celi |
 | `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | samo uz `auto_segment` |

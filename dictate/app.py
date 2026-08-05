@@ -369,6 +369,8 @@ class DictateApp(rumps.App):
         )
         if not text:
             return text
+        if self.cfg.get("strip_punctuation", True):
+            text = webstt.strip_punctuation(text)
         if self.cfg.get("lowercase", False):
             return text.lower()
         if self.cfg.get("capitalize_first", True):

@@ -13,6 +13,7 @@ Ogranicenja, znaj ih:
 """
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -92,6 +93,24 @@ def _explain_http(code: int) -> str:
     if code == 429:
         return "Previse zahteva (429). Sacekaj malo."
     return f"Google je vratio HTTP {code}."
+
+
+# Tacka i zarez se brisu samo kad NISU izmedju cifara: endpoint ih vraca kao
+# decimalni separator ("3,5", "20,5 RSD"), pa bi ih slepo brisanje spojilo u 35.
+# Crtica se brise samo kad stoji sama, da "crno-beli" ostane celo.
+_PUNCT = re.compile(
+    r"(?<!\d)[.,]"      # tacka/zarez bez cifre ispred
+    r"|[.,](?!\d)"      # ili bez cifre iza
+    r"|[!?;:…«»„“”\"()\[\]{}]"
+    r"|(?<=\s)[-–—](?=\s)"
+)
+
+
+def strip_punctuation(text: str) -> str:
+    """Skloni interpunkciju, ali ne diraj brojeve ni spojene reci."""
+    if not text:
+        return text
+    return " ".join(_PUNCT.sub("", text).split())
 
 
 def tidy(text: str) -> str:

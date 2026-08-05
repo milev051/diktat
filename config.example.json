@@ -4,6 +4,7 @@
   "profanity_filter": false,
   "capitalize_first": false,
   "lowercase": true,
+  "strip_punctuation": true,
   "auto_segment": false,
   "segment_after_seconds": 10,
   "pause_seconds": 0.7,
