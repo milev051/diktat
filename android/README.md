@@ -102,13 +102,20 @@ pravila sačuvana, dok se ne pritisne *Vrati podrazumevane skraćenice*.
 
 Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.
 
-Zvuk ide **nesažet**: 16 kHz × 16 bita = **31 KB po sekundi govora**. Odgovor je
-par stotina bajtova, zanemarljiv. Izmereno na pravim zahtevima:
+Zvuk se šalje kao **FLAC** — oko 40% manje od sirovog PCM-a, uz identičan
+transkript. Ako sažimanje ne uspe (Android stariji od 10, ili greška enkodera),
+šalje se kao pre; ušteda nikad ne obara diktat.
+
+Endpoint prima isključivo `audio/x-flac; rate=N`. Bez `rate=` ili sa
+`audio/flac` vraća 400. Opus je odbijen.
+
+Sirovi PCM je 16 kHz × 16 bita = **31 KB po sekundi govora**; sa FLAC-om oko
+19 KB. Izmereno na pravim zahtevima:
 
 | govor | poslato | primljeno |
 |---|---|---|
-| 4.9s | 152 KB | 186 B |
-| 23.7s | 742 KB | 440 B |
+| 4.9s | 152 KB → **97 KB** | 186 B |
+| 23.7s | 742 KB → **433 KB** | 440 B |
 
 Za osećaj koliko je to — tipične vrednosti:
 

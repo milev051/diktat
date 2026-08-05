@@ -22,8 +22,23 @@ object WebStt {
 
     class SttException(message: String) : Exception(message)
 
+    /**
+     * Prvo se proba FLAC (oko 40% manje podataka), pa PCM ako ne prodje.
+     * Usteda ne sme da obori diktat, pa je povratak automatski.
+     */
     fun recognize(pcm: ByteArray, cfg: Config): String {
         if (pcm.isEmpty()) return ""
+
+        if (cfg.compressAudio) {
+            val flac = FlacEncoder.encode(pcm, cfg.sampleRate)
+            if (flac != null) {
+                runCatching { return send(flac, "audio/x-flac; rate=${cfg.sampleRate}", cfg, pcm.size) }
+            }
+        }
+        return send(pcm, "audio/l16; rate=${cfg.sampleRate}", cfg, pcm.size)
+    }
+
+    private fun send(body: ByteArray, contentType: String, cfg: Config, pcmSize: Int): String {
 
         val url = URL(
             "$ENDPOINT?client=chromium" +
@@ -37,22 +52,22 @@ object WebStt {
             doOutput = true
             connectTimeout = 15_000
             readTimeout = 40_000
-            setRequestProperty("Content-Type", "audio/l16; rate=${cfg.sampleRate}")
-            setFixedLengthStreamingMode(pcm.size)
+            setRequestProperty("Content-Type", contentType)
+            setFixedLengthStreamingMode(body.size)
         }
 
         try {
-            conn.outputStream.use { it.write(pcm) }
+            conn.outputStream.use { it.write(body) }
             val code = conn.responseCode
             if (code != 200) throw SttException(explain(code))
-            val body = conn.inputStream.bufferedReader().readText()
+            val reply = conn.inputStream.bufferedReader().readText()
             // Zvuk je daleko najveci deo; odgovor je par stotina bajtova.
             cfg.addTraffic(
-                sent = pcm.size.toLong(),
-                received = body.toByteArray().size.toLong(),
-                seconds = pcm.size / 2.0 / cfg.sampleRate,
+                sent = body.size.toLong(),
+                received = reply.toByteArray().size.toLong(),
+                seconds = pcmSize / 2.0 / cfg.sampleRate,
             )
-            return parse(body)
+            return parse(reply)
         } finally {
             conn.disconnect()
         }

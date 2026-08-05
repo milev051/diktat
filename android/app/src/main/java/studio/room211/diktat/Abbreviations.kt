@@ -42,10 +42,8 @@ object Abbreviations {
         """~(\d+(?:[.,]\d+)?)\s*dolara?""" to "\${1}",
         "dolara" to "$",
         "dolar" to "$",
-        "dinara" to "<din",
-        "dinar" to "<din",
-        "evra" to "<€",
-        "evro" to "<€",
+        "rsd" to "<din",
+        "eur" to "<€",
     )
 
     fun defaultText(): String =

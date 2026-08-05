@@ -32,6 +32,11 @@ class Config(context: Context) {
         get() = prefs.getBoolean("ascii_diacritics", false)
         set(v) = prefs.edit().putBoolean("ascii_diacritics", v).apply()
 
+    /** Salji FLAC umesto sirovog PCM-a: oko 40% manje podataka. */
+    var compressAudio: Boolean
+        get() = prefs.getBoolean("compress_audio", true)
+        set(v) = prefs.edit().putBoolean("compress_audio", v).apply()
+
     /** "5.000" -> "5000"; zarez kao decimalni ostaje. */
     var joinThousands: Boolean
         get() = prefs.getBoolean("join_thousands", true)

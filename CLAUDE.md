@@ -68,6 +68,11 @@ grupu — inače tiho pokvari brojeve.
 
 ## Zašto je nešto tako a ne drugačije
 
+**Google nedosledno vraća valute.** Izmereno: „sto dinara" → `100` (valuta
+nestane), „petsto dinara i dvadeset evra" → `500 RSD i 20`. Pravilo `dinara=…`
+zato često nema šta da uhvati; hvata se `rsd=…`. Kad Google izostavi valutu,
+aplikacija nema šta da vrati.
+
 **Google Cloud motor je obrisan.** Davao je prikaz reč-po-reč, ali je tražio
 nalog, karticu i `grpcio`. Besplatni endpoint radi za srpski (izmereno 0.93) i
 nema podešavanja. Ne vraćaj ga bez izričitog zahteva.
@@ -133,7 +138,9 @@ POST https://www.google.com/speech-api/v2/recognize
 Content-Type: audio/l16; rate=16000
 ```
 
-Telo je sirov 16-bit PCM. Odgovor je **više JSON linija**, prva obično prazna.
+Telo je sirov 16-bit PCM **ili FLAC** uz `audio/x-flac; rate=N` — isključivo taj
+zapis tipa, jer bez `rate=` i sa `audio/flac` vraća 400. FLAC štedi 36–42%.
+Opus je odbijen. Odgovor je **više JSON linija**, prva obično prazna.
 ~31 KB po sekundi govora. Praktična granica ~30s po zahtevu. Izmereno: 20/20
 uzastopnih i 5/5 paralelnih zahteva prolazi, bez 429.
 

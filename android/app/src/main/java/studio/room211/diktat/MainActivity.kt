@@ -213,6 +213,15 @@ class MainActivity : Activity() {
                     "govora. Odgovor je par stotina bajtova."
             )
         )
+        root.addView(toggle("Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
+            cfg.compressAudio = it
+        })
+        root.addView(
+            body(
+                "Ako sažimanje ne uspe, šalje se kao i pre — ušteda nikad ne " +
+                    "obara diktat. Traži Android 10 ili noviji."
+            )
+        )
         root.addView(action("Poništi brojač") {
             cfg.resetTraffic()
             showTraffic()
