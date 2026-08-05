@@ -41,10 +41,30 @@ class Config(context: Context) {
         get() = prefs.getBoolean("abbreviations", true)
         set(v) = prefs.edit().putBoolean("abbreviations", v).apply()
 
-    /** Pravila, jedno po redu, oblik `fraza=skracenica`. */
+    /**
+     * Pravila, jedno po redu, oblik `fraza=skracenica`.
+     *
+     * Uz pravila se pamti i kako su podrazumevana izgledala kad su sacuvana.
+     * Ako se to dvoje poklapa, korisnik ih nije menjao — pa nova verzija sme
+     * da donese nova podrazumevana sama. Ako se razlikuje, korisnikova pravila
+     * se ne diraju.
+     */
     var abbreviationRules: String
-        get() = prefs.getString("abbreviation_rules", null) ?: Abbreviations.defaultText()
-        set(v) = prefs.edit().putString("abbreviation_rules", v).apply()
+        get() {
+            val saved = prefs.getString("abbreviation_rules", null)
+                ?: return Abbreviations.defaultText()
+            val snapshot = prefs.getString("abbreviation_defaults", null)
+            val current = Abbreviations.defaultText()
+            if (snapshot != null && saved == snapshot && snapshot != current) {
+                abbreviationRules = current
+                return current
+            }
+            return saved
+        }
+        set(v) = prefs.edit()
+            .putString("abbreviation_rules", v)
+            .putString("abbreviation_defaults", Abbreviations.defaultText())
+            .apply()
 
     /** Ne snimaj ako nema polja u koje bi tekst usao. */
     var requireInputField: Boolean

@@ -38,9 +38,11 @@ traži ništa osim mikrofona ali radi samo iz tastature.
 Piše na vrhu ekrana aplikacije, pored imena — `Diktat v0.4`. Ako se ne poklapa
 sa `versionName` u `app/build.gradle.kts`, instalacija je stara.
 
-**Nova verzija ne menja tvoja sačuvana pravila skraćenica.** Ako donese nova
-podrazumevana (valute i slično), pokupićeš ih tek dugmetom *Vrati podrazumevane
-skraćenice* — a ono briše tvoje izmene, pa ih prvo prepiši.
+**Nova podrazumevana pravila stižu sama — ali samo ako svoja nisi menjao.**
+Uz pravila se pamti kako su podrazumevana izgledala kad su sačuvana; ako se to
+dvoje poklapa, nova verzija ih tiho osveži. Ako si nešto menjao, tvoja se ne
+diraju i nova pokupiš dugmetom *Vrati podrazumevane skraćenice* (koje briše
+tvoje izmene).
 
 ## Instalacija
 
@@ -198,6 +200,18 @@ Jedna razlika u ponašanju: bočni taster šalje samo „pokreni", nema događaj
 puštanje. Zato radi kao **prekidač** — prvi pritisak počinje, drugi završava.
 
 ---
+
+## Testovi
+
+Pravila za tekst su čist string→string, pa se testiraju na JVM-u bez telefona:
+
+```bash
+cd android && ./gradlew test
+```
+
+Devet testova pokriva `<`, duplirana pravila, cele reči, hiljade, interpunkciju
+i kvačice. Ovo je uhvatilo da `<` **radi** onda kad je izgledalo da ne radi —
+problem je bio u sačuvanim pravilima na telefonu, ne u kodu.
 
 ## Struktura
 

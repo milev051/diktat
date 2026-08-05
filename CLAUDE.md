@@ -113,9 +113,13 @@ strings -a /tmp/dx/classes*.dex | grep 'tvoj-novi-string'
 Dijakritički stringovi se ne vide (MUTF-8) — traži ASCII delove.
 Podigni `versionName` da se na telefonu vidi koja je verzija.
 
-**Logika bez uređaja** — pravila za tekst su čist string→string, pa se testiraju
-u Pythonu pre nego što se prepišu u Kotlin. Tako su provereni interpunkcija
-(9 slučajeva), skraćenice (8) i valute (8).
+**Logika bez uređaja** — `cd android && ./gradlew test` pokreće 9 JVM testova
+nad pravilima za tekst. Koristi ih pre nagađanja: tako je utvrđeno da `<`
+ispravno radi, a da je problem bio u sačuvanim pravilima na telefonu.
+
+**Izmena `Abbreviations.DEFAULT` ne stiže na telefon sama** ako je korisnik već
+menjao svoja pravila. Uz pravila se pamti snimak podrazumevanih; poklapaju li
+se, nova se pokupe tiho.
 
 ---
 

@@ -221,7 +221,25 @@ class MainActivity : Activity() {
         root.addView(heading("Proba"))
         root.addView(EditText(this).apply {
             hint = "ovde probaj diktat"
-            inputType = InputType.TYPE_CLASS_TEXT
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setLines(8)
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            setPadding(24, 20, 24, 20)
+            isVerticalScrollBarEnabled = true
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 12f
+                setColor(android.graphics.Color.WHITE)
+                setStroke(2, android.graphics.Color.parseColor("#CCCCCC"))
+            }
+            setOnTouchListener { view, event ->
+                view.parent?.requestDisallowInterceptTouchEvent(true)
+                if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
+                ) {
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
