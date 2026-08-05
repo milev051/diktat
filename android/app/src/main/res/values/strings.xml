@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Diktat proba</string>
+    <string name="app_name">Diktat</string>
+    <string name="insert_service_description">Upisuje prepoznat tekst u polje u kome je kursor. Bez ovoga tekst završi u clipboard-u.</string>
 </resources>

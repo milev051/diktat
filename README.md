@@ -5,7 +5,7 @@ Diktiranje govora u tekst, bez naloga i bez ključeva. Dva dela:
 | | stanje |
 |---|---|
 | **macOS** (ovaj folder) | radi, u svakodnevnoj upotrebi |
-| **[Android](android/)** | probna aplikacija — utvrđuje koji mehanizam unosa radi na telefonu |
+| **[Android](android/)** | radi — bočni taster ili mikrofon na tastaturi |
 
 Oba koriste isti Google Web Speech endpoint — onaj koji koristi Chromium.
 

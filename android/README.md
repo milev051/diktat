@@ -1,12 +1,35 @@
-# Diktat proba (Android)
+# Diktat (Android)
 
-Probna aplikacija. **Ništa ne prepoznaje** — prijavljena je na četiri mesta u
-sistemu i sa svakog vraća svoj marker, pa se po tekstu koji stigne tačno zna
-koji mehanizam na ovom telefonu radi.
+Zadrži **bočni taster**, pričaj, zadrži ga ponovo — tekst se upiše tamo gde ti
+je kursor. Bez naloga i bez ključeva, isti Google Web Speech endpoint kao macOS
+verzija.
 
-Poenta: pre nego što se napiše prava aplikacija, treba znati kako tekst uopšte
-može da uđe u polje. Na Androidu za to postoji više puteva i svaki zavisi od
-proizvođača i verzije, pa nagađanje ne vredi.
+```
+00 … 14   snima            (zeleno)
+15 … 30   snima             (crveno)
+30        obrađuje          (žuto)
+```
+
+Staje samo na 30s, jer endpoint odbija duže zahteve.
+
+---
+
+## Rezultat probe
+
+Pre pisanja je napravljena probna aplikacija koja se prijavila na četiri mesta u
+sistemu i sa svakog vraćala svoj marker. **Sva četiri puta rade** na testiranom
+Samsung telefonu:
+
+| | mehanizam | radi | uloga u ovoj aplikaciji |
+|---|---|---|---|
+| A | `RecognitionService` | ✓ | mikrofon na Samsung tastaturi — **bez Pristupačnosti** |
+| B | `InputMethodService` | ✓ | nije korišćen — traži prebacivanje tastature |
+| C | `ASSIST` (bočni taster) | ✓ | **glavni okidač** |
+| E | Quick Settings pločica | ✓ | rezervni okidač |
+
+Zato aplikacija nudi **dva nezavisna puta**: bočni taster (C) i mikrofon na
+postojećoj tastaturi (A). Prvi radi svuda ali traži Pristupačnost, drugi ne
+traži ništa osim mikrofona ali radi samo iz tastature.
 
 ---
 
@@ -14,110 +37,87 @@ proizvođača i verzije, pa nagađanje ne vredi.
 
 ```bash
 ./build.sh install     # napravi APK i pošalji na povezan telefon
-./build.sh             # samo napravi APK
+./build.sh             # samo napravi APK (~830 KB)
 ```
 
-Za `install` treba uključen USB debugging (*Podešavanja → Opcije za programere*).
-Ako `adb devices` ne vidi telefon, prebaci APK ručno — nalazi se u
-`app/build/outputs/apk/debug/app-debug.apk` i ima oko 790 KB.
-
-Traži samo dozvolu za mikrofon; ništa ne šalje na internet.
+Bez kabla: prebaci `app/build/outputs/apk/debug/app-debug.apk` kako ti odgovara.
+Android traži da dozvoliš instalaciju iz nepoznatog izvora — to se odobrava
+aplikaciji kojom otvaraš fajl, ne samom Diktatu.
 
 ---
 
-## Šta se proverava
+## Podešavanje
 
-Aplikacija ima ekran koji vodi kroz sve četiri probe i dugmad koja otvaraju
-odgovarajuća podešavanja — na Samsungu su zakopana.
+Otvori aplikaciju; ekran ima dugmad koja vode na svako od ovih mesta jer su na
+Samsungu zakopana.
 
-### A — mikrofon na postojećoj tastaturi (`RecognitionService`)
+**Za bočni taster:**
 
-Ovo je **najbolji ishod**. „Samsung voice input" i „Google voice input" su
-implementacije istog Android API-ja; ako se i mi pojavimo u tom biraču, mikrofon
-na tastaturi koju već koristiš zove nas, mi vratimo tekst kakav hoćemo, a
-tastatura ga sama ubaci.
+1. **Digitalni asistent** → izaberi Diktat
+2. **Prikaz preko drugih aplikacija** → dozvoli (tajmer)
+3. **Pristupačnost** → uključi Diktat (upis u polje)
 
-Bez nove tastature, bez Accessibility dozvole, bez plutajućih dugmadi.
+Bez trećeg tekst i dalje radi, ali završi u clipboard-u pa ga lepiš ručno.
 
-**Kako proveriti:** izaberi „Diktat proba (A)" kao Voice input, pa u polju u
-aplikaciji pritisni mikrofon na tastaturi. Treba da upiše `proba a`.
-
-**Nepoznanica:** Gboard po pravilu ignoriše sistemski izbor i koristi svoje
-prepoznavanje. Samsung tastatura ga poštuje — zato birač i postoji.
-
-### B — zasebna tastatura (`InputMethodService`)
-
-Rezervna varijanta, **sigurno radi**. Tastatura koja ima samo dugme za diktat.
-Mana je trenje: moraš da se prebaciš na nju i nazad.
-
-**Kako proveriti:** uključi „Diktat proba (B)" u listi tastatura, prebaci se na
-nju, pritisni dugme. Treba da upiše `proba b`.
-
-### C — bočni taster (digitalni asistent)
-
-Radi svuda, ne samo kad je tastatura otvorena. Ali obična aktivnost otima fokus
-polju u koje bi tekst trebalo da uđe, pa bi pravo rešenje tražilo
-`VoiceInteractionSession` plus Accessibility dozvolu za unos.
-
-**Kako proveriti:** postavi „Diktat proba" kao digitalnog asistenta i zadrži
-bočni taster. Treba da iskoči `proba c`. **Obrati pažnju:** da li se pri tome
-zatvorila tastatura i izgubio kursor iz polja.
-
-### E — pločica u brzim podešavanjima
-
-Najkraći put do nečega što radi: nula posebnih dozvola, radi svuda, ali tekst
-završi u clipboard-u pa se lepi ručno.
-
-**Kako proveriti:** dodaj „Diktat proba (E)" među pločice i tapni je. Treba da
-spusti `proba e` u clipboard.
+**Za mikrofon na tastaturi:** *Voice input* → izaberi Diktat. Radi sa Samsung
+tastaturom; Gboard po pravilu ignoriše sistemski izbor i koristi svoje
+prepoznavanje.
 
 ---
 
-## Šta javiti
+## Obrada teksta
 
-Za svako od **A, B, C, E** samo dve stvari:
+Isto što radi i macOS verzija, sve se menja u aplikaciji:
 
-1. Radi ili ne radi
-2. Ako ne radi — da li se aplikacija uopšte **pojavljuje** u odgovarajućem spisku
+| | podrazumevano | |
+|---|---|---|
+| Sve malim slovima | uključeno | |
+| Bez interpunkcije | uključeno | brojevi ostaju celi — `3,5` se ne kvari |
+| Razmak na kraju | uključeno | da se rečenice nadovezuju |
+| Maskiraj psovke | isključeno | `pFilter=0` |
+| Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
 
-Za **C** još i: da li je pritisak bočnog tastera izbacio kursor iz polja.
-
-Na osnovu toga se bira koji put se dovršava.
+Pravilo za interpunkciju je isto ono provereno na Mac-u: tačka i zarez se brišu
+samo kad **nisu između cifara**, jer ih endpoint vraća kao decimalni separator
+(`3,5`, `20,5 RSD`). Crtica se briše samo kad stoji sama, da `crno-beli` ostane
+celo.
 
 ---
 
-## Šta dolazi posle
+## Zašto je ovo jednostavnije od macOS verzije
 
-Sve teško znanje iz macOS verzije prenosi se mehanički:
+Polovina onoga što je mučilo Mac ovde ne postoji:
 
-| | |
+| problem na Mac-u | ovde |
 |---|---|
-| `pFilter=0` | isključuje maskiranje psovki zvezdicama |
-| `audio/l16; rate=16000` | format koji endpoint prima |
-| oblik odgovora | više JSON linija, prva obično prazna |
-| mala slova | `text.lower()` |
-| interpunkcija | briše se, ali ne unutar brojeva (`3,5` ostaje celo) |
-| granica | ~30s po zahtevu |
+| hvatanje globalnog tastera | sistem sam zove aplikaciju |
+| lepljenje preko sintetičkog Cmd+V | `ACTION_SET_TEXT` na fokusiranom polju |
+| aplikacija sabotira sopstveni diktat | nema sintetičkih tastera |
+| gubljenje poslednje reči (`tail_seconds`) | ti sam završavaš snimanje |
+| PortAudio keš uređaja | `AudioRecord` uzima sistemski ulaz |
 
-A polovina onoga što je mučilo macOS verziju ovde **ne postoji**: nema
-sintetičkih tastera pa nema samosabotaže, nema PortAudio keša uređaja, i ne
-treba `tail_seconds` jer korisnik sam pušta dugme.
+Ostaje jedan isti problem: **prozorčić sa tajmerom ne sme da uzme fokus**, inače
+polje u koje pišemo ostane bez kursora. Rešeno sa `FLAG_NOT_FOCUSABLE`, isto kao
+`NSWindowStyleMaskNonactivatingPanel` na Mac-u.
+
+Jedna razlika u ponašanju: bočni taster šalje samo „pokreni", nema događaj za
+puštanje. Zato radi kao **prekidač** — prvi pritisak počinje, drugi završava.
 
 ---
 
 ## Struktura
 
 ```
-app/src/main/
-  AndroidManifest.xml              prijave na sva četiri mesta
-  java/studio/room211/diktatproba/
-    MainActivity.kt                ekran sa uputstvom i prečicama do podešavanja
-    ProbeRecognitionService.kt     A — voice input slot
-    ProbeInputMethodService.kt     B — tastatura sa jednim dugmetom
-    AssistActivity.kt              C — bočni taster
-    ProbeTileService.kt            E — pločica
-  res/xml/
-    recognition_service.xml        prati A
-    method.xml                     prati B
-build.sh                           napravi i instaliraj
+app/src/main/java/studio/room211/diktat/
+  MainActivity.kt        podešavanja i prečice do sistemskih ekrana
+  AssistActivity.kt      okidač sa bočnog tastera (providan, odmah se zatvara)
+  DictationService.kt    snimanje, tajmer preko ekrana, isporuka teksta
+  InsertService.kt       upis u polje u kome je kursor (Pristupačnost)
+  SttService.kt          put A — mikrofon na postojećoj tastaturi
+  TileService.kt         rezervni okidač
+  Recorder.kt            mikrofon → 16 kHz PCM
+  WebStt.kt              endpoint i parsiranje odgovora
+  TextPolish.kt          mala slova, interpunkcija, kvačice
+  Config.kt              podešavanja
+build.sh                 napravi i instaliraj
 ```

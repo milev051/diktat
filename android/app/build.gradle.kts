@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "studio.room211.diktatproba"
+    namespace = "studio.room211.diktat"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "studio.room211.diktatproba"
+        applicationId = "studio.room211.diktat"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

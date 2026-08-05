@@ -1,68 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Probna aplikacija: prijavljuje se na CETIRI razlicita mesta u sistemu.
-  Svako od njih vraca svoj marker, pa se po tekstu koji stigne tacno zna
-  koji mehanizam radi na ovom telefonu.
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/ic_btn_speak_now"
-        android:label="Diktat proba"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="Diktat proba">
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- A: RecognitionService — treba da se pojavi u biraču "Voice input"
-             pored "Samsung voice input" i "Google voice input". -->
-        <service
-            android:name=".ProbeRecognitionService"
-            android:exported="true"
-            android:label="Diktat proba (A)"
-            android:permission="android.permission.RECORD_AUDIO">
-            <intent-filter>
-                <action android:name="android.speech.RecognitionService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.speech"
-                android:resource="@xml/recognition_service" />
-        </service>
-
-        <!-- B: glasovni IME — pojavljuje se u listi tastatura. -->
-        <service
-            android:name=".ProbeInputMethodService"
-            android:exported="true"
-            android:label="Diktat proba (B)"
-            android:permission="android.permission.BIND_INPUT_METHOD">
-            <intent-filter>
-                <action android:name="android.view.InputMethod" />
-            </intent-filter>
-            <meta-data
-                android:name="android.view.im"
-                android:resource="@xml/method" />
-        </service>
-
-        <!-- C: digitalni asistent — bocni taster. Providna tema da se vidi
-             da li ostaje preko aplikacije ili je izbacuje iz fokusa. -->
+        <!-- Okidac: bocni taster. Providna aktivnost koja odmah preda posao
+             servisu, da polje sto krace ostane bez fokusa. -->
         <activity
             android:name=".AssistActivity"
             android:exported="true"
             android:excludeFromRecents="true"
-            android:label="Diktat proba (C)"
-            android:launchMode="singleTask"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
@@ -74,12 +45,46 @@
             </intent-filter>
         </activity>
 
-        <!-- E: plocica u brzim podesavanjima. -->
+        <!-- Snimanje, tajmer preko ekrana i ubacivanje teksta. -->
         <service
-            android:name=".ProbeTileService"
+            android:name=".DictationService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Upis u polje u kome je kursor. -->
+        <service
+            android:name=".InsertService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/insert_service" />
+        </service>
+
+        <!-- Put A: mikrofon na postojecoj tastaturi, bez Pristupacnosti. -->
+        <service
+            android:name=".SttService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.RECORD_AUDIO">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
+
+        <!-- Rezervni okidac. -->
+        <service
+            android:name=".DiktatTileService"
             android:exported="true"
             android:icon="@android:drawable/ic_btn_speak_now"
-            android:label="Diktat proba (E)"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
