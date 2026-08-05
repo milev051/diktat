@@ -1,5 +1,18 @@
 # Diktat
 
+Diktiranje govora u tekst, bez naloga i bez ključeva. Dva dela:
+
+| | stanje |
+|---|---|
+| **macOS** (ovaj folder) | radi, u svakodnevnoj upotrebi |
+| **[Android](android/)** | probna aplikacija — utvrđuje koji mehanizam unosa radi na telefonu |
+
+Oba koriste isti Google Web Speech endpoint — onaj koji koristi Chromium.
+
+---
+
+## macOS
+
 Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se pojavi u
 aplikaciji u kojoj si trenutno. Bez naloga, bez ključeva, bez podešavanja.
 
@@ -156,6 +169,7 @@ programi ne primaju sintetički Cmd+V. Tekst je uvek i u **Istoriji** u meniju.
 ## Struktura
 
 ```
+android/       probna Android aplikacija (vidi android/README.md)
 dictate/
   app.py       menu bar, stanja, orkestracija (UI samo iz glavne niti)
   hotkey.py    detekcija desnog Command-a + otkazivanje na prečice

@@ -5,3 +5,10 @@ __pycache__/
 Diktat.app/
 *.json.key
 image.png
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
