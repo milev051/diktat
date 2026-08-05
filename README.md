@@ -9,6 +9,9 @@ Diktiranje govora u tekst, bez naloga i bez ključeva. Dva dela:
 
 Oba koriste isti Google Web Speech endpoint — onaj koji koristi Chromium.
 
+Ako menjaš kod, pročitaj prvo **[CLAUDE.md](CLAUDE.md)** — tamo su odluke, razlozi
+i greške koje su već napravljene.
+
 ---
 
 ## macOS

@@ -1,0 +1,127 @@
+# Napomene za održavanje
+
+Ovaj projekat održavaju modeli, ne ljudi. Ovde su odluke i **razlozi** za njih,
+plus greške koje su već napravljene — da se ne ponavljaju.
+
+Dva dela, isti Google Web Speech endpoint (Chromium, javni ključ):
+`dictate/` (macOS, Python) i `android/` (Kotlin).
+
+---
+
+## Pravila koja se ne smeju prekršiti
+
+**Prozor sa stanjem ne sme da uzme fokus.** Tekst se lepi u polje koje je bilo
+aktivno; ako ga naš prozor otme, nema gde da ode.
+macOS: `NSWindowStyleMaskNonactivatingPanel`. Android: `FLAG_NOT_FOCUSABLE`.
+
+**Naše sintetičke tastere moramo da prepoznamo kao svoje.** Lepljenje šalje
+Cmd+V; bez zastavice `insert.injecting` naš hotkey to vidi kao korisnikovu
+prečicu i **otkaže sopstveni diktat**. Ovo je bio najteži bug u projektu.
+
+**Snimanje se ne prekida naglo.** Taster se pušta tačno na kraju poslednje reči,
+a PortAudio isporučuje u blokovima — bez `tail_seconds` (0.8s) ta reč se gubi.
+Izmereno: 0.3s zvuka bez repa, 1.1s sa njim.
+
+**Redosled ubacivanja se čuva kroz tikete.** Broj se dodeljuje kad se završi
+**audio** segmenta, ne kad se završi prepoznavanje. Mikrofon snima jedno po
+jedno, pa je taj redosled hronološki — kraći drugi snimak inače stigne pre
+dužeg prvog.
+
+**Nivo zvuka za detekciju pauze računa se iz samog komada**, nikad iz
+`recorder.level`. To je nivo poslednjeg *uhvaćenog* komada; potrošač kasni, pa
+bi detektor gledao jedan zvuk a sekao drugi. Kad zaostajanje pređe
+`pause_seconds`, rez padne usred reči i ta reč se izgubi na oba kraja.
+
+**Dužina segmenta meri se po zvuku, ne zidnim satom.** `max_request_seconds` je
+granica koliko sekundi *zvuka* endpoint prima — to dvoje mora da bude ista mera.
+
+**Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
+separator (`3,5`, `20,5 RSD`). Tačka i zarez se brišu **samo kad nisu između
+cifara**; crtica samo kad stoji sama, da `crno-beli` ostane celo.
+
+---
+
+## Greške koje su već napravljene
+
+| greška | posledica | ispravno |
+|---|---|---|
+| Krivi navodnici `" "` u regexu kopirani kao obični | pravilo tiho oslabi | piši `\uXXXX` |
+| Lookbehind pre `\s*` kod skraćenica | cifra ispred obori poklapanje, razmak ostane | lookbehind **posle** `\s*` |
+| `rumps` `clear()` na još praznom podmeniju | pad pri pokretanju | proveri `_menu != null` |
+| Test menja `config.json` bez `try/finally` | ostane `clipboard_only`, lepljenje „ne radi" | uvek `try/finally` |
+| Android: upis odmah po zatvaranju aktivnosti | fokus se još nije vratio, tekst padne u clipboard | 12 pokušaja × 120ms |
+| Grana koja crta tajmer izlazi pre osvežavanja naslova | ikonica zaglavi u pogrešnom stanju | grana sama postavlja naslov |
+| `_settle_phase` i `_on_start` bez zajedničkog katanca | „snima" se prepiše preko „obrađuje" | isti `_session_lock` |
+| Slot za mikrofon oslobođen pre zatvaranja strima | sledeći diktat reinicijalizuje PortAudio nad živim strimom | zatvori strim **prvi** |
+
+---
+
+## Zašto je nešto tako a ne drugačije
+
+**Google Cloud motor je obrisan.** Davao je prikaz reč-po-reč, ali je tražio
+nalog, karticu i `grpcio`. Besplatni endpoint radi za srpski (izmereno 0.93) i
+nema podešavanja. Ne vraćaj ga bez izričitog zahteva.
+
+**`pFilter=0` gasi maskiranje psovki.** Ime parametra je **osetljivo na velika
+slova** — `pfilter` se tiho ignoriše.
+
+**Android: bočni taster je prekidač, ne držanje.** Sistem šalje samo
+„pokreni"; događaj za puštanje ne postoji.
+
+**Android: `LanguageDetailsReceiver` mora da postoji.** Samsung tastatura pita
+servis koje jezike zna; bez odgovora pretpostavi engleski i odbije srpski.
+Gboard to ne pita.
+
+**Boja u menu baru ide preko `nsstatusitem.button().setAttributedTitle_`**, jer
+`rumps.title` ne ume boju. Font mora biti `monospacedDigit` — inače se širina
+naslova menja svake sekunde i ostale ikonice poskakuju.
+
+**Podrazumevane skraćenice utiču samo na nove instalacije.** Postojeća ima svoja
+pravila sačuvana; pokupi nova tek dugmetom u aplikaciji.
+
+**Regex pravila (`~`) primenjuju se pre prostih.** Inače `dolara=$` pojede reč
+pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
+
+---
+
+## Kako se proverava izmena
+
+**macOS** — posle svake izmene pokreni aplikaciju i **proveri da je proces
+živ**, ne samo da nema greške u prevođenju. Dva pada su uhvaćena samo ovako:
+
+```bash
+./run.sh doctor          # dozvole, mikrofon, endpoint
+./run.sh test 5          # snimi 5s i ispiši šta je čuo
+```
+
+**Android** — build koji „prođe" ne znači da je izmena unutra. Proveri u dex-u:
+
+```bash
+cd android && ./build.sh
+unzip -o app/build/outputs/apk/debug/app-debug.apk 'classes*.dex' -d /tmp/dx
+strings -a /tmp/dx/classes*.dex | grep 'tvoj-novi-string'
+```
+
+Dijakritički stringovi se ne vide (MUTF-8) — traži ASCII delove.
+Podigni `versionName` da se na telefonu vidi koja je verzija.
+
+**Logika bez uređaja** — pravila za tekst su čist string→string, pa se testiraju
+u Pythonu pre nego što se prepišu u Kotlin. Tako su provereni interpunkcija
+(9 slučajeva), skraćenice (8) i valute (8).
+
+---
+
+## Endpoint
+
+```
+POST https://www.google.com/speech-api/v2/recognize
+     ?client=chromium&lang=sr-RS&key=<javni>&pFilter=0
+Content-Type: audio/l16; rate=16000
+```
+
+Telo je sirov 16-bit PCM. Odgovor je **više JSON linija**, prva obično prazna.
+~31 KB po sekundi govora. Praktična granica ~30s po zahtevu. Izmereno: 20/20
+uzastopnih i 5/5 paralelnih zahteva prolazi, bez 429.
+
+Nedokumentovan je i ključ je javni — Google ga može ugasiti bez najave. Kod već
+hvata 403/429 sa jasnom porukom.
