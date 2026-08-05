@@ -9,6 +9,7 @@ AppKit se dira iskljucivo iz glavne niti; radne niti samo upisuju u `State`.
 """
 
 import queue
+import re
 import threading
 import time
 import traceback
@@ -483,6 +484,10 @@ class DictateApp(rumps.App):
             # postavlja. Kad NE sredjuje (samo skracuje ili dodaje emotikon),
             # nasa pravila moraju da odrade svoje — inace bi izostala.
             return text
+        return self._apply_rules(text)
+
+    def _apply_rules(self, text: str) -> str:
+        """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
         if self.cfg.get("join_thousands", True):
             text = webstt.join_thousands(text)
         if self.cfg.get("strip_punctuation", True):
@@ -496,6 +501,18 @@ class DictateApp(rumps.App):
         if self.cfg.get("capitalize_first", True):
             return webstt.tidy(text)
         return text
+
+    def _rules_over_paragraphs(self, text: str) -> str:
+        """Ista pravila, ali podela na pasuse prezivljava.
+
+        `strip_punctuation` skuplja sve razmake u jedan, pa bi nad celim tekstom
+        pojeo prazne redove koje je model namerno stavio.
+        """
+        return "\n\n".join(
+            self._apply_rules(deo.strip())
+            for deo in re.split(r"\n\s*\n", text)
+            if deo.strip()
+        )
 
     def _transcribe(self, recorder):
         """Na dugom diktatu sece snimak na pauzama i salje delove na obradu
@@ -662,6 +679,11 @@ class DictateApp(rumps.App):
         try:
             doteran = polish.polish(tekst, self.cfg)
             self._count_polish()
+            if not polish.tidy_on(self.cfg):
+                # Kad sredjivanje nije trazeno, model ga svejedno uradi cim
+                # prepisuje recenice — skracivanje ih vraca pravopisno uredne.
+                # Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
+                doteran = self._rules_over_paragraphs(doteran)
         except Exception as exc:  # noqa: BLE001
             # Nedoteran tekst je bolji nego nikakav — model je dodatak, ne uslov.
             print(f"[diktat] doterivanje nije uspelo: {exc}")

@@ -229,7 +229,11 @@ class DictationService : Service() {
         handler.post { updatePill(elapsed(), busy = true) }
         thread {
             val doteran = runCatching {
-                Polish.polish(tekst, cfg).also { cfg.countPolish() }
+                val izlaz = Polish.polish(tekst, cfg).also { cfg.countPolish() }
+                // Kad sredjivanje nije trazeno, model ga svejedno uradi cim
+                // prepisuje recenice — skracivanje ih vraca pravopisno uredne.
+                // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
+                if (cfg.polishTidy) izlaz else TextPolish.applyBlocks(izlaz, cfg)
             }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.
                 handler.post { toast(exc.message ?: "doterivanje nije uspelo") }

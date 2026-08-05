@@ -50,7 +50,18 @@ object TextPolish {
         for (ch in text) append(DIACRITICS[ch] ?: ch)
     }
 
-    fun apply(raw: String, cfg: Config): String {
+    /**
+     * Ista pravila, ali podela na pasuse prezivljava.
+     *
+     * `stripPunctuation` skuplja sve razmake u jedan, pa bi nad celim tekstom
+     * pojeo prazne redove koje je model namerno stavio.
+     */
+    fun applyBlocks(raw: String, cfg: Config): String =
+        raw.split(Regex("""\n\s*\n"""))
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n") { apply(it, cfg, trailing = false).trim() }
+
+    fun apply(raw: String, cfg: Config, trailing: Boolean = true): String {
         var text = raw.trim()
         if (text.isEmpty()) return text
         if (cfg.joinThousands) text = joinThousands(text)
@@ -60,7 +71,7 @@ object TextPolish {
             text = Abbreviations.apply(text, Abbreviations.parse(cfg.abbreviationRules))
         }
         if (cfg.asciiDiacritics) text = toAscii(text)
-        if (cfg.trailingSpace) text = "$text "
+        if (trailing && cfg.trailingSpace) text = "$text "
         return text
     }
 }

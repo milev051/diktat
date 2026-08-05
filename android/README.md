@@ -135,6 +135,11 @@ kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.
 Kad nijedan izabrani alat ne sme da menja reči, izlaz se poredi sa ulazom reč
 po reč; ako se razlikuje, upisuje se naš tekst.
 
+Bez *Sredi tekst* izlaz modela ide **ponovo kroz podešavanja iz sekcije Obrada
+teksta** — velika slova, interpunkcija i kvačice se skidaju kako je tamo
+izabrano. Model naime sređuje tekst čim prepisuje rečenice, koliko god mu se to
+zabranilo u uputstvu; pasusi i emotikoni ostaju.
+
 Ispod prekidača stoji **Poziva modelu danas: N** — Google ne nudi način da se
 vidi preostala kvota, pa aplikacija broji sama; brojač se resetuje u ponoć. Ako
 podešeni model nestane (404), automatski se pokušava sa

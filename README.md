@@ -159,6 +159,11 @@ Kad nijedan izabrani alat **ne sme** da menja reči (npr. samo emotikon), izlaz
 se poredi sa ulazom reč po reč; ako se razlikuje, lepi se naš tekst. Izmišljena
 reč je gora od izostalog emotikona.
 
+Bez *sredi tekst* izlaz modela ide **ponovo kroz tvoja podešavanja** — velika
+slova, interpunkcija i kvačice se skidaju po `lowercase`, `strip_punctuation` i
+`ascii_diacritics`. Model naime sređuje tekst čim prepisuje rečenice, koliko god
+mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
+
 | ključ | podrazumevano | |
 |---|---|---|
 | `polish` | `false` | uključuje se iz menija |

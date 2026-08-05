@@ -83,6 +83,7 @@ grupu — inače tiho pokvari brojeve.
 | Ime fajla samo od vremena | dva zapisa u istoj sekundi se prepišu | milisekunde **plus brojač** |
 | …ali onda sortiranje **po imenu** | brojač razbije azbučni redosled, briše se pogrešan fajl | sortiraj po `st_mtime_ns` |
 | `self._pending` iskorišćeno dvaput | brojač i prodavnica se sudarili, pad u `_tick` | `_pending_store` odvojeno |
+| Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 | …ali **bezuslovno** preuzimanje pokreta | veliko polje zaglavi celu stranicu, donje sekcije nedostupne | preuzmi samo ako `layout.height > vidljiva visina` |
@@ -167,7 +168,11 @@ traženi. Nijedan alat izabran = nema poziva; `_formal()` tada mora da bude
 
 **Sirov tekst ide modelu samo kad on sređuje.** Ako sređivanje nije izabrano,
 naša pravila (skraćenice, kvačice, interpunkcija) moraju da odrade svoje pre
-slanja — inače bi tiho izostala.
+slanja — i **ponovo posle njega**. Model sređuje tekst čim prepisuje rečenice,
+makar mu bilo zabranjeno: sažimanje ih vraća pravopisno uredne, sa velikim
+slovima i interpunkcijom. Uputstvo to ne rešava pouzdano, pa presuđuju pravila
+u kodu. Pravila se tada primenjuju **po pasusu**, jer `strip_punctuation`
+skuplja razmake i pojeo bi prazne redove.
 
 **Emotikon ume da izmami dopisanu REČ.** Izmereno: nad „…gledao film … bio je
 jako dobar" model doda reč `film` umesto znaka — dovršavanje rečenice mu je
