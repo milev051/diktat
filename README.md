@@ -97,6 +97,7 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 | `lowercase` | `true` | ceo tekst malim slovima |
 | `strip_punctuation` | `true` | ukloni tačke i zareze; brojevi kao `3,5` ostaju celi |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
+| `join_thousands` | `true` | `5.000` → `5000`; zarez ostaje decimalni |
 | `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | samo uz `auto_segment` |

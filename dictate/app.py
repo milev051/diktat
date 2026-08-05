@@ -375,6 +375,8 @@ class DictateApp(rumps.App):
         )
         if not text:
             return text
+        if self.cfg.get("join_thousands", True):
+            text = webstt.join_thousands(text)
         if self.cfg.get("strip_punctuation", True):
             text = webstt.strip_punctuation(text)
         if self.cfg.get("lowercase", False):

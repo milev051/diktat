@@ -35,6 +35,11 @@ bi detektor gledao jedan zvuk a sekao drugi. Kad zaostajanje pređe
 **Dužina segmenta meri se po zvuku, ne zidnim satom.** `max_request_seconds` je
 granica koliko sekundi *zvuka* endpoint prima — to dvoje mora da bude ista mera.
 
+**Tačka u hiljadama nije isto što i decimalna.** Endpoint vraća „5.000" za
+izgovoreno „pet hiljada". Tačka se briše samo ako je prate **tačno tri cifre**
+i tu se broj završava — tako `verzija 2.0` i `android 4.4` ostaju celi. Zarez se
+ne dira, on je decimalni.
+
 **Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
 separator (`3,5`, `20,5 RSD`). Tačka i zarez se brišu **samo kad nisu između
 cifara**; crtica samo kad stoji sama, da `crno-beli` ostane celo.
@@ -55,6 +60,7 @@ cifara**; crtica samo kad stoji sama, da `crno-beli` ostane celo.
 | Slot za mikrofon oslobođen pre zatvaranja strima | sledeći diktat reinicijalizuje PortAudio nad živim strimom | zatvori strim **prvi** |
 | Skraćenice: `<` bez `trim()` posle skidanja | `dinara=< RSD` ostavi razmak iz same zamene | `substring(1).trim()` |
 | Skraćenice: ista fraza navedena dvaput | stari red iznad novog tiho pojede reč | dedupe, **poslednji pobeđuje** |
+| Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 
 ---
 

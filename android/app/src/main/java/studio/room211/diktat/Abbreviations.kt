@@ -31,6 +31,8 @@ object Abbreviations {
         "i tako dalje" to "itd",
         "to jest" to "tj",
         "to je to" to "tjt",
+        "svejedno" to "svj",
+        "mislim" to "msm",
         // "<" znaci: zalepi se za prethodnu rec
         "minuta" to "<min",
         "minut" to "<min",

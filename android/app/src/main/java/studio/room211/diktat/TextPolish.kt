@@ -25,6 +25,23 @@ object TextPolish {
         'Č' to "C", 'Ć' to "C", 'Ž' to "Z", 'Š' to "S", 'Đ' to "Dj",
     )
 
+    /**
+     * Tacka je separator hiljada samo ako je prate TACNO tri cifre i tu se broj
+     * zavrsava: "5.000" -> "5000", ali "verzija 2.0" i "android 4.4" ostaju celi.
+     * Zarez se ne dira — on je decimalni.
+     */
+    private val THOUSANDS = Regex("""(?<=\d)\.(?=\d{3}(?!\d))""")
+
+    fun joinThousands(text: String): String {
+        var out = text
+        var previous: String
+        do {                       // "1.500.000" ima vise tacaka
+            previous = out
+            out = THOUSANDS.replace(out, "")
+        } while (out != previous)
+        return out
+    }
+
     fun stripPunctuation(text: String): String =
         PUNCT.replace(text, "").split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
 
@@ -36,6 +53,7 @@ object TextPolish {
     fun apply(raw: String, cfg: Config): String {
         var text = raw.trim()
         if (text.isEmpty()) return text
+        if (cfg.joinThousands) text = joinThousands(text)
         if (cfg.stripPunctuation) text = stripPunctuation(text)
         if (cfg.lowercase) text = text.lowercase()
         if (cfg.abbreviations) {

@@ -106,6 +106,19 @@ _PUNCT = re.compile(
 )
 
 
+# Tacka je separator hiljada samo ako je prate TACNO tri cifre i tu se broj
+# zavrsava: "5.000" -> "5000", ali "verzija 2.0" i "android 4.4" ostaju celi.
+_THOUSANDS = re.compile(r"(?<=\d)\.(?=\d{3}(?!\d))")
+
+
+def join_thousands(text: str) -> str:
+    prethodno = None
+    while text != prethodno:        # "1.500.000" ima vise tacaka
+        prethodno = text
+        text = _THOUSANDS.sub("", text)
+    return text
+
+
 def strip_punctuation(text: str) -> str:
     """Skloni interpunkciju, ali ne diraj brojeve ni spojene reci."""
     if not text:

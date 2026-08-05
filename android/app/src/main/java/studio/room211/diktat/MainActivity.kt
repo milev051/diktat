@@ -101,6 +101,9 @@ class MainActivity : Activity() {
         root.addView(heading("Obrada teksta"))
         root.addView(toggle("Sve malim slovima", cfg.lowercase) { cfg.lowercase = it })
         root.addView(toggle("Bez interpunkcije", cfg.stripPunctuation) { cfg.stripPunctuation = it })
+        root.addView(toggle("Spoji hiljade (5.000 → 5000)", cfg.joinThousands) {
+            cfg.joinThousands = it
+        })
         root.addView(toggle("Razmak na kraju", cfg.trailingSpace) { cfg.trailingSpace = it })
         root.addView(toggle("Maskiraj psovke zvezdicama", cfg.profanityFilter) {
             cfg.profanityFilter = it
@@ -123,8 +126,27 @@ class MainActivity : Activity() {
         root.addView(EditText(this).apply {
             setText(cfg.abbreviationRules)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setLines(6)
+            setLines(12)
+            setTypeface(android.graphics.Typeface.MONOSPACE)
+            textSize = 13f
             gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            isVerticalScrollBarEnabled = true
+            setPadding(24, 20, 24, 20)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 12f
+                setColor(android.graphics.Color.parseColor("#F2F2F2"))
+                setStroke(2, android.graphics.Color.parseColor("#CCCCCC"))
+            }
+            // Bez ovoga spoljni ScrollView pojede pokret i polje se ne skroluje.
+            setOnTouchListener { view, event ->
+                view.parent?.requestDisallowInterceptTouchEvent(true)
+                if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
+                ) {
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )

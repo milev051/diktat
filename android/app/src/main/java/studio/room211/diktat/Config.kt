@@ -32,6 +32,11 @@ class Config(context: Context) {
         get() = prefs.getBoolean("ascii_diacritics", false)
         set(v) = prefs.edit().putBoolean("ascii_diacritics", v).apply()
 
+    /** "5.000" -> "5000"; zarez kao decimalni ostaje. */
+    var joinThousands: Boolean
+        get() = prefs.getBoolean("join_thousands", true)
+        set(v) = prefs.edit().putBoolean("join_thousands", v).apply()
+
     var abbreviations: Boolean
         get() = prefs.getBoolean("abbreviations", true)
         set(v) = prefs.edit().putBoolean("abbreviations", v).apply()

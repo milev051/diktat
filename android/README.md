@@ -129,6 +129,7 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | Razmak na kraju | uključeno | da se rečenice nadovezuju |
 | Maskiraj psovke | isključeno | `pFilter=0` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
+| Spoji hiljade | uključeno | `5.000` → `5000`; `verzija 2.0` ostaje cela |
 | Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
 
 Pravilo je `fraza=skraćenica`, jedno po redu. Ako skraćenica počinje sa `<`,
