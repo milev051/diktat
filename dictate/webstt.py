@@ -113,6 +113,17 @@ def strip_punctuation(text: str) -> str:
     return " ".join(_PUNCT.sub("", text).split())
 
 
+_DIACRITICS = str.maketrans({
+    "č": "c", "ć": "c", "ž": "z", "š": "s", "đ": "dj",
+    "Č": "C", "Ć": "C", "Ž": "Z", "Š": "S", "Đ": "Dj",
+})
+
+
+def to_ascii(text: str) -> str:
+    """č ć ž š đ -> c c z s dj. Opciono; podrazumevano iskljuceno."""
+    return text.translate(_DIACRITICS) if text else text
+
+
 def tidy(text: str) -> str:
     """Endpoint ne vraca veliko pocetno slovo — bar to doteramo."""
     if not text:

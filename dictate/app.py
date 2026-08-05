@@ -115,6 +115,10 @@ class DictateApp(rumps.App):
         mode_menu.add(self.item_hold)
         mode_menu.add(self.item_toggle)
 
+        self.item_ascii = rumps.MenuItem(
+            "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
+        )
+
         lang_menu = rumps.MenuItem("Jezik")
         self.lang_items = {}
         for code, label in (
@@ -136,6 +140,7 @@ class DictateApp(rumps.App):
             None,
             mode_menu,
             lang_menu,
+            self.item_ascii,
             None,
             self.item_debug,
             rumps.MenuItem("Otvori config.json", callback=self._open_config),
@@ -180,6 +185,7 @@ class DictateApp(rumps.App):
         current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
+        self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
 
     # ------------------------------------------------------- preflight
 
@@ -372,7 +378,11 @@ class DictateApp(rumps.App):
         if self.cfg.get("strip_punctuation", True):
             text = webstt.strip_punctuation(text)
         if self.cfg.get("lowercase", False):
-            return text.lower()
+            text = text.lower()
+        if self.cfg.get("ascii_diacritics", False):
+            return webstt.to_ascii(text)
+        if self.cfg.get("lowercase", False):
+            return text
         if self.cfg.get("capitalize_first", True):
             return webstt.tidy(text)
         return text
@@ -674,6 +684,13 @@ class DictateApp(rumps.App):
         self.cfg["mode"] = mode
         config.save(self.cfg)
         self.listener.mode = mode
+        self._sync_menu_marks()
+
+    def _toggle_ascii(self, _):
+        self.cfg["ascii_diacritics"] = not bool(
+            self.cfg.get("ascii_diacritics", False)
+        )
+        config.save(self.cfg)
         self._sync_menu_marks()
 
     def _make_lang_setter(self, code):

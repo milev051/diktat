@@ -14,6 +14,7 @@ DEFAULTS = {
     "capitalize_first": False,    # veliko pocetno slovo
     "lowercase": True,            # sve malim slovima
     "strip_punctuation": True,    # skloni tacke i zareze (brojevi ostaju celi)
+    "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
     "auto_segment": False,

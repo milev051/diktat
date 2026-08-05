@@ -133,6 +133,19 @@ procenata=<%       „50 procenata"  → „50%"
 Poklapaju se samo **cele reči** — `znamenito` i `prominuta` ostaju netaknuti —
 a duže fraze idu prve, da pravilo za `znam` ne pojede `ne znam`.
 
+Red koji počinje sa `~` je **regularni izraz**, a `{1}`…`{9}` u zameni su
+uhvaćene grupe. Time se može i premeštati, što valutama treba — dolar ide
+ispred cifre, dinar iza:
+
+```
+~(\d+(?:[.,]\d+)?)\s*dolara?=${1}      „100 dolara" → „$100"
+dinara=RSD                             „5000 dinara" → „5000 RSD"
+evra=€                                 „20 evra" → „20 €"
+```
+
+Regularni izrazi se primenjuju **prvi**, da prosto pravilo `dolara=$` ne pojede
+reč pre nego što premeštanje stigne na red.
+
 Isti spisak služi i kao **ispravljač**: ako prepoznavanje stalno greši istu reč,
 dodaj `pogrešno=ispravno`. To je praktičniji od pravopisne provere, jer
 prepoznavanje ne pravi slovne greške nego zamenjuje reč drugom ispravnom rečju —

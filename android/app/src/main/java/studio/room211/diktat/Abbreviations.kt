@@ -11,6 +11,10 @@ package studio.room211.diktat
  * sto ono dodje na red. Poklapaju se samo cele reci — "znamenito" i "poznam"
  * ostaju netaknuti.
  *
+ * Red koji pocinje sa `~` je regularni izraz, a `{1}`..`{9}` u zameni su
+ * uhvacene grupe. Time se moze i premestati, sto valutama treba: dolar ide
+ * ISPRED cifre, a dinar iza.
+ *
  * Isti spisak sluzi i kao ispravljac: ako prepoznavanje stalno gresi istu rec,
  * dodaj `pogresno=ispravno` i tu.
  */
@@ -28,11 +32,20 @@ object Abbreviations {
         "na primer" to "npr",
         "i tako dalje" to "itd",
         "u stvari" to "ustvari",
+        "to jest" to "tj",
         // "<" znaci: zalepi se za prethodnu rec
         "minuta" to "<min",
         "minut" to "<min",
         "procenata" to "<%",
         "posto" to "<%",
+        // Dolar ide ispred cifre, pa treba premestanje — otud regularni izraz.
+        """~(\d+(?:[.,]\d+)?)\s*dolara?""" to "\${1}",
+        "dolara" to "$",
+        "dolar" to "$",
+        "dinara" to "<din",
+        "dinar" to "<din",
+        "evra" to "<€",
+        "evro" to "<€",
     )
 
     fun defaultText(): String =
@@ -49,10 +62,37 @@ object Abbreviations {
             .filter { it.first.isNotEmpty() }
             .toList()
 
+    /** `{1}` u zameni je grupa; sve ostalo je doslovno. */
+    private val GROUP = Regex("""\{(\d)\}""")
+
+    private fun toJavaReplacement(user: String): String {
+        val out = StringBuilder()
+        var last = 0
+        for (m in GROUP.findAll(user)) {
+            out.append(Regex.escapeReplacement(user.substring(last, m.range.first)))
+            out.append("$").append(m.groupValues[1])
+            last = m.range.last + 1
+        }
+        out.append(Regex.escapeReplacement(user.substring(last)))
+        return out.toString()
+    }
+
     fun apply(text: String, rules: List<Pair<String, String>>): String {
         if (text.isBlank() || rules.isEmpty()) return text
         var out = text
-        for ((phrase, replacement) in rules.sortedByDescending { it.first.length }) {
+
+        // Regularni izrazi idu prvi: "100 dolara" mora da postane "$100" pre
+        // nego sto prosto pravilo stigne da pojede samu rec "dolara".
+        for ((pattern, replacement) in rules.filter { it.first.startsWith("~") }) {
+            runCatching {
+                out = Regex(pattern.substring(1), RegexOption.IGNORE_CASE)
+                    .replace(out, toJavaReplacement(replacement))
+            }
+        }
+
+        for ((phrase, replacement) in rules
+            .filter { !it.first.startsWith("~") }
+            .sortedByDescending { it.first.length }) {
             val join = replacement.startsWith("<")
             val short = if (join) replacement.substring(1) else replacement
 
