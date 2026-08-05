@@ -113,6 +113,16 @@ Prolazne greške (mreža, 429, 5xx) se ponavljaju jednom automatski. Ako i drugi
 pokušaj padne, **snimak se čuva** — sekcija *Neuspeli diktati* pokazuje koliko
 ih ima i šalje ih ponovo. Drži se poslednjih 5.
 
+## Formalni režim
+
+Kartica *Formalni režim*: prekidač plus polje za **API ključ** (Google AI
+Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu koji dodaje
+interpunkciju, velika slova i kvačice, a reči ne dira. Dok se čeka, pilula
+pokazuje plavo **AI**.
+
+Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
+preživljava instalaciju preko postojeće dok su paket i potpis isti.
+
 ## Potrošnja podataka
 
 Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.

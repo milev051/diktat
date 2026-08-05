@@ -156,6 +156,19 @@ se, nova se pokupe tiho.
 
 ---
 
+**Formalni režim zove model JEDNOM, na kraju diktata.** Po segmentu bi model
+video krhotine i izmišljao krajeve rečenica, a poziva bi za deset minuta bilo
+oko sto pedeset umesto jednog. U tom režimu tekst ide modelu **nedirnut** —
+skraćenice i skidanje kvačica mu otežavaju čitanje.
+
+Izmereno na istom zadatku: `gemini-flash-lite-latest` ~1.0s i ne dira reči;
+`gemini-3.5-flash` isto ali ~12s; `gemma-4-31b-it` prepisuje uputstvo umesto da
+ga izvrši. Provera vernosti: doteran tekst sveden na mala slova bez kvačica i
+interpunkcije mora da se poklopi sa ulazom.
+
+**API ključ nikad ne ide u git.** macOS: `config.json` (ignorisan). Android:
+`SharedPreferences`. Ni u `config.example.json`, ni u poruci commita.
+
 ## Endpoint
 
 ```

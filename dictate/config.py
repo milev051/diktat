@@ -44,6 +44,12 @@ DEFAULTS = {
     "show_overlay": False,        # pilula sa vremenom preko ekrana
     "overlay_position": "top-right",
 
+    # --- Formalni rezim (doterivanje jezickim modelom) ---
+    "polish": False,              # ukljucuje se iz menija, samo uz kljuc
+    "polish_api_key": "",         # Google AI Studio kljuc; ostaje pri nadogradnji
+    "polish_model": "",           # prazno = gemini-flash-lite-latest
+    "polish_prompt": "",          # prazno = ugradjeno uputstvo
+
     # --- Debug ---
     "debug": False,               # snimaj zvuk i tekst radi poredjenja
     "debug_dir": "~/Diktat-debug",

@@ -105,6 +105,21 @@ class Config(context: Context) {
         get() = prefs.getBoolean("trailing_space", true)
         set(v) = prefs.edit().putBoolean("trailing_space", v).apply()
 
+    // --- Formalni rezim ---
+    // Kljuc ostaje pri nadogradnji aplikacije: SharedPreferences prezivljava
+    // instalaciju preko postojece, dok je paket i potpis isti.
+    var polish: Boolean
+        get() = prefs.getBoolean("polish", false)
+        set(v) = prefs.edit().putBoolean("polish", v).apply()
+
+    var polishApiKey: String
+        get() = prefs.getString("polish_api_key", "")!!
+        set(v) = prefs.edit().putString("polish_api_key", v.trim()).apply()
+
+    var polishModel: String
+        get() = prefs.getString("polish_model", "")!!
+        set(v) = prefs.edit().putString("polish_model", v.trim()).apply()
+
     // --- Potrosnja podataka ---
 
     val bytesSent: Long get() = prefs.getLong("bytes_sent", 0)

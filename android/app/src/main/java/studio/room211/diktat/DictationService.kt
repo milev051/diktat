@@ -52,6 +52,8 @@ class DictationService : Service() {
     private var expected = 0
     private val buffered = HashMap<Int, String>()
     private val pending = java.util.concurrent.atomic.AtomicInteger(0)
+    private val formalParts = mutableListOf<String>()
+    @Volatile private var polishing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -190,10 +192,43 @@ class DictationService : Service() {
             val ready = buffered.remove(expected)!!
             expected++
             pending.decrementAndGet()
-            if (ready.isNotBlank()) insertNow(ready)
+            if (ready.isNotBlank()) {
+                if (formal()) synchronized(formalParts) { formalParts.add(ready.trim()) }
+                else insertNow(ready)
+            }
         }
         if (last) {
             isRecording = false
+            if (formal() && pending.get() == 0) startPolish()
+            else handler.post { finishSession() }
+        }
+    }
+
+    private fun formal() = cfg.polish && Polish.available(cfg)
+
+    /** Ceo diktat ide modelu jednim pozivom, pa tek onda u polje. */
+    private fun startPolish() {
+        val tekst = synchronized(formalParts) {
+            val t = formalParts.filter { it.isNotBlank() }.joinToString(" ").trim()
+            formalParts.clear()
+            t
+        }
+        if (tekst.isBlank()) {
+            handler.post { finishSession() }
+            return
+        }
+        polishing = true
+        // Korisnik mora da zna da je otislo modelu i da se ceka odgovor.
+        handler.post { updatePill(elapsed(), busy = true) }
+        thread {
+            val doteran = runCatching { Polish.polish(tekst, cfg) }.getOrElse { exc ->
+                // Nedoteran tekst je bolji nego nikakav — model je dodatak.
+                handler.post { toast(exc.message ?: "doterivanje nije uspelo") }
+                tekst
+            }
+            polishing = false
+            val konacan = if (cfg.trailingSpace) "$doteran " else doteran
+            insertNow(konacan)
             handler.post { finishSession() }
         }
     }
@@ -277,6 +312,11 @@ class DictationService : Service() {
     private fun updatePill(seconds: Int, busy: Boolean) {
         val view = pill ?: return
         val limit = if (cfg.continuous) cfg.continuousMaxSeconds else cfg.maxSeconds
+        if (polishing) {
+            view.text = "AI"
+            (view.background as GradientDrawable).setColor(Color.parseColor("#1565C0"))
+            return
+        }
         view.text = if (seconds >= 60) {
             "%d:%02d".format(seconds / 60, seconds % 60)
         } else {

@@ -132,6 +132,28 @@ Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
 
 ---
 
+## Formalni režim
+
+Meni → **Formalni režim (doteruje AI)**. Ceo diktat se sačeka, pa se **jednim
+pozivom** pošalje jezičkom modelu koji dodaje interpunkciju, velika slova i
+kvačice — a reči ne dira. Dok se čeka odgovor, u menu baru stoji plavo **AI**.
+
+Traži ključ sa Google AI Studio u `polish_api_key`. Bez ključa stavka piše da
+ključa nema i režim se ne može uključiti.
+
+| ključ | podrazumevano | |
+|---|---|---|
+| `polish` | `false` | uključuje se iz menija |
+| `polish_api_key` | `""` | bez njega režim ne radi |
+| `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
+| `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
+
+Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i
+izmišljao krajeve rečenica, a broj poziva bi za deset minuta diktata skočio sa
+jednog na oko sto pedeset.
+
+Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
+
 ## Ako se ne prepozna sve što si rekao
 
 Uključi **Snimaj za debug** iz menija. Svaki diktat se tada snima u `~/Diktat-debug`:

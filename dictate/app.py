@@ -17,7 +17,7 @@ import AppKit
 import rumps
 from Foundation import NSAttributedString
 
-from . import audio, config, debugdump, hotkey, insert, overlay, pending, webstt
+from . import audio, config, debugdump, hotkey, insert, overlay, pending, polish, webstt
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
 ICON = {
@@ -30,6 +30,7 @@ RED_AFTER = 15.0   # od ove sekunde cifre snimanja postaju crvene
 TITLE_COLORS = {
     "recording": AppKit.NSColor.systemRedColor,
     "busy": AppKit.NSColor.systemOrangeColor,
+    "polishing": AppKit.NSColor.systemBlueColor,
 }
 
 ERROR_HUD_SECONDS = 4.0
@@ -84,6 +85,9 @@ class DictateApp(rumps.App):
         self._hist_lock = threading.Lock()
         self._history: list[str] = []
         self._history_dirty = True
+        self._formal_lock = threading.Lock()
+        self._formal_parts: list[str] = []
+        self._polishing = False
 
         self._build_menu()
         self._apply_debug(self.cfg.get("debug", False))
@@ -127,6 +131,9 @@ class DictateApp(rumps.App):
         self.item_continuous = rumps.MenuItem(
             "Neprekidno (bez granice)", callback=self._toggle_continuous
         )
+        self.item_polish = rumps.MenuItem(
+            "Formalni režim (doteruje AI)", callback=self._toggle_polish
+        )
 
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
@@ -154,6 +161,7 @@ class DictateApp(rumps.App):
             None,
             mode_menu,
             self.item_continuous,
+            self.item_polish,
             lang_menu,
             self.item_ascii,
             None,
@@ -199,6 +207,11 @@ class DictateApp(rumps.App):
         self.item_hold.state = 1 if mode == "hold" else 0
         self.item_toggle.state = 1 if mode == "toggle" else 0
         self.item_continuous.state = 1 if self.cfg.get("continuous", True) else 0
+        self.item_polish.state = 1 if self._formal() else 0
+        self.item_polish.title = (
+            "Formalni režim (doteruje AI)" if polish.available(self.cfg)
+            else "Formalni režim — nema API ključa"
+        )
         current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
@@ -347,6 +360,8 @@ class DictateApp(rumps.App):
                 return
             with self._count_lock:
                 busy = self._pending > 0
+            if self._polishing:
+                return                      # cekamo model, ne gasi prikaz
             self.state.set(phase="thinking" if busy else "idle", message=message)
 
     # --------------------------------------------------------- sesija
@@ -415,6 +430,10 @@ class DictateApp(rumps.App):
             profanity_filter=bool(self.cfg.get("profanity_filter", False)),
         )
         if not text:
+            return text
+        if self._formal():
+            # Model dobija tekst kakav jeste: skracenice i skidanje kvacica bi
+            # mu samo otezali citanje, a interpunkciju ionako on postavlja.
             return text
         if self.cfg.get("join_thousands", True):
             text = webstt.join_thousands(text)
@@ -533,7 +552,11 @@ class DictateApp(rumps.App):
                 with self._count_lock:
                     if self._pending > 0:
                         self._pending -= 1
-                if ready:
+                if ready and self._formal():
+                    # Ceka se ceo diktat: model treba da vidi pun kontekst.
+                    with self._formal_lock:
+                        self._formal_parts.append(ready.strip())
+                elif ready:
                     self._remember(ready)
                     try:
                         insert.insert(
@@ -543,7 +566,50 @@ class DictateApp(rumps.App):
                         )
                     except Exception:  # noqa: BLE001
                         traceback.print_exc()
+            self._maybe_polish()
             self._settle_phase()
+
+    def _maybe_polish(self):
+        """Kad je ceo diktat prepoznat, posalji ga modelu pa tek onda zalepi."""
+        if not self._formal():
+            return
+        with self._session_lock:
+            if self._recorder is not None:
+                return                      # jos snima, ceka se kraj
+        with self._count_lock:
+            if self._pending > 0:
+                return                      # jos se neki segment prepoznaje
+        with self._formal_lock:
+            if not self._formal_parts:
+                return
+            tekst = " ".join(p for p in self._formal_parts if p).strip()
+            self._formal_parts = []
+        if not tekst:
+            return
+        self._polishing = True
+        self.state.set(phase="polishing", message="")
+        threading.Thread(target=self._do_polish, args=(tekst,), daemon=True).start()
+
+    def _do_polish(self, tekst: str):
+        try:
+            doteran = polish.polish(tekst, self.cfg)
+        except Exception as exc:  # noqa: BLE001
+            # Nedoteran tekst je bolji nego nikakav — model je dodatak, ne uslov.
+            print(f"[diktat] doterivanje nije uspelo: {exc}")
+            doteran = tekst
+        self._polishing = False
+        if self.cfg.get("trailing_space", True):
+            doteran += " "
+        self._remember(doteran)
+        try:
+            insert.insert(
+                doteran,
+                method=self.cfg.get("insert_method", "paste"),
+                restore_clipboard=self.cfg.get("restore_clipboard", True),
+            )
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        self._settle_phase()
 
     # ----------------------------------------------------------- timer
 
@@ -591,7 +657,11 @@ class DictateApp(rumps.App):
         if not dirty:
             return
 
-        if phase == "thinking":
+        if phase == "polishing":
+            # Plavo + "AI": korisnik mora da zna da je otislo modelu i da se ceka.
+            self._set_menubar("AI", "polishing")
+            self.item_status.title = "Doterujem tekst…"
+        elif phase == "thinking":
             # Cifre ostaju, samo pozute — obrada traje par sekundi i tako se
             # vidi da jos nesto radi, umesto da naslov skoci na ikonicu.
             self._set_menubar(self._last_clock or ICON["idle"], "busy")
@@ -635,6 +705,8 @@ class DictateApp(rumps.App):
         return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
 
     def _title_color(self):
+        if self._polishing:
+            return "polishing"
         """Zuta ima prednost: ako se prethodni tekst jos obradjuje, to je
         vaznije od toga koliko dugo traje novo snimanje."""
         with self._count_lock:
@@ -754,6 +826,17 @@ class DictateApp(rumps.App):
 
     def _set_toggle(self, _):
         self._set_mode("toggle")
+
+    def _toggle_polish(self, _):
+        if not polish.available(self.cfg):
+            self.item_status.title = "Upiši polish_api_key u config.json"
+            return
+        self.cfg["polish"] = not bool(self.cfg.get("polish", False))
+        config.save(self.cfg)
+        self._sync_menu_marks()
+
+    def _formal(self) -> bool:
+        return bool(self.cfg.get("polish", False)) and polish.available(self.cfg)
 
     def _toggle_continuous(self, _):
         self.cfg["continuous"] = not bool(self.cfg.get("continuous", True))

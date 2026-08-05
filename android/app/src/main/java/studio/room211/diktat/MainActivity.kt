@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(dozvole())
         root.addView(rezim())
+        root.addView(formalni())
         root.addView(tastatura())
         root.addView(ponasanje())
         root.addView(obrada())
@@ -139,6 +140,28 @@ class MainActivity : AppCompatActivity() {
                     "Isključeno: jedan snimak do 30s, pa obrada.",
             )
         )
+        return card
+    }
+
+    private fun formalni(): ViewGroup {
+        val (card, box) = card(this, "Formalni režim")
+        box.addView(switch(this, "Doteruj tekst pomoću AI", cfg.polish) { cfg.polish = it })
+        box.addView(
+            body(
+                this,
+                "Ceo diktat se sačeka, pa se jednim pozivom pošalje modelu koji " +
+                    "dodaje interpunkciju, velika slova i kvačice — a reči ne dira. " +
+                    "Dok se čeka odgovor, pokazivač pokazuje AI.\n\n" +
+                    "Radi samo uz API ključ (Google AI Studio). Ključ ostaje " +
+                    "sačuvan i posle nadogradnje aplikacije.",
+            )
+        )
+        val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
+        box.addView(kljuc)
+        val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {
+            cfg.polishModel = it
+        }
+        box.addView(model)
         return card
     }
 
