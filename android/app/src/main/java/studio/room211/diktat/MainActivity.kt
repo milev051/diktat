@@ -112,6 +112,42 @@ class MainActivity : Activity() {
             cfg.asciiDiacritics = it
         })
 
+        root.addView(heading("Jezik"))
+        root.addView(EditText(this).apply {
+            setText(cfg.language)
+            inputType = InputType.TYPE_CLASS_TEXT
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setOnFocusChangeListener { _, focused ->
+                if (!focused) cfg.language = text.toString().trim().ifBlank { "sr-RS" }
+            }
+        })
+        root.addView(body("sr-RS, en-US, hr-HR…"))
+
+        root.addView(heading("Potrošnja podataka"))
+        trafficLine = body("")
+        root.addView(trafficLine)
+        root.addView(
+            body(
+                "Zvuk se šalje nesažet: 16 kHz × 16 bita = 32 KB po sekundi " +
+                    "govora. Odgovor je par stotina bajtova."
+            )
+        )
+        root.addView(toggle("Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
+            cfg.compressAudio = it
+        })
+        root.addView(
+            body(
+                "Ako sažimanje ne uspe, šalje se kao i pre — ušteda nikad ne " +
+                    "obara diktat. Traži Android 10 ili noviji."
+            )
+        )
+        root.addView(action("Poništi brojač") {
+            cfg.resetTraffic()
+            showTraffic()
+        })
+
         root.addView(heading("Skraćenice"))
         root.addView(toggle("Skraćuj česte fraze", cfg.abbreviations) { cfg.abbreviations = it })
         root.addView(
@@ -126,7 +162,7 @@ class MainActivity : Activity() {
         root.addView(EditText(this).apply {
             setText(cfg.abbreviationRules)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setLines(12)
+            setLines(8)
             setTypeface(android.graphics.Typeface.MONOSPACE)
             textSize = 13f
             gravity = android.view.Gravity.TOP or android.view.Gravity.START
@@ -138,8 +174,13 @@ class MainActivity : Activity() {
                 setStroke(2, android.graphics.Color.parseColor("#CCCCCC"))
             }
             // Bez ovoga spoljni ScrollView pojede pokret i polje se ne skroluje.
+            // Pokret se preuzima SAMO ako tekst stvarno prelazi visinu polja.
+            // Bezuslovno preuzimanje je zaglavljivalo celu stranicu.
             setOnTouchListener { view, event ->
-                view.parent?.requestDisallowInterceptTouchEvent(true)
+                val text = view as android.widget.TextView
+                val vidljivo = view.height - view.paddingTop - view.paddingBottom
+                val moze = (text.layout?.height ?: 0) > vidljivo
+                view.parent?.requestDisallowInterceptTouchEvent(moze)
                 if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
                     event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
                 ) {
@@ -191,42 +232,6 @@ class MainActivity : Activity() {
             recreate()
         })
 
-        root.addView(heading("Jezik"))
-        root.addView(EditText(this).apply {
-            setText(cfg.language)
-            inputType = InputType.TYPE_CLASS_TEXT
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setOnFocusChangeListener { _, focused ->
-                if (!focused) cfg.language = text.toString().trim().ifBlank { "sr-RS" }
-            }
-        })
-        root.addView(body("sr-RS, en-US, hr-HR…"))
-
-        root.addView(heading("Potrošnja podataka"))
-        trafficLine = body("")
-        root.addView(trafficLine)
-        root.addView(
-            body(
-                "Zvuk se šalje nesažet: 16 kHz × 16 bita = 32 KB po sekundi " +
-                    "govora. Odgovor je par stotina bajtova."
-            )
-        )
-        root.addView(toggle("Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
-            cfg.compressAudio = it
-        })
-        root.addView(
-            body(
-                "Ako sažimanje ne uspe, šalje se kao i pre — ušteda nikad ne " +
-                    "obara diktat. Traži Android 10 ili noviji."
-            )
-        )
-        root.addView(action("Poništi brojač") {
-            cfg.resetTraffic()
-            showTraffic()
-        })
-
         root.addView(heading("Proba"))
         root.addView(EditText(this).apply {
             hint = "ovde probaj diktat"
@@ -240,8 +245,13 @@ class MainActivity : Activity() {
                 setColor(android.graphics.Color.WHITE)
                 setStroke(2, android.graphics.Color.parseColor("#CCCCCC"))
             }
+            // Pokret se preuzima SAMO ako tekst stvarno prelazi visinu polja.
+            // Bezuslovno preuzimanje je zaglavljivalo celu stranicu.
             setOnTouchListener { view, event ->
-                view.parent?.requestDisallowInterceptTouchEvent(true)
+                val text = view as android.widget.TextView
+                val vidljivo = view.height - view.paddingTop - view.paddingBottom
+                val moze = (text.layout?.height ?: 0) > vidljivo
+                view.parent?.requestDisallowInterceptTouchEvent(moze)
                 if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
                     event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
                 ) {

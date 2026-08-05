@@ -172,6 +172,9 @@ vredi ih znati:
 - **stari red iznad novog**: ako je `dinara=RSD` ostao iznad `dinara=<RSD`,
   prvi pojede reč. Sada **poslednji red pobeđuje**.
 
+Velika polja (pravila, proba) su namerno **na dnu ekrana** — svi prekidači su
+iznad njih, da se do njih dolazi bez skrolovanja preko teksta.
+
 U sekciji *Skraćenice* postoji polje **Proba** — upišeš rečenicu i odmah vidiš
 šta pravila urade, bez diktiranja.
 
