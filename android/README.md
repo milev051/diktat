@@ -122,8 +122,21 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
 | Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
 
-Skraćenice se poklapaju samo kao **cele reči** — `znamenito` i `poznam` ostaju
-netaknuti — a duže fraze idu prve, da pravilo za `znam` ne pojede `ne znam`.
+Pravilo je `fraza=skraćenica`, jedno po redu. Ako skraćenica počinje sa `<`,
+pojede i **razmak ispred** pa se zalepi za prethodnu reč:
+
+```
+minuta=<min        „15 minuta"     → „15min"
+procenata=<%       „50 procenata"  → „50%"
+```
+
+Poklapaju se samo **cele reči** — `znamenito` i `prominuta` ostaju netaknuti —
+a duže fraze idu prve, da pravilo za `znam` ne pojede `ne znam`.
+
+Isti spisak služi i kao **ispravljač**: ako prepoznavanje stalno greši istu reč,
+dodaj `pogrešno=ispravno`. To je praktičniji od pravopisne provere, jer
+prepoznavanje ne pravi slovne greške nego zamenjuje reč drugom ispravnom rečju —
+a nju rečnik ne bi ni prijavio.
 
 Pravilo za interpunkciju je isto ono provereno na Mac-u: tačka i zarez se brišu
 samo kad **nisu između cifara**, jer ih endpoint vraća kao decimalni separator

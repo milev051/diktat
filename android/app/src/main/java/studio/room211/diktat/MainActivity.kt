@@ -110,7 +110,15 @@ class MainActivity : Activity() {
 
         root.addView(heading("Skraćenice"))
         root.addView(toggle("Skraćuj česte fraze", cfg.abbreviations) { cfg.abbreviations = it })
-        root.addView(body("Jedno pravilo po redu, oblik  fraza=skraćenica"))
+        root.addView(
+            body(
+                "Jedno pravilo po redu, oblik  fraza=skraćenica\n\n" +
+                    "Ako skraćenica počinje sa  <  pojede i razmak ispred:\n" +
+                    "   minuta=<min      →   „15 minuta\" postaje „15min\"\n\n" +
+                    "Isti spisak služi i kao ispravljač — ako prepoznavanje " +
+                    "stalno greši istu reč, dodaj  pogrešno=ispravno."
+            )
+        )
         root.addView(EditText(this).apply {
             setText(cfg.abbreviationRules)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
