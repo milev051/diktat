@@ -15,12 +15,9 @@ object Abbreviations {
         "jebi ga" to "jbg",
         "znam" to "znm",
         "ne mogu" to "nmg",
-        "nema veze" to "nvz",
-        "molim te" to "mlm",
-        "vidimo se" to "vs",
+        "nema veze" to "nmvz",
         "na primer" to "npr",
         "i tako dalje" to "itd",
-        "u stvari" to "ustvari",
     )
 
     fun defaultText(): String =

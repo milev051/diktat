@@ -23,6 +23,7 @@ class MainActivity : Activity() {
 
     private lateinit var cfg: Config
     private lateinit var statusLine: TextView
+    private lateinit var trafficLine: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,6 +141,20 @@ class MainActivity : Activity() {
         })
         root.addView(body("sr-RS, en-US, hr-HR…"))
 
+        root.addView(heading("Potrošnja podataka"))
+        trafficLine = body("")
+        root.addView(trafficLine)
+        root.addView(
+            body(
+                "Zvuk se šalje nesažet: 16 kHz × 16 bita = 32 KB po sekundi " +
+                    "govora. Odgovor je par stotina bajtova."
+            )
+        )
+        root.addView(action("Poništi brojač") {
+            cfg.resetTraffic()
+            showTraffic()
+        })
+
         root.addView(heading("Proba"))
         root.addView(EditText(this).apply {
             hint = "ovde probaj diktat"
@@ -156,11 +171,36 @@ class MainActivity : Activity() {
         super.onResume()
         val ready = InsertService.isRunning
         title = if (ready) "Diktat — spreman" else "Diktat"
+        showTraffic()
         statusLine.text = if (ready) {
             "Pristupačnost je uključena — tekst se upisuje gde je kursor."
         } else {
             "Pristupačnost NIJE uključena — tekst će završiti u clipboard-u."
         }
+    }
+
+    private fun showTraffic() {
+        val sent = cfg.bytesSent
+        val received = cfg.bytesReceived
+        val count = cfg.dictationCount
+        trafficLine.text = if (count == 0) {
+            "Još nije poslat nijedan diktat."
+        } else {
+            "%d diktata, %d s govora\n↑ %s poslato   ↓ %s primljeno\nprosečno %s po diktatu"
+                .format(
+                    count,
+                    cfg.secondsSpoken,
+                    human(sent),
+                    human(received),
+                    human((sent + received) / count),
+                )
+        }
+    }
+
+    private fun human(bytes: Long): String = when {
+        bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0)
+        bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
+        else -> "$bytes B"
     }
 
     private fun askForMicrophone() {

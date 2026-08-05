@@ -87,6 +87,28 @@ Podrazumevane skraćenice su u `Abbreviations.kt`, lista `DEFAULT`. Menjanje te
 liste utiče samo na **nove instalacije** — postojeća instalacija ima svoja
 pravila sačuvana, dok se ne pritisne *Vrati podrazumevane skraćenice*.
 
+## Potrošnja podataka
+
+Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.
+
+Zvuk ide **nesažet**: 16 kHz × 16 bita = **31 KB po sekundi govora**. Odgovor je
+par stotina bajtova, zanemarljiv. Izmereno na pravim zahtevima:
+
+| govor | poslato | primljeno |
+|---|---|---|
+| 4.9s | 152 KB | 186 B |
+| 23.7s | 742 KB | 440 B |
+
+Za osećaj koliko je to — tipične vrednosti:
+
+| | |
+|---|---|
+| **10s diktata** | **320 KB** |
+| minut telefonskog poziva | 400 KB |
+| jedna fotografija u poruci | 800 KB |
+| minut Spotify-a | 1.1 MB |
+| učitavanje jedne veb stranice | 2.2 MB |
+
 ## Obrada teksta
 
 Isto što radi i macOS verzija, sve se menja u aplikaciji:

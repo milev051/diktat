@@ -46,6 +46,12 @@ object WebStt {
             val code = conn.responseCode
             if (code != 200) throw SttException(explain(code))
             val body = conn.inputStream.bufferedReader().readText()
+            // Zvuk je daleko najveci deo; odgovor je par stotina bajtova.
+            cfg.addTraffic(
+                sent = pcm.size.toLong(),
+                received = body.toByteArray().size.toLong(),
+                seconds = pcm.size / 2.0 / cfg.sampleRate,
+            )
             return parse(body)
         } finally {
             conn.disconnect()

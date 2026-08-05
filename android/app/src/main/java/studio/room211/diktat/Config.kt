@@ -56,6 +56,29 @@ class Config(context: Context) {
         get() = prefs.getBoolean("trailing_space", true)
         set(v) = prefs.edit().putBoolean("trailing_space", v).apply()
 
+    // --- Potrosnja podataka ---
+
+    val bytesSent: Long get() = prefs.getLong("bytes_sent", 0)
+    val bytesReceived: Long get() = prefs.getLong("bytes_received", 0)
+    val dictationCount: Int get() = prefs.getInt("dictation_count", 0)
+    val secondsSpoken: Long get() = prefs.getLong("seconds_spoken", 0)
+
+    fun addTraffic(sent: Long, received: Long, seconds: Double) {
+        prefs.edit()
+            .putLong("bytes_sent", bytesSent + sent)
+            .putLong("bytes_received", bytesReceived + received)
+            .putInt("dictation_count", dictationCount + 1)
+            .putLong("seconds_spoken", secondsSpoken + seconds.toLong())
+            .apply()
+    }
+
+    fun resetTraffic() {
+        prefs.edit()
+            .remove("bytes_sent").remove("bytes_received")
+            .remove("dictation_count").remove("seconds_spoken")
+            .apply()
+    }
+
     val sampleRate = 16_000
     val maxSeconds = 30          // endpoint odbija duze zahteve
     val redAfterSeconds = 15     // od ove sekunde tajmer pocrveni
