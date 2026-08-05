@@ -40,9 +40,15 @@ class PendingStore:
         return path
 
     def list(self) -> list[Path]:
+        """Od najstarijeg ka najnovijem.
+
+        Sortira se po vremenu izmene, ne po imenu: kad se pojavi brojac u imenu
+        ("...-930-1.wav"), azbucni redosled se razilazi sa redosledom upisa pa
+        bi `_trim` brisao pogresne fajlove.
+        """
         if not self.dir.exists():
             return []
-        return sorted(self.dir.glob("*.wav"))
+        return sorted(self.dir.glob("*.wav"), key=lambda p: p.stat().st_mtime_ns)
 
     def load(self, path: Path) -> bytes:
         with wave.open(str(path)) as fh:
