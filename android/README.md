@@ -60,9 +60,15 @@ Samsungu zakopana.
 Bez trećeg tekst i dalje radi, ali završi u clipboard-u pa ga lepiš ručno.
 Ekran aplikacije jasno kaže da li je Pristupačnost uključena.
 
-**Za mikrofon na tastaturi:** *Voice input* → izaberi Diktat. Radi sa Samsung
-tastaturom; Gboard po pravilu ignoriše sistemski izbor i koristi svoje
-prepoznavanje.
+**Za mikrofon na tastaturi:** *Voice input* → izaberi Diktat.
+
+Da li tastatura zaista zove nas ili Google-a, proverava se za dve sekunde:
+reci **„ne znam"**. Ako ispiše `nzm` — naš servis radi. Ako ispiše `Ne znam`
+— tastatura koristi svoje prepoznavanje i ignoriše sistemski izbor.
+
+Samsung tastatura pita servis koje jezike podržava (`GET_LANGUAGE_DETAILS`).
+Bez odgovora pretpostavi engleski i odbije srpski, pa `LanguageDetailsReceiver`
+na to odgovara. Gboard to ne pita.
 
 ---
 

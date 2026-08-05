@@ -79,6 +79,16 @@
                 android:resource="@xml/recognition_service" />
         </service>
 
+        <!-- Odgovara tastaturi koje jezike podrzavamo. Bez ovoga Samsung
+             tastatura pretpostavi engleski i odbije srpski. -->
+        <receiver
+            android:name=".LanguageDetailsReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.action.GET_LANGUAGE_DETAILS" />
+            </intent-filter>
+        </receiver>
+
         <!-- Rezervni okidac. -->
         <service
             android:name=".DiktatTileService"
