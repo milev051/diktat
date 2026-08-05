@@ -44,7 +44,7 @@ DEFAULTS = {
     # --- Izlaz ---
     "insert_method": "paste",     # "paste" | "type" | "clipboard_only"
     "restore_clipboard": True,
-    "show_overlay": True,
+    "show_overlay": False,   # pilula na ekranu; stanje se vidi po ikonici u menu baru
     "overlay_position": "top-right",  # "top-right" (kao notifikacija) | "bottom"
     "trailing_space": True,
 

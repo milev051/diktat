@@ -18,7 +18,7 @@
   "min_seconds": 0.35,
   "insert_method": "paste",
   "restore_clipboard": true,
-  "show_overlay": true,
+  "show_overlay": false,
   "trailing_space": true,
   "web_max_seconds": 30,
   "auto_segment": true,

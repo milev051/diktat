@@ -4,8 +4,7 @@ Diktiranje na macOS-u: **drži desni Command**, pričaj, pusti — tekst se poja
 u kojoj si trenutno. U menu baru ikonica pokazuje stanje.
 
 ```
-menu bar:   ⚪ spremno    🟢 snima    🟡 obrađuje    ⚠️ greška
-na ekranu:  ( 0:12 ) zeleno = snima     ( 0:12 ) žuto = obrađuje
+⚪ spremno    🟢 snima    🟡 obrađuje    ⚠️ greška
 ```
 
 ---
@@ -66,11 +65,8 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Command**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-- Gore desno se pojavi mala pilula sa vremenom. **Boja je ceo indikator:**
-  zelena dok snima, žuta dok se obrađuje. Vreme se na kraju snimanja zamrzne
-  i stoji na žutoj dok tekst ne stigne. **Žuti prsten oko zelene** znači da
-  snimaš, a prethodni segment se još obrađuje u pozadini.
-  Za prikaz na dnu sredine: `"overlay_position": "bottom"`.
+- Stanje se vidi po ikonici u menu baru. Ako hoćeš i pilulu sa vremenom preko
+  ekrana, uključi `"show_overlay": true` (pozicija: `"top-right"` ili `"bottom"`).
 - **Snimanje se ne prekida naglo kad pustiš taster** — nastavlja još `tail_seconds`
   (0.8s), jer se taster pušta tačno na kraju poslednje reči pa bi se ona izgubila.
 - **Možeš odmah da kreneš u sledeći diktat dok se prethodni još obrađuje.** Mikrofon
@@ -130,7 +126,7 @@ za tvoj jezik — dostupnost za `sr-RS` nije ista u svim regionima.
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
-| `show_overlay` | `true` | prikaz stanja preko ekrana |
+| `show_overlay` | `false` | pilula sa vremenom preko ekrana |
 | `overlay_position` | `top-right` | `top-right` (kao notifikacija) ili `bottom` |
 | `trailing_space` | `true` | razmak na kraju, da se rečenice nadovezuju |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja (bira se iz menija **Mikrofon**) |
