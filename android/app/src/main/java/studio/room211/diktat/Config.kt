@@ -38,11 +38,14 @@ class Config(context: Context) {
      *                delove dok snimanje tece dalje
      */
     var continuous: Boolean
-        get() = prefs.getBoolean("continuous", false)
+        get() = prefs.getBoolean("continuous", true)
         set(v) = prefs.edit().putBoolean("continuous", v).apply()
 
-    /** U neprekidnom rezimu: posle koliko sekundi pauza sme da sece. */
-    val segmentAfterSeconds get() = prefs.getInt("segment_after_seconds", 10)
+    /**
+     * Koliko segment mora da traje pre nego sto pauza sme da ga presece.
+     * 0 znaci: seci na SVAKOJ pauzi, ma koliko kratka celina bila.
+     */
+    val segmentAfterSeconds get() = prefs.getInt("segment_after_seconds", 0)
     val pauseSeconds get() = prefs.getFloat("pause_seconds", 0.7f).toDouble()
 
     /** Sigurnosna granica i za neprekidni rezim — da zaboravljen diktat stane. */

@@ -133,9 +133,9 @@ class MainActivity : AppCompatActivity() {
         box.addView(
             body(
                 this,
-                "Bez vremenskog ograničenja. Seče na pauzama i šalje delove dok " +
-                    "snimanje teče dalje, pa tekst stiže usput; ostatak ide kad " +
-                    "ručno zaustaviš.\n\n" +
+                "Bez vremenskog ograničenja. Seče na svakoj pauzi — makar celina " +
+                    "bila od dve reči — i šalje delove dok snimanje teče dalje, " +
+                    "pa tekst stiže usput. Ostatak ide kad ručno zaustaviš.\n\n" +
                     "Isključeno: jedan snimak do 30s, pa obrada.",
             )
         )

@@ -40,6 +40,11 @@ izgovoreno „pet hiljada". Tačka se briše samo ako je prate **tačno tri cifr
 i tu se broj završava — tako `verzija 2.0` i `android 4.4` ostaju celi. Zarez se
 ne dira, on je decimalni.
 
+**`segment_after_seconds` i `pause_seconds` nisu isto.** Prvo je najkraći
+segment koji sme da se preseče (0 = svaka pauza vredi), drugo je koliko tišine
+uopšte broji kao pauza (0.7s). Snižavanje drugog bi seklo između reči i
+proizvodilo krhotine koje se loše prepoznaju — menjaj prvo.
+
 **Neprekidni režim ne sme da gomila zvuk u memoriji.** Sat vremena je preko
 100 MB. Zato Android `Recorder` izbacuje komade kroz red, a potrošač drži samo
 tekući segment i pušta ga čim ga pošalje.

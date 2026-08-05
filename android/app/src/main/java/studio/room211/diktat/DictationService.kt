@@ -284,7 +284,9 @@ class DictationService : Service() {
         }
         val color = when {
             busy -> "#E08A00"                                   // obrada
-            seconds >= cfg.redAfterSeconds -> "#C62828"         // pred kraj
+            // U neprekidnom rezimu nema granice od 30s, pa crveno upozorenje
+            // nema sta da najavi.
+            !cfg.continuous && seconds >= cfg.redAfterSeconds -> "#C62828"
             else -> "#1C8F3D"                                   // snima
         }
         (view.background as GradientDrawable).setColor(Color.parseColor(color))

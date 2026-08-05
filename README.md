@@ -64,9 +64,13 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Option**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
-**Režim „Neprekidno"** (meni → Režim) ukida granicu od 30s: seče na pauzama i
-šalje delove dok pričaš dalje, pa tekst stiže usput. Ostatak ide kad ručno
-zaustaviš. Ponaša se kao prekidač — držati taster minutima nema smisla.
+Dva nezavisna podešavanja:
+
+- **Režim** — *Drži taster* ili *Prekidač* (podrazumevano prekidač: pritisneš da
+  počneš, pritisneš da završiš)
+- **Neprekidno** (podrazumevano uključeno) — ukida granicu od 30s, seče na
+  **svakoj pauzi** i šalje delove dok pričaš dalje, pa tekst stiže usput.
+  Ostatak ide kad zaustaviš.
 
 - **U običnom režimu snimanje staje na 30 sekundi** i tekst ide na obradu; nastavak traži
   nov pritisak. Tako slučajno pokrenut diktat ne može da snima satima. Do tada se ne seče —
@@ -112,8 +116,10 @@ zaustaviš. Ponaša se kao prekidač — držati taster minutima nema smisla.
 | `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
 | `hotkey` | `alt_r` | desni Option; `cmd_r`, `ctrl_r`, `f13`… |
-| `mode` | `hold` | `hold`, `toggle`, `continuous` |
+| `mode` | `toggle` | način aktivacije: `hold` (drži) ili `toggle` (pritisni) |
+| `continuous` | `true` | bez granice; seče na svakoj pauzi |
 | `continuous_max_seconds` | `3600` | sigurnosna granica i za neprekidni režim |
+| `segment_after_seconds` | `0` | `0` = seci na svakoj pauzi, ma koliko kratka celina |
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |

@@ -119,12 +119,14 @@ class DictateApp(rumps.App):
         mode_menu = rumps.MenuItem("Režim")
         self.item_hold = rumps.MenuItem("Drži taster", callback=self._set_hold)
         self.item_toggle = rumps.MenuItem("Prekidač", callback=self._set_toggle)
-        self.item_continuous = rumps.MenuItem(
-            "Neprekidno (bez granice)", callback=self._set_continuous
-        )
         mode_menu.add(self.item_hold)
         mode_menu.add(self.item_toggle)
-        mode_menu.add(self.item_continuous)
+
+        # Neprekidno je nezavisno od nacina aktivacije: bira se koliko dugo
+        # snima, a ne kako se pokrece.
+        self.item_continuous = rumps.MenuItem(
+            "Neprekidno (bez granice)", callback=self._toggle_continuous
+        )
 
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
@@ -151,6 +153,7 @@ class DictateApp(rumps.App):
             self.item_refresh,
             None,
             mode_menu,
+            self.item_continuous,
             lang_menu,
             self.item_ascii,
             None,
@@ -195,7 +198,7 @@ class DictateApp(rumps.App):
         mode = self.cfg.get("mode", "hold")
         self.item_hold.state = 1 if mode == "hold" else 0
         self.item_toggle.state = 1 if mode == "toggle" else 0
-        self.item_continuous.state = 1 if mode == "continuous" else 0
+        self.item_continuous.state = 1 if self.cfg.get("continuous", True) else 0
         current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
@@ -279,14 +282,16 @@ class DictateApp(rumps.App):
 
     def _limit_seconds(self) -> float:
         """Koliko sme da traje JEDAN pritisak tastera."""
-        if self.cfg.get("mode") == "continuous":
+        if self._segmenting():
             # Segmenti drze pojedinacne zahteve kratkim, pa granica sluzi samo
             # da zaboravljen diktat jednom stane.
             return float(self.cfg.get("continuous_max_seconds", 3600))
-        if self.cfg.get("auto_segment", True):
-            # Segmenti drze pojedinacne zahteve kratkim, pa granica od 30s pada.
-            return float(self.cfg.get("max_seconds", 290))
         return float(self.cfg.get("max_request_seconds", 30))
+
+    def _segmenting(self) -> bool:
+        return bool(self.cfg.get("continuous", True)) or bool(
+            self.cfg.get("auto_segment", False)
+        )
 
     def _next_ticket(self) -> int:
         """Redni broj za ubacivanje.
@@ -428,8 +433,7 @@ class DictateApp(rumps.App):
     def _transcribe(self, recorder):
         """Na dugom diktatu sece snimak na pauzama i salje delove na obradu
         dok ti jos pricas — tako nema cekanja na kraju."""
-        if not (self.cfg.get("auto_segment", True) or
-                self.cfg.get("mode") == "continuous"):
+        if not self._segmenting():
             session = self._dump.session() if self._dump else None
             pcm = b"".join(self._tracked(recorder))
             if recorder.cancelled:
@@ -636,6 +640,9 @@ class DictateApp(rumps.App):
         with self._count_lock:
             if self._pending > 0:
                 return "busy"
+        if self._segmenting():
+            # Nema granice od 30s, pa crveno upozorenje nema sta da najavi.
+            return None
         elapsed = time.monotonic() - self._record_started_at
         return "recording" if elapsed >= RED_AFTER else None
 
@@ -748,8 +755,10 @@ class DictateApp(rumps.App):
     def _set_toggle(self, _):
         self._set_mode("toggle")
 
-    def _set_continuous(self, _):
-        self._set_mode("continuous")
+    def _toggle_continuous(self, _):
+        self.cfg["continuous"] = not bool(self.cfg.get("continuous", True))
+        config.save(self.cfg)
+        self._sync_menu_marks()
 
     def _set_mode(self, mode):
         self.cfg["mode"] = mode

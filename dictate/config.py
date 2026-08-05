@@ -19,7 +19,7 @@ DEFAULTS = {
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
     "auto_segment": False,
-    "segment_after_seconds": 10,  # samo uz auto_segment
+    "segment_after_seconds": 0,   # 0 = seci na svakoj pauzi, ma koliko kratak segment
     "pause_seconds": 0.7,         # koliko tisine znaci "kraj misli"
     "max_request_seconds": 30,    # snimanje staje ovde; endpoint odbija duze
     "max_seconds": 290,           # gornja granica jednog pritiska tastera
@@ -31,7 +31,8 @@ DEFAULTS = {
 
     # --- Hotkey ---
     "hotkey": "alt_r",            # desni Option; cmd_r | ctrl_r | f13 ...
-    "mode": "hold",               # "hold" | "toggle" | "continuous"
+    "mode": "toggle",             # nacin aktivacije: "hold" | "toggle"
+    "continuous": True,           # bez granice; sece na svakoj pauzi
     "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni
     "min_seconds": 0.35,          # kraci pritisak se tretira kao obican Cmd
 
