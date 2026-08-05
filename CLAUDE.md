@@ -53,6 +53,8 @@ cifara**; crtica samo kad stoji sama, da `crno-beli` ostane celo.
 | Grana koja crta tajmer izlazi pre osvežavanja naslova | ikonica zaglavi u pogrešnom stanju | grana sama postavlja naslov |
 | `_settle_phase` i `_on_start` bez zajedničkog katanca | „snima" se prepiše preko „obrađuje" | isti `_session_lock` |
 | Slot za mikrofon oslobođen pre zatvaranja strima | sledeći diktat reinicijalizuje PortAudio nad živim strimom | zatvori strim **prvi** |
+| Skraćenice: `<` bez `trim()` posle skidanja | `dinara=< RSD` ostavi razmak iz same zamene | `substring(1).trim()` |
+| Skraćenice: ista fraza navedena dvaput | stari red iznad novog tiho pojede reč | dedupe, **poslednji pobeđuje** |
 
 ---
 

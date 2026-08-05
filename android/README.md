@@ -155,6 +155,16 @@ evra=€                                 „20 evra" → „20 €"
 Regularni izrazi se primenjuju **prvi**, da prosto pravilo `dolara=$` ne pojede
 reč pre nego što premeštanje stigne na red.
 
+Ako `<` izgleda kao da ne radi, dva su uzroka — oba su sada pokrivena, ali
+vredi ih znati:
+
+- **razmak posle znaka**: `dinara=< RSD` → razmak dolazi iz same zamene
+- **stari red iznad novog**: ako je `dinara=RSD` ostao iznad `dinara=<RSD`,
+  prvi pojede reč. Sada **poslednji red pobeđuje**.
+
+U sekciji *Skraćenice* postoji polje **Proba** — upišeš rečenicu i odmah vidiš
+šta pravila urade, bez diktiranja.
+
 Isti spisak služi i kao **ispravljač**: ako prepoznavanje stalno greši istu reč,
 dodaj `pogrešno=ispravno`. To je praktičniji od pravopisne provere, jer
 prepoznavanje ne pravi slovne greške nego zamenjuje reč drugom ispravnom rečju —

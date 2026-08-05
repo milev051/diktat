@@ -26,13 +26,11 @@ object Abbreviations {
         "jebi ga" to "jbg",
         "znam" to "znm",
         "ne mogu" to "nmg",
-        "nema veze" to "nvz",
-        "molim te" to "mlm",
-        "vidimo se" to "vs",
+        "nema veze" to "nmvz",
         "na primer" to "npr",
         "i tako dalje" to "itd",
-        "u stvari" to "ustvari",
         "to jest" to "tj",
+        "to je to" to "tjt",
         // "<" znaci: zalepi se za prethodnu rec
         "minuta" to "<min",
         "minut" to "<min",
@@ -51,7 +49,17 @@ object Abbreviations {
     fun defaultText(): String =
         DEFAULT.joinToString("\n") { (fraza, kratko) -> "$fraza=$kratko" }
 
-    fun parse(text: String): List<Pair<String, String>> =
+    /**
+     * Poslednji red pobedjuje ako je ista fraza navedena vise puta — inace bi
+     * stari red iznad novog tiho pojeo rec pre nego sto novi dodje na red.
+     */
+    fun parse(text: String): List<Pair<String, String>> {
+        val seen = LinkedHashMap<String, String>()
+        for ((phrase, replacement) in rawParse(text)) seen[phrase.lowercase()] = replacement
+        return seen.entries.map { it.key to it.value }
+    }
+
+    private fun rawParse(text: String): List<Pair<String, String>> =
         text.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
@@ -94,7 +102,9 @@ object Abbreviations {
             .filter { !it.first.startsWith("~") }
             .sortedByDescending { it.first.length }) {
             val join = replacement.startsWith("<")
-            val short = if (join) replacement.substring(1) else replacement
+            // trim posle skidanja "<": napisano kao "< RSD" razmak bi inace
+            // dosao iz same zamene, pa bi izgledalo da "<" ne radi.
+            val short = if (join) replacement.substring(1).trim() else replacement
 
             // Lookbehind ide POSLE \s*, ne pre: cifra ispred ("15 minuta") je
             // rec-znak, pa bi provera stavljena ranije oborila poklapanje.

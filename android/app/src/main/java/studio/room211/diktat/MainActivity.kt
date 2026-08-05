@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var cfg: Config
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
+    private lateinit var previewOut: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,9 +128,15 @@ class MainActivity : Activity() {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            setOnFocusChangeListener { _, focused ->
-                if (!focused) cfg.abbreviationRules = text.toString()
-            }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    // Cuva se odmah: inace se izmena izgubi ako se ekran zatvori
+                    // pre nego sto polje izgubi fokus.
+                    cfg.abbreviationRules = s?.toString() ?: ""
+                }
+                override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+                override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+            })
         })
         root.addView(
             body(
@@ -138,6 +145,25 @@ class MainActivity : Activity() {
                     "dugme ispod da pokupiš nova — pazi, briše tvoje izmene."
             )
         )
+        root.addView(body("Proba — upiši rečenicu i vidi šta pravila urade:"))
+        previewOut = body("")
+        val previewIn = EditText(this).apply {
+            hint = "npr. imam 5000 dinara i 15 minuta"
+            inputType = InputType.TYPE_CLASS_TEXT
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    previewOut.text = "→  " + TextPolish.apply(s?.toString() ?: "", cfg).trim()
+                }
+                override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+                override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+            })
+        }
+        root.addView(previewIn)
+        root.addView(previewOut)
+
         root.addView(action("Vrati podrazumevane skraćenice") {
             cfg.abbreviationRules = Abbreviations.defaultText()
             recreate()
