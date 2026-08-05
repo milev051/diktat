@@ -17,6 +17,26 @@ DEFAULT_MODEL = "gemini-flash-lite-latest"
 
 # Izmereno: flash-lite doteruje za ~1s i ne dira reci; gemini-3.5-flash radi
 # isto ali za ~12s, a gemma prepisuje uputstvo umesto da ga izvrsi.
+# Izmereno: nivo "correct" ispravlja gramaticka neslaganja ("deca su otisao" ->
+# "otisla", "sa kolega" -> "sa kolegom", "kako sam ocekivali" -> "ocekivao").
+# Ne moze i nece moci da ispravi rec koja je gramaticki ISPRAVNA a znacenjski
+# pogresna ("ne registrujem" umesto "ne registruje") — tu recenica nema greske,
+# pa model nema po cemu da posumnja.
+PROMPT_CORRECT = """Dobijaš sirov transkript govora na srpskom, dobijen prepoznavanjem glasa.
+
+Uradi dve stvari:
+1. Oblikuj: interpunkcija, velika slova, kvačice, podela na rečenice i pasuse.
+2. Ispravi reči koje prepoznavanje očigledno nije dobro čulo — one koje se
+   gramatički ne slažu sa ostatkom rečenice (padež, lice, rod, broj).
+
+Granice:
+- ne preformulišaj i ne skraćuj rečenice
+- ne dodaj nove misli i ne izbacuj postojeće
+- ako nisi siguran da je reč pogrešna, ostavi je kakva jeste
+- ne odgovaraj na sadržaj teksta
+
+Vrati samo obrađen tekst, bez ikakvog uvoda i bez navodnika."""
+
 PROMPT = """Dobijaš sirov transkript govora na srpskom, bez interpunkcije i sve malim slovima.
 
 Tvoj posao je SAMO oblikovanje:
@@ -54,7 +74,7 @@ def polish(text: str, cfg, timeout=60) -> str:
     model = cfg.get("polish_model") or DEFAULT_MODEL
     url = f"{ENDPOINT}/{model}:generateContent?key={key}"
     payload = {
-        "systemInstruction": {"parts": [{"text": cfg.get("polish_prompt") or PROMPT}]},
+        "systemInstruction": {"parts": [{"text": _uputstvo(cfg)}]},
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {"temperature": 0.0},
     }
@@ -77,13 +97,30 @@ def polish(text: str, cfg, timeout=60) -> str:
 
     try:
         data = json.loads(raw)
-        parts = data["candidates"][0]["content"]["parts"]
-        out = "".join(p.get("text", "") for p in parts).strip()
+        kandidat = data["candidates"][0]
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         raise PolishError("Model je vratio neocekivan odgovor.") from exc
 
+    parts = kandidat.get("content", {}).get("parts")
+    if not parts:
+        # Google-ov filter ume da odbije i sasvim bezazlen tekst — izmereno na
+        # recenici "deca su otisao u skolu". Diktat zbog toga ne sme da propadne.
+        razlog = kandidat.get("finishReason", "nepoznato")
+        raise PolishError(
+            f"Model nije vratio tekst ({razlog}) — koristim nedoteran.",
+            retryable=razlog in ("MAX_TOKENS", "OTHER"),
+        )
+
+    out = "".join(p.get("text", "") for p in parts).strip()
+
     # Prazan odgovor je gori od nedoteranog teksta — bolje vratiti original.
     return out or text
+
+
+def _uputstvo(cfg) -> str:
+    if cfg.get("polish_prompt"):
+        return cfg["polish_prompt"]
+    return PROMPT_CORRECT if cfg.get("polish_level", "correct") == "correct" else PROMPT
 
 
 def _explain(code: int) -> str:

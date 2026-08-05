@@ -134,6 +134,9 @@ class DictateApp(rumps.App):
         self.item_polish = rumps.MenuItem(
             "Formalni režim (doteruje AI)", callback=self._toggle_polish
         )
+        self.item_polish_correct = rumps.MenuItem(
+            "…i ispravi očigledne greške", callback=self._toggle_polish_level
+        )
 
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
@@ -162,6 +165,7 @@ class DictateApp(rumps.App):
             mode_menu,
             self.item_continuous,
             self.item_polish,
+            self.item_polish_correct,
             lang_menu,
             self.item_ascii,
             None,
@@ -208,6 +212,9 @@ class DictateApp(rumps.App):
         self.item_toggle.state = 1 if mode == "toggle" else 0
         self.item_continuous.state = 1 if self.cfg.get("continuous", True) else 0
         self.item_polish.state = 1 if self._formal() else 0
+        self.item_polish_correct.state = (
+            1 if self.cfg.get("polish_level", "correct") == "correct" else 0
+        )
         self.item_polish.title = (
             "Formalni režim (doteruje AI)" if polish.available(self.cfg)
             else "Formalni režim — nema API ključa"
@@ -832,6 +839,12 @@ class DictateApp(rumps.App):
             self.item_status.title = "Upiši polish_api_key u config.json"
             return
         self.cfg["polish"] = not bool(self.cfg.get("polish", False))
+        config.save(self.cfg)
+        self._sync_menu_marks()
+
+    def _toggle_polish_level(self, _):
+        nivo = "format" if self.cfg.get("polish_level", "correct") == "correct" else "correct"
+        self.cfg["polish_level"] = nivo
         config.save(self.cfg)
         self._sync_menu_marks()
 

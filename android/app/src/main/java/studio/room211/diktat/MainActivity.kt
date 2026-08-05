@@ -156,6 +156,17 @@ class MainActivity : AppCompatActivity() {
                     "sačuvan i posle nadogradnje aplikacije.",
             )
         )
+        box.addView(switch(this, "…i ispravi očigledne greške", cfg.polishCorrect) {
+            cfg.polishCorrect = it
+        })
+        box.addView(
+            body(
+                this,
+                "Ispravlja reči koje se gramatički ne slažu — „sa kolega\" → " +
+                    "„sa kolegom\". Reč koja je gramatički ispravna a značenjski " +
+                    "pogrešna se ne može ispraviti; tu rečenica nema greške.",
+            )
+        )
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
         val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {

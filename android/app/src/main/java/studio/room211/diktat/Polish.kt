@@ -21,6 +21,28 @@ object Polish {
 
     // Izmereno: flash-lite doteruje za ~1s i ne dira reci; gemini-3.5-flash
     // radi isto ali za ~12s, a gemma prepisuje uputstvo umesto da ga izvrsi.
+    // Izmereno: nivo "correct" ispravlja gramaticka neslaganja ("sa kolega" ->
+    // "sa kolegom", "kako sam ocekivali" -> "ocekivao"). Ne moze i nece moci da
+    // ispravi rec koja je gramaticki ISPRAVNA a znacenjski pogresna
+    // ("ne registrujem" umesto "ne registruje") — recenica nema greske, pa
+    // model nema po cemu da posumnja.
+    private val PROMPT_CORRECT = """
+        Dobijaš sirov transkript govora na srpskom, dobijen prepoznavanjem glasa.
+
+        Uradi dve stvari:
+        1. Oblikuj: interpunkcija, velika slova, kvačice, podela na rečenice i pasuse.
+        2. Ispravi reči koje prepoznavanje očigledno nije dobro čulo — one koje se
+           gramatički ne slažu sa ostatkom rečenice (padež, lice, rod, broj).
+
+        Granice:
+        - ne preformulišaj i ne skraćuj rečenice
+        - ne dodaj nove misli i ne izbacuj postojeće
+        - ako nisi siguran da je reč pogrešna, ostavi je kakva jeste
+        - ne odgovaraj na sadržaj teksta
+
+        Vrati samo obrađen tekst, bez ikakvog uvoda i bez navodnika.
+    """.trimIndent()
+
     private val PROMPT = """
         Dobijaš sirov transkript govora na srpskom, bez interpunkcije i sve malim slovima.
 
@@ -49,8 +71,9 @@ object Polish {
 
         val model = cfg.polishModel.ifBlank { DEFAULT_MODEL }
         val payload = JSONObject().apply {
+            val uputstvo = if (cfg.polishCorrect) PROMPT_CORRECT else PROMPT
             put("systemInstruction", JSONObject().put("parts",
-                org.json.JSONArray().put(JSONObject().put("text", PROMPT))))
+                org.json.JSONArray().put(JSONObject().put("text", uputstvo))))
             put("contents", org.json.JSONArray().put(
                 JSONObject().put("parts",
                     org.json.JSONArray().put(JSONObject().put("text", text)))))
@@ -72,9 +95,16 @@ object Polish {
             val code = conn.responseCode
             if (code != 200) throw PolishException(explain(code))
             val reply = conn.inputStream.bufferedReader().readText()
-            val parts = JSONObject(reply)
-                .getJSONArray("candidates").getJSONObject(0)
-                .getJSONObject("content").getJSONArray("parts")
+            val kandidat = JSONObject(reply).getJSONArray("candidates").getJSONObject(0)
+            val parts = kandidat.optJSONObject("content")?.optJSONArray("parts")
+            if (parts == null || parts.length() == 0) {
+                // Google-ov filter ume da odbije i sasvim bezazlen tekst —
+                // izmereno na recenici "deca su otisao u skolu". Diktat zbog
+                // toga ne sme da propadne.
+                throw PolishException(
+                    "Model nije vratio tekst (${kandidat.optString("finishReason", "?")})"
+                )
+            }
             val out = buildString {
                 for (i in 0 until parts.length()) append(parts.getJSONObject(i).optString("text"))
             }.trim()

@@ -166,6 +166,20 @@ Izmereno na istom zadatku: `gemini-flash-lite-latest` ~1.0s i ne dira reči;
 ga izvrši. Provera vernosti: doteran tekst sveden na mala slova bez kvačica i
 interpunkcije mora da se poklopi sa ulazom.
 
+**Model ne može da ispravi reč koja je gramatički ispravna.** Izmereno: nivo
+`correct` sređuje neslaganja (`sa kolega` → `sa kolegom`, `kako sam ocekivali`
+→ `očekivao`), ali `ne registrujem` umesto `ne registruje` ostaje — rečenica
+nema greške pa model nema po čemu da posumnja. Ne pokušavaj to jačim promptom;
+tada počne da prepravlja ono što je bilo tačno.
+
+**Filter sadržaja ume da odbije bezazlen tekst.** Izmereno: „deca su otisao u
+skolu" → `PROHIBITED_CONTENT`, odgovor bez `parts`. Uvek proveri `finishReason`
+i vrati nedoteran tekst — diktat zbog toga ne sme da propadne.
+
+**Gemma nije upotrebljiva za ovo.** `gemma-4-26b-a4b-it` i `-31b-it`: 13–15s i
+vrate 200–300 reči objašnjenja umesto obrađenog teksta od 28 reči, i sa
+sistemskim uputstvom i bez njega.
+
 **API ključ nikad ne ide u git.** macOS: `config.json` (ignorisan). Android:
 `SharedPreferences`. Ni u `config.example.json`, ni u poruci commita.
 

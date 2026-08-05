@@ -116,6 +116,11 @@ class Config(context: Context) {
         get() = prefs.getString("polish_api_key", "")!!
         set(v) = prefs.edit().putString("polish_api_key", v.trim()).apply()
 
+    /** true = i ispravi ocigledne gramaticke greske, ne samo oblikuj. */
+    var polishCorrect: Boolean
+        get() = prefs.getBoolean("polish_correct", true)
+        set(v) = prefs.edit().putBoolean("polish_correct", v).apply()
+
     var polishModel: String
         get() = prefs.getString("polish_model", "")!!
         set(v) = prefs.edit().putString("polish_model", v.trim()).apply()

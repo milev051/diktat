@@ -120,7 +120,8 @@ Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu koji dodaje
 interpunkciju, velika slova i kvačice, a reči ne dira. Dok se čeka, pilula
 pokazuje plavo **AI**.
 
-Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
+Prekidač *…i ispravi očigledne greške* dodatno sređuje gramatička neslaganja
+(`sa kolega` → `sa kolegom`). Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
 preživljava instalaciju preko postojeće dok su paket i potpis isti.
 
 ## Potrošnja podataka

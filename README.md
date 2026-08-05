@@ -147,6 +147,7 @@ ključa nema i režim se ne može uključiti.
 | `polish_api_key` | `""` | bez njega režim ne radi |
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
+| `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i
 izmišljao krajeve rečenica, a broj poziva bi za deset minuta diktata skočio sa

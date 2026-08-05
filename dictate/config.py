@@ -49,6 +49,7 @@ DEFAULTS = {
     "polish_api_key": "",         # Google AI Studio kljuc; ostaje pri nadogradnji
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
+    "polish_level": "correct",    # "format" = samo oblikuj | "correct" = i ispravi ocigledne greske
 
     # --- Debug ---
     "debug": False,               # snimaj zvuk i tekst radi poredjenja
