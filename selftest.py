@@ -11,7 +11,7 @@ a cela aplikacija ne, problem je u dozvolama za taster ili u ubacivanju teksta.
 import sys
 import time
 
-from dictate import audio, config, stt, webstt
+from dictate import audio, config, webstt
 
 BAR = "▁▂▃▄▅▆▇█"
 
@@ -19,10 +19,9 @@ BAR = "▁▂▃▄▅▆▇█"
 def main():
     seconds = float(sys.argv[1]) if len(sys.argv) > 1 else 5.0
     cfg = config.load()
-    engine = cfg.get("engine", "web")
-    lang = (cfg.get("language_codes") or ["sr-RS"])[0]
+    lang = cfg.get("language", "sr-RS")
 
-    print(f"\nmotor: {engine}   jezik: {lang}   mikrofon: {audio.default_input_name()}")
+    print(f"\njezik: {lang}   mikrofon: {audio.default_input_name()}")
     for n in (3, 2, 1):
         print(f"  {n}…", end="", flush=True)
         time.sleep(0.7)
@@ -35,10 +34,7 @@ def main():
     collector = _collect(rec, frames)
     deadline = time.time() + seconds
 
-    if engine == "cloud":
-        text = _run_cloud(cfg, collector, deadline, rec)
-    else:
-        text = _run_web(cfg, lang, collector, deadline, rec, frames)
+    text = _transcribe(cfg, lang, collector, deadline, rec, frames)
 
     rec.close()
     print("\n")
@@ -70,7 +66,7 @@ def _collect(rec, frames):
     return gen
 
 
-def _run_web(cfg, lang, collector, deadline, rec, frames):
+def _transcribe(cfg, lang, collector, deadline, rec, frames):
     for _ in collector(deadline):
         pass
     rec.stop()
@@ -79,22 +75,11 @@ def _run_web(cfg, lang, collector, deadline, rec, frames):
         b"".join(frames),
         language=lang,
         sample_rate=cfg["sample_rate"],
-        key=cfg.get("web_api_key") or None,
+        key=cfg.get("api_key") or None,
+        profanity_filter=bool(cfg.get("profanity_filter", False)),
     )
     return webstt.tidy(text) if cfg.get("capitalize_first", True) else text
 
-
-def _run_cloud(cfg, collector, deadline, rec):
-    project = config.resolve_credentials(cfg)
-    client = stt.make_client(cfg)
-
-    def show(t):
-        print(f"\r  {t[-70:]:<72}", end="", flush=True)
-
-    return stt.stream(
-        client, cfg, project, collector(deadline),
-        on_interim=show, on_final=show,
-    )
 
 
 if __name__ == "__main__":

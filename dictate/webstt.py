@@ -4,11 +4,11 @@ Bez naloga i bez kredencijala. Isti onaj koji `SpeechRecognition.recognize_googl
 zove vec godinama. Srpski radi vrlo dobro.
 
 Ogranicenja, znaj ih:
-  * BATCH, ne streaming — nema prikaza rec-po-rec dok pricas; tekst stize
-    tek kad pustis taster (~1-1.5s za kratke snimke).
+  * BATCH, ne streaming — tekst stize tek kad se posalje ceo komad
+    (~1.2s za snimke do 30s).
   * Nema automatske interpunkcije ni velikih slova.
   * Endpoint je nedokumentovan i kljuc je javni Chromium kljuc. Radi godinama,
-    ali Google ga moze ugasiti bez najave. Zato postoji i `engine: "cloud"`.
+    ali Google ga moze ugasiti bez najave.
   * Prakticno ide do ~30s po zahtevu; duze snimke bolje seci.
 """
 
@@ -86,7 +86,7 @@ def _parse(body: str) -> str:
 
 def _explain_http(code: int) -> str:
     if code == 403:
-        return "Google je odbio kljuc (403). Prebaci se na engine 'cloud'."
+        return "Google je odbio kljuc (403) — endpoint je verovatno stegnut."
     if code == 400:
         return "Neispravan zahtev (400) — proveri jezik i sample_rate."
     if code == 429:

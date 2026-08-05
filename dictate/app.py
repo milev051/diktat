@@ -17,7 +17,7 @@ import traceback
 import AppKit
 import rumps
 
-from . import audio, config, debugdump, hotkey, insert, overlay, stt, webstt
+from . import audio, config, debugdump, hotkey, insert, overlay, webstt
 
 ICON = {
     "idle": "⚪",
@@ -30,8 +30,6 @@ HUD_MAX_CHARS = 90
 ERROR_HUD_SECONDS = 4.0
 WARN_SECONDS = 10.0   # kad se predje u odbrojavanje
 
-_WEB = object()   # oznaka da je motor "web" (nema klijenta za pravljenje)
-
 
 class State:
     """Deljeno stanje izmedju radnih niti i UI niti."""
@@ -39,10 +37,7 @@ class State:
     def __init__(self):
         self.lock = threading.Lock()
         self.phase = "idle"          # idle | recording | thinking | error
-        self.finals: list[str] = []
-        self.interim = ""
         self.message = ""            # tekst greske ili statusa za HUD
-        self.last_text = ""
         self.dirty = True
 
     def set(self, **kw):
@@ -53,12 +48,9 @@ class State:
 
     def snapshot(self):
         with self.lock:
-            live = stt.join_segments(self.finals)
-            if self.interim:
-                live = (live + " " + self.interim).strip()
             was_dirty = self.dirty
             self.dirty = False
-            return self.phase, live, self.message, was_dirty
+            return self.phase, self.message, was_dirty
 
 
 class DictateApp(rumps.App):
@@ -68,8 +60,6 @@ class DictateApp(rumps.App):
         self.state = State()
         self.hud = overlay.Overlay(self.cfg.get("overlay_position", "bottom"))
 
-        self._client = None
-        self._project = None
         self._client_error = None
         self._session_lock = threading.Lock()
         self._recorder = None
@@ -82,6 +72,9 @@ class DictateApp(rumps.App):
         self._ticket = 0         # redni broj segmenta za ubacivanje
         self._insert_q: queue.Queue = queue.Queue()
         self._dump = None
+        self._hist_lock = threading.Lock()
+        self._history: list[str] = []
+        self._history_dirty = True
 
         self._build_menu()
         self._apply_debug(self.cfg.get("debug", False))
@@ -102,9 +95,7 @@ class DictateApp(rumps.App):
         self.item_status = rumps.MenuItem("Spremno")
         self.item_status.set_callback(None)
 
-        self.item_copy = rumps.MenuItem(
-            "Kopiraj poslednji tekst", callback=self._copy_last
-        )
+        self.history_menu = rumps.MenuItem("Istorija")
         self.item_debug = rumps.MenuItem(
             "Snimaj za debug", callback=self._toggle_debug
         )
@@ -130,25 +121,14 @@ class DictateApp(rumps.App):
             self.lang_items[code] = item
             lang_menu.add(item)
 
-        engine_menu = rumps.MenuItem("Motor")
-        self.engine_items = {}
-        for key, label in (
-            ("web", "Besplatni (bez naloga)"),
-            ("cloud", "Google Cloud (rec po rec)"),
-        ):
-            item = rumps.MenuItem(label, callback=self._make_engine_setter(key))
-            self.engine_items[key] = item
-            engine_menu.add(item)
-
         self.menu = [
             self.item_status,
             None,
-            self.item_copy,
+            self.history_menu,
             None,
             self.mic_menu,
             self.item_refresh,
             None,
-            engine_menu,
             mode_menu,
             lang_menu,
             None,
@@ -158,6 +138,7 @@ class DictateApp(rumps.App):
             rumps.MenuItem("Izlaz", callback=self._quit),
         ]
         self._rebuild_mic_menu()
+        self._rebuild_history_menu()
         self._sync_menu_marks()
 
     def _rebuild_mic_menu(self):
@@ -191,42 +172,13 @@ class DictateApp(rumps.App):
         mode = self.cfg.get("mode", "hold")
         self.item_hold.state = 1 if mode == "hold" else 0
         self.item_toggle.state = 1 if mode == "toggle" else 0
-        current = (self.cfg.get("language_codes") or ["sr-RS"])[0]
+        current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
-        engine = self.cfg.get("engine", "web")
-        for key, item in self.engine_items.items():
-            item.state = 1 if key == engine else 0
-
-    def _make_engine_setter(self, engine):
-        def setter(_):
-            if self.cfg.get("engine") == engine:
-                return
-            self.cfg["engine"] = engine
-            config.save(self.cfg)
-            self._client = None
-            self._client_error = None
-            self.state.set(phase="idle", message="")
-            self._preflight()          # cloud trazi kljuc, web ne
-            self._sync_menu_marks()
-
-        return setter
 
     # ------------------------------------------------------- preflight
 
     def _preflight(self):
-        if self.cfg.get("engine", "web") == "cloud":
-            try:
-                self._project = config.resolve_credentials(self.cfg)
-                self._client = stt.make_client(self.cfg)
-            except Exception as exc:  # noqa: BLE001
-                self._client_error = str(exc)
-                self.state.set(phase="error", message=str(exc))
-                return
-        else:
-            # Web motor nema sta da podesava — radi odmah.
-            self._client = _WEB
-
         if not hotkey.accessibility_granted():
             msg = (
                 "Nema Accessibility dozvole — hotkey nece raditi. "
@@ -238,8 +190,6 @@ class DictateApp(rumps.App):
     # ------------------------------------------------- hotkey callbacks
 
     def _on_start(self):
-        if self._client is None:
-            return
         with self._session_lock:
             if self._recorder is not None:
                 return
@@ -259,7 +209,7 @@ class DictateApp(rumps.App):
             self._recorder = recorder
 
         self._record_started_at = time.monotonic()
-        self.state.set(phase="recording", finals=[], interim="", message="")
+        self.state.set(phase="recording", message="")
         threading.Thread(target=self._run_session, args=(recorder,), daemon=True).start()
 
     def _on_stop(self):
@@ -282,12 +232,10 @@ class DictateApp(rumps.App):
 
     def _limit_seconds(self) -> float:
         """Koliko sme da traje JEDAN pritisak tastera."""
-        if self.cfg.get("engine", "web") == "cloud":
-            return float(self.cfg.get("max_seconds", 290))
         if self.cfg.get("auto_segment", True):
             # Segmenti drze pojedinacne zahteve kratkim, pa granica od 30s pada.
             return float(self.cfg.get("max_seconds", 290))
-        return float(self.cfg.get("web_max_seconds", 30))
+        return float(self.cfg.get("max_request_seconds", 30))
 
     def _next_ticket(self) -> int:
         """Redni broj za ubacivanje.
@@ -332,10 +280,7 @@ class DictateApp(rumps.App):
             return
         with self._count_lock:
             busy = self._pending > 0
-        self.state.set(
-            phase="thinking" if busy else "idle",
-            interim="", finals=[], message=message,
-        )
+        self.state.set(phase="thinking" if busy else "idle", message=message)
 
     # --------------------------------------------------------- sesija
 
@@ -350,17 +295,7 @@ class DictateApp(rumps.App):
         text = ""
         error = None
         try:
-            if self.cfg.get("engine", "web") == "cloud":
-                text = stt.stream(
-                    self._client,
-                    self.cfg,
-                    self._project,
-                    self._tracked(recorder),
-                    on_interim=lambda t: self.state.set(interim=t),
-                    on_final=self._append_final,
-                )
-            else:
-                text = self._run_web(recorder)
+            text = self._transcribe(recorder)
         except Exception as exc:  # noqa: BLE001
             error = _short_error(exc)
             traceback.print_exc()
@@ -373,7 +308,7 @@ class DictateApp(rumps.App):
         if recorder.cancelled or error:
             self._deliver(ticket, "")
             if error and not recorder.cancelled:
-                self.state.set(phase="error", interim="", message=error)
+                self.state.set(phase="error", message=error)
             else:
                 self._settle_phase()
             return
@@ -389,7 +324,6 @@ class DictateApp(rumps.App):
     def _finish(self, text: str) -> str:
         if self.cfg.get("trailing_space", True):
             text += " "
-        self.state.set(last_text=text)
         return text
 
     def _recognize(self, pcm: bytes) -> str:
@@ -397,18 +331,18 @@ class DictateApp(rumps.App):
             return ""
         text = webstt.recognize(
             pcm,
-            language=(self.cfg.get("language_codes") or ["sr-RS"])[0],
+            language=self.cfg.get("language", "sr-RS"),
             sample_rate=self.cfg["sample_rate"],
-            key=self.cfg.get("web_api_key") or None,
+            key=self.cfg.get("api_key") or None,
             profanity_filter=bool(self.cfg.get("profanity_filter", False)),
         )
         if text and self.cfg.get("capitalize_first", True):
             text = webstt.tidy(text)
         return text
 
-    def _run_web(self, recorder):
-        """Web motor. Na dugom diktatu sece snimak na pauzama i salje delove
-        na obradu dok ti jos pricas — tako nema cekanja na kraju."""
+    def _transcribe(self, recorder):
+        """Na dugom diktatu sece snimak na pauzama i salje delove na obradu
+        dok ti jos pricas — tako nema cekanja na kraju."""
         if not self.cfg.get("auto_segment", True):
             frames = list(self._tracked(recorder))
             if recorder.cancelled:
@@ -420,7 +354,7 @@ class DictateApp(rumps.App):
             pause_seconds=float(self.cfg.get("pause_seconds", 0.7))
         )
         cut_after = float(self.cfg.get("segment_after_seconds", 15))
-        hard_cut = float(self.cfg.get("web_max_seconds", 30))
+        hard_cut = float(self.cfg.get("max_request_seconds", 30))
         rate = self.cfg["sample_rate"]
 
         session = self._dump.session() if self._dump else None
@@ -433,7 +367,7 @@ class DictateApp(rumps.App):
             if session is not None:
                 everything.append(chunk)
             step = len(chunk) / 2 / rate
-            # Duzina segmenta se meri PO ZVUKU, ne po zidnom satu. web_max_seconds
+            # Duzina segmenta se meri PO ZVUKU, ne po zidnom satu. max_request_seconds
             # je granica koliko sekundi zvuka endpoint prima, pa ta dva moraju da
             # budu ista mera i onda kad potrosac kasni za mikrofonom.
             seconds += step
@@ -505,6 +439,7 @@ class DictateApp(rumps.App):
                     if self._pending > 0:
                         self._pending -= 1
                 if ready:
+                    self._remember(ready)
                     try:
                         insert.insert(
                             ready,
@@ -514,12 +449,6 @@ class DictateApp(rumps.App):
                     except Exception:  # noqa: BLE001
                         traceback.print_exc()
             self._settle_phase()
-
-    def _append_final(self, segment):
-        with self.state.lock:
-            self.state.finals.append(segment)
-            self.state.interim = ""
-            self.state.dirty = True
 
     # ----------------------------------------------------------- timer
 
@@ -531,7 +460,12 @@ class DictateApp(rumps.App):
             )
             self._policy_set = True
 
-        phase, live, message, dirty = self.state.snapshot()
+        # Istoriju puni radna nit, a meni sme da se dira samo odavde.
+        if self._history_dirty:
+            self._history_dirty = False
+            self._rebuild_history_menu()
+
+        phase, message, dirty = self.state.snapshot()
 
         # Auto-sklanjanje HUD-a sa greskom mora da radi i kad se stanje ne menja.
         if phase == "error" and self._error_shown_at is not None:
@@ -540,9 +474,8 @@ class DictateApp(rumps.App):
         elif phase != "error":
             self._error_shown_at = None
 
-        # Web motor nema teksta uzivo, pa umesto njega vrtimo merac nivoa —
-        # to mora da se osvezava i kad se stanje formalno ne menja.
-        if phase == "recording" and not live and self.cfg.get("show_overlay", True):
+        # Tajmer mora da se osvezava i kad se stanje formalno ne menja.
+        if phase == "recording" and self.cfg.get("show_overlay", True):
             recorder = self._recorder
             if recorder is not None:
                 clock = self._clock_text()
@@ -579,15 +512,13 @@ class DictateApp(rumps.App):
             return
 
         if phase in ("recording", "thinking"):
-            # Bez teksta uzivo (web motor) pilula nosi samo vreme; posle
-            # pustanja tastera ono se zamrzne i stoji dok obrada ne prodje.
-            shown, mono = (live, False) if live else (self._last_clock or "0:00", True)
-            if len(shown) > HUD_MAX_CHARS:
-                shown = "…" + shown[-HUD_MAX_CHARS:]
+            # Pilula nosi samo vreme; posle pustanja tastera ono se zamrzne
+            # i stoji dok obrada ne prodje.
+            shown = self._last_clock or "0:00"
             if not self.hud.visible:
-                self.hud.show(shown, mono=mono)
+                self.hud.show(shown, mono=True)
             else:
-                self.hud.set_text(shown, mono=mono)
+                self.hud.set_text(shown, mono=True)
             self.hud.set_state("recording" if phase == "recording" else "processing")
         elif phase == "error":
             # Greska se pokaze kratko pa se skloni; poruka ostaje u meniju.
@@ -619,9 +550,50 @@ class DictateApp(rumps.App):
 
     # -------------------------------------------------- menu callbacks
 
-    def _copy_last(self, _):
-        if self.state.last_text:
-            insert.set_clipboard(self.state.last_text)
+    def _remember(self, text: str):
+        """Zapamti ubacen tekst. Zove se iz radne niti, pa meni ne dira —
+        samo podigne zastavicu koju _tick pokupi na glavnoj niti."""
+        clean = text.strip()
+        if not clean:
+            return
+        size = max(1, int(self.cfg.get("history_size", 10)))
+        with self._hist_lock:
+            if clean in self._history:
+                self._history.remove(clean)
+            self._history.insert(0, clean)
+            del self._history[size:]
+        self._history_dirty = True
+
+    def _rebuild_history_menu(self):
+        # rumps pravi NSMenu tek kad se doda prva stavka.
+        if getattr(self.history_menu, "_menu", None) is not None:
+            self.history_menu.clear()
+        with self._hist_lock:
+            stavke = list(self._history)
+        if not stavke:
+            prazno = rumps.MenuItem("(još ništa nije izdiktirano)")
+            prazno.set_callback(None)
+            self.history_menu.add(prazno)
+            return
+        for text in stavke:
+            self.history_menu.add(
+                rumps.MenuItem(_label(text), callback=self._make_copier(text))
+            )
+        self.history_menu.add(rumps.separator)
+        self.history_menu.add(
+            rumps.MenuItem("Obriši istoriju", callback=self._clear_history)
+        )
+
+    def _make_copier(self, text):
+        def copier(_):
+            insert.set_clipboard(text)
+
+        return copier
+
+    def _clear_history(self, _):
+        with self._hist_lock:
+            self._history.clear()
+        self._rebuild_history_menu()
 
     def _set_hold(self, _):
         self._set_mode("hold")
@@ -637,7 +609,7 @@ class DictateApp(rumps.App):
 
     def _make_lang_setter(self, code):
         def setter(_):
-            self.cfg["language_codes"] = [code]
+            self.cfg["language"] = code
             config.save(self.cfg)
             self._sync_menu_marks()
 
@@ -683,6 +655,11 @@ class DictateApp(rumps.App):
     def run(self, **kw):
         self.listener.start()
         super().run(**kw)
+
+
+def _label(text: str, limit=52) -> str:
+    jedan_red = " ".join(text.split())
+    return jedan_red if len(jedan_red) <= limit else jedan_red[: limit - 1] + "…"
 
 
 def _short_error(exc: Exception) -> str:
