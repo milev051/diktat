@@ -149,18 +149,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formalni(): ViewGroup {
-        val (card, box) = card(this, "Formalni režim")
-        box.addView(switch(this, "Doteruj tekst pomoću AI", cfg.polish) { cfg.polish = it })
+        val (card, box) = card(this, "AI obrada teksta")
+        box.addView(switch(this, "Uključi AI obradu", cfg.polish) { cfg.polish = it })
         box.addView(
             body(
                 this,
-                "Ceo diktat se sačeka, pa se jednim pozivom pošalje modelu koji " +
-                    "dodaje interpunkciju, velika slova i kvačice — a reči ne dira. " +
-                    "Dok se čeka odgovor, pokazivač pokazuje AI.\n\n" +
+                "Ceo diktat se sačeka, pa se jednim pozivom pošalje modelu. Dok " +
+                    "se čeka odgovor, pokazivač pokazuje AI.\n\n" +
+                    "Alati ispod su nezavisni — možeš tražiti samo kraći tekst ili " +
+                    "samo pasuse, a da model interpunkciju i kvačice ne dira. Ako " +
+                    "nijedan nije izabran, poziva nema.\n\n" +
                     "Radi samo uz API ključ (Google AI Studio). Ključ ostaje " +
                     "sačuvan i posle nadogradnje aplikacije.",
             )
         )
+        box.addView(switch(this, "Sredi tekst (interpunkcija, kvačice)", cfg.polishTidy) {
+            cfg.polishTidy = it
+        })
         box.addView(switch(this, "…i ispravi očigledne greške", cfg.polishCorrect) {
             cfg.polishCorrect = it
         })
@@ -169,11 +174,25 @@ class MainActivity : AppCompatActivity() {
                 this,
                 "Ispravlja reči koje se gramatički ne slažu — „sa kolega\" → " +
                     "„sa kolegom\". Reč koja je gramatički ispravna a značenjski " +
-                    "pogrešna se ne može ispraviti; tu rečenica nema greške.",
+                    "pogrešna se ne može ispraviti; tu rečenica nema greške. " +
+                    "Radi samo uz sređivanje.",
             )
         )
-        box.addView(switch(this, "…i podeli na pasuse", cfg.polishParagraphs) {
+        box.addView(switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
+        })
+        box.addView(switch(this, "Skrati i pojednostavi", cfg.polishConcise) {
+            cfg.polishConcise = it
+        })
+        box.addView(
+            body(
+                this,
+                "Izbacuje poštapalice i ponavljanja, duge rečenice deli na kraće. " +
+                    "Činjenice, brojevi i imena ostaju.",
+            )
+        )
+        box.addView(switch(this, "Emotikon na kraju pasusa", cfg.polishEmoji) {
+            cfg.polishEmoji = it
         })
         polishLine = body(this, "")
         box.addView(polishLine)
@@ -229,8 +248,10 @@ class MainActivity : AppCompatActivity() {
             cfg.joinThousands = it
         })
         box.addView(switch(this, "Razmak na kraju", cfg.trailingSpace) { cfg.trailingSpace = it })
-        box.addView(switch(this, "Maskiraj psovke zvezdicama", cfg.profanityFilter) {
-            cfg.profanityFilter = it
+        // Prekidac je obrnut od podesavanja: ukljucen znaci pFilter=0, sto je i
+        // podrazumevano. Da pise "maskiraj", jedini bi stajao iskljucen.
+        box.addView(switch(this, "Ne maskiraj psovke zvezdicama", !cfg.profanityFilter) {
+            cfg.profanityFilter = !it
         })
         box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
             cfg.asciiDiacritics = it

@@ -91,6 +91,7 @@ Dva nezavisna podešavanja:
 | **Mikrofon** | izbor ulaza, ili sistemski podrazumevani |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
+| **AI obrada teksta** | alati ispod: sredi, ispravi, pasusi, skrati, emotikon |
 | **Jezik** | srpski, engleski, hrvatski |
 | **Snimaj za debug** | vidi „Ako se ne prepozna sve" |
 
@@ -132,14 +133,31 @@ Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
 
 ---
 
-## Formalni režim
+## AI obrada teksta
 
-Meni → **Formalni režim (doteruje AI)**. Ceo diktat se sačeka, pa se **jednim
-pozivom** pošalje jezičkom modelu koji dodaje interpunkciju, velika slova i
-kvačice — a reči ne dira. Dok se čeka odgovor, u menu baru stoji plavo **AI**.
+Meni → **AI obrada teksta**. Ceo diktat se sačeka, pa se **jednim pozivom**
+pošalje jezičkom modelu. Dok se čeka odgovor, u menu baru stoji plavo **AI**.
 
 Traži ključ sa Google AI Studio u `polish_api_key`. Bez ključa stavka piše da
-ključa nema i režim se ne može uključiti.
+ključa nema i obrada se ne može uključiti.
+
+Alati ispod su **nezavisni** — uputstvo se sklapa od izabranih. Sređivanje je
+samo jedan od njih, pa možeš tražiti kraći tekst ili emotikon, a da model
+interpunkciju i kvačice **ne dira**:
+
+| alat | podrazumevano | šta radi |
+|---|---|---|
+| …sredi tekst | uključeno | interpunkcija, velika slova, kvačice |
+| …i ispravi očigledne greške | uključeno | gramatička neslaganja; radi samo uz sređivanje |
+| …podeli na pasuse | uključeno | prazan red između smisaonih celina |
+| …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
+| …emotikon na kraju pasusa | isključeno | tačno jedan znak po pasusu |
+
+Ako nijedan alat nije izabran, poziva nema — tekst se lepi kao i inače.
+
+Kad nijedan izabrani alat **ne sme** da menja reči (npr. samo emotikon), izlaz
+se poredi sa ulazom reč po reč; ako se razlikuje, lepi se naš tekst. Izmišljena
+reč je gora od izostalog emotikona.
 
 | ključ | podrazumevano | |
 |---|---|---|
@@ -147,8 +165,11 @@ ključa nema i režim se ne može uključiti.
 | `polish_api_key` | `""` | bez njega režim ne radi |
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
+| `polish_tidy` | `true` | interpunkcija, velika slova, kvačice — samo jedan od alata |
 | `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
+| `polish_concise` | `false` | skrati i pojednostavi |
+| `polish_emoji` | `false` | jedan emotikon na kraju svakog pasusa |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i
@@ -160,7 +181,7 @@ Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
 ### Kvota i rezervni plan
 
 Google **ne nudi** način da se vidi koliko je zahteva preostalo — ni u API-ju ni
-u AI Studio-u. Zato aplikacija sama broji: stavka *Poziva danas: N* u meniju,
+u AI Studio-u. Zato aplikacija sama broji: stavka *Poziva modelu danas: N* u meniju,
 brojač se resetuje u ponoć. `gemini-flash-lite-latest` na besplatnom ključu ima
 red veličine 500 poziva dnevno, a jedan diktat je jedan poziv.
 

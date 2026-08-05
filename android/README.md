@@ -113,16 +113,27 @@ Prolazne greške (mreža, 429, 5xx) se ponavljaju jednom automatski. Ako i drugi
 pokušaj padne, **snimak se čuva** — sekcija *Neuspeli diktati* pokazuje koliko
 ih ima i šalje ih ponovo. Drži se poslednjih 5.
 
-## Formalni režim
+## AI obrada teksta
 
-Kartica *Formalni režim*: prekidač plus polje za **API ključ** (Google AI
-Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu koji dodaje
-interpunkciju, velika slova i kvačice, a reči ne dira. Dok se čeka, pilula
+Kartica *AI obrada teksta*: prekidač plus polje za **API ključ** (Google AI
+Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu. Dok se čeka, pilula
 pokazuje plavo **AI**.
 
-Prekidač *…i ispravi očigledne greške* dodatno sređuje gramatička neslaganja
-(`sa kolega` → `sa kolegom`), a *…i podeli na pasuse* traži prazan red između
-smisaonih celina.
+Alati su **nezavisni** — uputstvo se sklapa od izabranih:
+
+| alat | podrazumevano | šta radi |
+|---|---|---|
+| Sredi tekst | uključeno | interpunkcija, velika slova, kvačice |
+| …i ispravi očigledne greške | uključeno | `sa kolega` → `sa kolegom`; radi samo uz sređivanje |
+| Podeli na pasuse | uključeno | prazan red između smisaonih celina |
+| Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
+| Emotikon na kraju pasusa | isključeno | tačno jedan znak po pasusu |
+
+Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
+kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.
+
+Kad nijedan izabrani alat ne sme da menja reči, izlaz se poredi sa ulazom reč
+po reč; ako se razlikuje, upisuje se naš tekst.
 
 Ispod prekidača stoji **Poziva modelu danas: N** — Google ne nudi način da se
 vidi preostala kvota, pa aplikacija broji sama; brojač se resetuje u ponoć. Ako
@@ -168,7 +179,7 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | Sve malim slovima | uključeno | |
 | Bez interpunkcije | uključeno | brojevi ostaju celi — `3,5`, `10:00`, `2.0` |
 | Razmak na kraju | uključeno | da se rečenice nadovezuju |
-| Maskiraj psovke | isključeno | `pFilter=0` |
+| Ne maskiraj psovke | uključeno | `pFilter=0`; isključeno daje `sranje` → `s*****` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
 | Spoji hiljade | uključeno | `5.000` → `5000`; `verzija 2.0` ostaje cela |
 | Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |

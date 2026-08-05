@@ -83,6 +83,7 @@ grupu — inače tiho pokvari brojeve.
 | Ime fajla samo od vremena | dva zapisa u istoj sekundi se prepišu | milisekunde **plus brojač** |
 | …ali onda sortiranje **po imenu** | brojač razbije azbučni redosled, briše se pogrešan fajl | sortiraj po `st_mtime_ns` |
 | `self._pending` iskorišćeno dvaput | brojač i prodavnica se sudarili, pad u `_tick` | `_pending_store` odvojeno |
+| Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 | …ali **bezuslovno** preuzimanje pokreta | veliko polje zaglavi celu stranicu, donje sekcije nedostupne | preuzmi samo ako `layout.height > vidljiva visina` |
 
@@ -155,6 +156,24 @@ menjao svoja pravila. Uz pravila se pamti snimak podrazumevanih; poklapaju li
 se, nova se pokupe tiho.
 
 ---
+
+**Alati AI obrade su nezavisni; uputstvo se sklapa od izabranih.** Sređivanje
+(interpunkcija, velika slova, kvačice) je samo jedan od njih. Kad ono nije
+izabrano, modelu se **izričito zabranjuje** da dira interpunkciju — inače je
+dodaje svejedno, jer mu je to najočekivanija radnja nad sirovim transkriptom.
+Isto važi za prelamanje: bez `NE_PASUSI` lomi tekst u redove i kad pasusi nisu
+traženi. Nijedan alat izabran = nema poziva; `_formal()` tada mora da bude
+`False`, inače diktat visi čekajući prazan poziv.
+
+**Sirov tekst ide modelu samo kad on sređuje.** Ako sređivanje nije izabrano,
+naša pravila (skraćenice, kvačice, interpunkcija) moraju da odrade svoje pre
+slanja — inače bi tiho izostala.
+
+**Emotikon ume da izmami dopisanu REČ.** Izmereno: nad „…gledao film … bio je
+jako dobar" model doda reč `film` umesto znaka — dovršavanje rečenice mu je
+očekivanije od emotikona. Strožija granica ugasi i sam emotikon; pomaže
+formulacija „prepiši od reči do reči…" (3/3), ali samo kad nijedan drugi alat
+ne menja reči. Zato postoje dve verzije uputstva i provera vernosti u kodu.
 
 **Formalni režim zove model JEDNOM, na kraju diktata.** Po segmentu bi model
 video krhotine i izmišljao krajeve rečenica, a poziva bi za deset minuta bilo

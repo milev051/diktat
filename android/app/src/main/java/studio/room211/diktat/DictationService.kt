@@ -170,7 +170,12 @@ class DictationService : Service() {
         var text = ""
         var problem: String? = null
         try {
-            text = TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
+            val sirov = WebStt.recognize(pcm, cfg)
+            // Kad model sredjuje tekst, dobija ga nedirnutog: skracenice i
+            // skidanje kvacica mu otezavaju citanje. Kad NE sredjuje (samo
+            // skracuje ili dodaje emotikon), nasa pravila moraju da odrade svoje.
+            text = if (formal() && cfg.polishTidy) sirov.trim()
+            else TextPolish.apply(sirov, cfg)
         } catch (exc: Exception) {
             problem = exc.message ?: "greška u prepoznavanju"
             // Snimak se cuva da izgovoreno ne propadne.
@@ -204,7 +209,9 @@ class DictationService : Service() {
         }
     }
 
-    private fun formal() = cfg.polish && Polish.available(cfg)
+    // Ukljucena obrada bez ijednog alata nema sta da posalje, pa se tekst upisuje
+    // odmah kao i inace — bez toga bi diktat visio na praznom pozivu.
+    private fun formal() = cfg.polish && Polish.available(cfg) && Polish.toolCount(cfg) > 0
 
     /** Ceo diktat ide modelu jednim pozivom, pa tek onda u polje. */
     private fun startPolish() {

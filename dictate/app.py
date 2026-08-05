@@ -131,14 +131,29 @@ class DictateApp(rumps.App):
         self.item_continuous = rumps.MenuItem(
             "Neprekidno (bez granice)", callback=self._toggle_continuous
         )
+        # Alati su nezavisni: sredjivanje je samo jedan od njih, pa se moze
+        # traziti skracivanje ili emotikon a da model tekst inace ne dira.
         self.item_polish = rumps.MenuItem(
-            "Formalni režim (doteruje AI)", callback=self._toggle_polish
+            "AI obrada teksta", callback=self._toggle_polish
+        )
+        self.item_polish_tidy = rumps.MenuItem(
+            "…sredi tekst (interpunkcija, kvačice)",
+            callback=self._make_polish_toggle("polish_tidy", True),
         )
         self.item_polish_correct = rumps.MenuItem(
             "…i ispravi očigledne greške", callback=self._toggle_polish_level
         )
         self.item_polish_para = rumps.MenuItem(
-            "…i podeli na pasuse", callback=self._toggle_polish_paragraphs
+            "…podeli na pasuse",
+            callback=self._make_polish_toggle("polish_paragraphs", True),
+        )
+        self.item_polish_concise = rumps.MenuItem(
+            "…skrati i pojednostavi",
+            callback=self._make_polish_toggle("polish_concise", False),
+        )
+        self.item_polish_emoji = rumps.MenuItem(
+            "…emotikon na kraju pasusa",
+            callback=self._make_polish_toggle("polish_emoji", False),
         )
 
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
@@ -172,8 +187,11 @@ class DictateApp(rumps.App):
             mode_menu,
             self.item_continuous,
             self.item_polish,
+            self.item_polish_tidy,
             self.item_polish_correct,
             self.item_polish_para,
+            self.item_polish_concise,
+            self.item_polish_emoji,
             self.item_polish_count,
             lang_menu,
             self.item_ascii,
@@ -220,16 +238,24 @@ class DictateApp(rumps.App):
         self.item_hold.state = 1 if mode == "hold" else 0
         self.item_toggle.state = 1 if mode == "toggle" else 0
         self.item_continuous.state = 1 if self.cfg.get("continuous", True) else 0
-        self.item_polish.state = 1 if self._formal() else 0
+        self.item_polish.state = 1 if self.cfg.get("polish", False) else 0
+        self.item_polish_tidy.state = 1 if self.cfg.get("polish_tidy", True) else 0
         self.item_polish_correct.state = (
             1 if self.cfg.get("polish_level", "correct") == "correct" else 0
         )
         self.item_polish_para.state = (
             1 if self.cfg.get("polish_paragraphs", True) else 0
         )
+        self.item_polish_concise.state = 1 if self.cfg.get("polish_concise", False) else 0
+        self.item_polish_emoji.state = 1 if self.cfg.get("polish_emoji", False) else 0
+        # Ispravljanje ima smisla samo uz sredjivanje; ostalo radi i bez njega.
+        self.item_polish_correct.title = (
+            "…i ispravi očigledne greške" if self.cfg.get("polish_tidy", True)
+            else "…ispravi greške (traži sređivanje)"
+        )
         self.item_polish.title = (
-            "Formalni režim (doteruje AI)" if polish.available(self.cfg)
-            else "Formalni režim — nema API ključa"
+            "AI obrada teksta" if polish.available(self.cfg)
+            else "AI obrada — nema API ključa"
         )
         self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
         current = self.cfg.get("language", "sr-RS")
@@ -451,9 +477,11 @@ class DictateApp(rumps.App):
         )
         if not text:
             return text
-        if self._formal():
-            # Model dobija tekst kakav jeste: skracenice i skidanje kvacica bi
-            # mu samo otezali citanje, a interpunkciju ionako on postavlja.
+        if self._formal() and polish.tidy_on(self.cfg):
+            # Kad model sredjuje tekst, dobija ga kakav jeste: skracenice i
+            # skidanje kvacica bi mu otezali citanje, a interpunkciju ionako on
+            # postavlja. Kad NE sredjuje (samo skracuje ili dodaje emotikon),
+            # nasa pravila moraju da odrade svoje — inace bi izostala.
             return text
         if self.cfg.get("join_thousands", True):
             text = webstt.join_thousands(text)
@@ -874,6 +902,8 @@ class DictateApp(rumps.App):
             return
         self.cfg["polish"] = not bool(self.cfg.get("polish", False))
         config.save(self.cfg)
+        if self.cfg["polish"] and not polish.tools(self.cfg):
+            self.item_status.title = "Izaberi bar jedan alat ispod"
         self._sync_menu_marks()
 
     def _toggle_polish_level(self, _):
@@ -882,15 +912,24 @@ class DictateApp(rumps.App):
         config.save(self.cfg)
         self._sync_menu_marks()
 
-    def _toggle_polish_paragraphs(self, _):
-        self.cfg["polish_paragraphs"] = not bool(
-            self.cfg.get("polish_paragraphs", True)
-        )
-        config.save(self.cfg)
-        self._sync_menu_marks()
-
     def _formal(self) -> bool:
-        return bool(self.cfg.get("polish", False)) and polish.available(self.cfg)
+        """Ceka li se ceo diktat zbog modela.
+
+        Ukljucena obrada bez ijednog izabranog alata nema sta da posalje, pa se
+        tekst lepi odmah kao i inace — bez toga bi diktat visio na praznom pozivu.
+        """
+        return (
+            bool(self.cfg.get("polish", False))
+            and polish.available(self.cfg)
+            and bool(polish.tools(self.cfg))
+        )
+
+    def _make_polish_toggle(self, key, default):
+        def toggle(_):
+            self.cfg[key] = not bool(self.cfg.get(key, default))
+            config.save(self.cfg)
+            self._sync_menu_marks()
+        return toggle
 
     def _toggle_continuous(self, _):
         self.cfg["continuous"] = not bool(self.cfg.get("continuous", True))

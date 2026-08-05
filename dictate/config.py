@@ -50,7 +50,10 @@ DEFAULTS = {
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
     "polish_level": "correct",    # "format" = samo oblikuj | "correct" = i ispravi ocigledne greske
+    "polish_tidy": True,          # interpunkcija, velika slova, kvacice — samo JEDAN od alata
     "polish_paragraphs": True,    # podeli na pasuse, prazan red izmedju
+    "polish_emoji": False,        # jedan emotikon na kraju svakog pasusa
+    "polish_concise": False,      # skrati i pojednostavi, bez gubitka sadrzaja
 
     # --- Debug ---
     "debug": False,               # snimaj zvuk i tekst radi poredjenja

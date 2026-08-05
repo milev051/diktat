@@ -121,6 +121,21 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_correct", true)
         set(v) = prefs.edit().putBoolean("polish_correct", v).apply()
 
+    /** Sredjivanje (interpunkcija, velika slova, kvacice) — samo JEDAN od alata. */
+    var polishTidy: Boolean
+        get() = prefs.getBoolean("polish_tidy", true)
+        set(v) = prefs.edit().putBoolean("polish_tidy", v).apply()
+
+    /** Jedan emotikon na kraju svakog pasusa. */
+    var polishEmoji: Boolean
+        get() = prefs.getBoolean("polish_emoji", false)
+        set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
+
+    /** Skrati i pojednostavi, bez gubitka sadrzaja. */
+    var polishConcise: Boolean
+        get() = prefs.getBoolean("polish_concise", false)
+        set(v) = prefs.edit().putBoolean("polish_concise", v).apply()
+
     /** Podeli doteran tekst na pasuse, prazan red izmedju. */
     var polishParagraphs: Boolean
         get() = prefs.getBoolean("polish_paragraphs", true)

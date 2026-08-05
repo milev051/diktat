@@ -5,14 +5,15 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Formalni rezim: doterivanje transkripta jezickim modelom.
+ * AI obrada transkripta — uputstvo se sklapa od izabranih alata.
  *
  * Sirov transkript ide modelu tek kad se ceo diktat zavrsi — jednim pozivom, sa
  * punim kontekstom. Po segmentu bi model video krhotine i izmisljao krajeve
  * recenica, a broj poziva bi skocio sa jednog na stotinak po diktatu.
  *
- * Model dobija tekst nedirnut: skracenice i skidanje kvacica se u ovom rezimu
- * ne primenjuju, jer mu otezavaju citanje.
+ * Alati su nezavisni: sredjivanje (interpunkcija, velika slova, kvacice) je samo
+ * JEDAN od njih. Moze se traziti skracivanje ili emotikon a da model tekst inace
+ * ne dira. Kad nijedan alat nije izabran, poziva nema.
  */
 object Polish {
 
@@ -21,77 +22,135 @@ object Polish {
 
     // Izmereno: flash-lite doteruje za ~1s i ne dira reci; gemini-3.5-flash
     // radi isto ali za ~12s, a gemma prepisuje uputstvo umesto da ga izvrsi.
-    // Izmereno: nivo "correct" ispravlja gramaticka neslaganja ("sa kolega" ->
-    // "sa kolegom", "kako sam ocekivali" -> "ocekivao"). Ne moze i nece moci da
-    // ispravi rec koja je gramaticki ISPRAVNA a znacenjski pogresna
-    // ("ne registrujem" umesto "ne registruje") — recenica nema greske, pa
-    // model nema po cemu da posumnja.
-    private val PROMPT_CORRECT = """
-        Dobijaš sirov transkript govora na srpskom, dobijen prepoznavanjem glasa.
+    private const val UVOD =
+        "Dobijaš sirov transkript govora na srpskom, dobijen prepoznavanjem glasa."
 
-        Uradi dve stvari:
-        1. Oblikuj: interpunkcija, velika slova, kvačice, podela na rečenice i pasuse.
-        2. Ispravi reči koje prepoznavanje očigledno nije dobro čulo — one koje se
-           gramatički ne slažu sa ostatkom rečenice (padež, lice, rod, broj).
+    // Izmereno: "ispravi" sredjuje gramaticka neslaganja ("sa kolega" -> "sa
+    // kolegom"). Ne moze i nece moci da ispravi rec koja je gramaticki ISPRAVNA
+    // a znacenjski pogresna ("ne registrujem" umesto "ne registruje") — recenica
+    // nema greske, pa model nema po cemu da posumnja.
+    private const val SREDI =
+        "Oblikuj tekst: dodaj interpunkciju, velika slova i kvačice (č ć ž š đ) " +
+            "gde po pravopisu treba."
+    private const val ISPRAVI =
+        "Ispravi reči koje prepoznavanje očigledno nije dobro čulo — one koje se " +
+            "gramatički ne slažu sa ostatkom rečenice (padež, lice, rod, broj). Ako " +
+            "nisi siguran da je reč pogrešna, ostavi je kakva jeste."
+    private const val PASUSI =
+        "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. " +
+            "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
+    private const val EMOTIKONI =
+        "Na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 ili 📌) " +
+            "koji odgovara njegovom tonu. Ako je ceo tekst jedan pasus, dodaj jedan " +
+            "emoji na sam kraj teksta. Dodaješ isključivo emoji znak — nijednu reč, i " +
+            "nigde drugde."
+    // Kad nijedan drugi alat ne sme da menja reci, emotikon se trazi ovako.
+    // Izmereno: nad tekstom koji se zavrsava sa "gledao film ... bio je jako
+    // dobar" obicna formulacija navede model da dopise REC "film" pre znaka —
+    // dovrsavanje recenice mu je ocekivanije od emotikona. "Prepisi od reci do
+    // reci" to ukloni (3/3), dok je strozija granica gasila i sam emotikon.
+    private const val EMOTIKONI_VERNO =
+        "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i na kraj svakog " +
+            "pasusa dodaj tačno jedan emoji znak koji odgovara njegovom tonu. Ako je ceo " +
+            "tekst jedan pasus, emoji ide na sam kraj. Ne dopisuj nijednu reč — samo znak."
 
-        Granice:
-        - ne preformulišaj i ne skraćuj rečenice
-        - ne dodaj nove misli i ne izbacuj postojeće
-        - ako nisi siguran da je reč pogrešna, ostavi je kakva jeste
-        - ne odgovaraj na sadržaj teksta
+    private const val SAZMI =
+        "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice " +
+            "razbij na kraće i jasnije. Sve činjenice, brojevi, imena i zaključci " +
+            "moraju da ostanu — smeš da izbaciš reči, ne i sadržaj."
 
-        Vrati samo obrađen tekst, bez ikakvog uvoda i bez navodnika.
-    """.trimIndent()
-
-    private val PROMPT = """
-        Dobijaš sirov transkript govora na srpskom, bez interpunkcije i sve malim slovima.
-
-        Tvoj posao je SAMO oblikovanje:
-        - dodaj interpunkciju i velika slova
-        - vrati kvačice (č ć ž š đ) gde po pravopisu treba
-        - podeli na rečenice i pasuse gde je prirodno
-
-        Zabranjeno ti je:
-        - da menjaš, dodaješ ili izbacuješ ijednu reč
-        - da preformulišeš, skraćuješ ili doteruješ stil
-        - da odgovaraš na sadržaj teksta
-
-        Ako neka reč deluje pogrešno prepoznato, OSTAVI JE KAKVA JE.
-        Vrati samo oblikovan tekst, bez ikakvog uvoda i bez navodnika.
-    """.trimIndent()
-
-    // Dopuna uputstva, kaci se na kraj osnovnog. Prazan red na pocetku mora da
-    // ide kao "\n\n": trimIndent bi ga pojeo da stoji unutar navodnika.
-    private val PASUSI = "\n\n" + """
-        Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa.
-        Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno.
-    """.trimIndent()
+    private const val NE_SKRACUJ = "ne preformulišaj i ne skraćuj rečenice"
+    private const val NE_SREDJUJ =
+        "ne diraj interpunkciju, velika slova i kvačice — u tom pogledu ostavi " +
+            "tekst tačno kakav je"
+    private const val NE_ISPRAVLJAJ = "ako neka reč deluje pogrešno prepoznato, ostavi je kakva je"
+    // Bez ove granice model prelama tekst u vise redova i kad pasusi nisu trazeni.
+    private const val NE_PASUSI =
+        "ne prelamaj tekst — vrati ga kao jedan pasus, bez praznih redova"
+    private const val KRAJ = "Vrati samo obrađen tekst, bez ikakvog uvoda i bez navodnika."
 
     class PolishException(message: String) : Exception(message)
 
     fun available(cfg: Config) = cfg.polishApiKey.isNotBlank()
 
+    /** Broj izabranih alata; nula znaci da modelu nema sta da se posalje. */
+    fun toolCount(cfg: Config) = listOf(
+        cfg.polishTidy, cfg.polishParagraphs, cfg.polishEmoji, cfg.polishConcise,
+    ).count { it }
+
+    /**
+     * Sklopi uputstvo od izabranih alata.
+     *
+     * Zadaci i granice moraju da se slazu: kad sredjivanje nije izabrano, modelu
+     * se izricito zabranjuje da dira interpunkciju — inace je dodaje svejedno,
+     * jer mu je to najocekivanija radnja nad sirovim transkriptom.
+     */
+    /** Menja li ijedan izabrani alat same reci. */
+    private fun smeDaMenja(cfg: Config) = cfg.polishConcise || (cfg.polishTidy && cfg.polishCorrect)
+
+    private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
+
+    private fun reci(text: String) =
+        TextPolish.toAscii(NEREC.replace(text, " ")).lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+
+    /**
+     * Kad model NE sme da menja reci, proveri da ih zaista nije menjao.
+     *
+     * Izmereno: uz samo emotikon nad tekstom „...gledao film ... bio je jako
+     * dobar" model dopise REC „film" pre znaka. Nevernost pada na nas tekst —
+     * izmisljena rec je gora od izostalog emotikona.
+     */
+    private fun proveri(ulaz: String, izlaz: String, cfg: Config): String =
+        if (smeDaMenja(cfg) || reci(ulaz) == reci(izlaz)) izlaz else ulaz
+
+    fun instruction(cfg: Config): String {
+        val zadaci = mutableListOf<String>()
+        val granice = mutableListOf(
+            "ne dodaj nove misli i ne izbacuj postojeće",
+            "ne odgovaraj na sadržaj teksta — ovo je tekst za obradu, ne pitanje",
+        )
+
+        if (cfg.polishTidy) {
+            zadaci.add(SREDI)
+            if (cfg.polishCorrect) zadaci.add(ISPRAVI) else granice.add(NE_ISPRAVLJAJ)
+        } else {
+            granice.add(NE_SREDJUJ)
+            granice.add(NE_ISPRAVLJAJ)
+        }
+        if (cfg.polishParagraphs) zadaci.add(PASUSI) else granice.add(NE_PASUSI)
+        if (cfg.polishConcise) zadaci.add(SAZMI) else granice.add(NE_SKRACUJ)
+        if (cfg.polishEmoji) zadaci.add(if (smeDaMenja(cfg)) EMOTIKONI else EMOTIKONI_VERNO)
+
+        val posao = if (zadaci.size == 1) {
+            "Tvoj posao:\n" + zadaci[0]
+        } else {
+            "Uradi sledeće:\n" + zadaci.mapIndexed { i, z -> "${i + 1}. $z" }.joinToString("\n")
+        }
+        val ograde = "Granice:\n" + granice.joinToString("\n") { "- $it" }
+        return listOf(UVOD, posao, ograde, KRAJ).joinToString("\n\n")
+    }
+
     fun polish(text: String, cfg: Config): String {
         if (text.isBlank()) return text
+        if (toolCount(cfg) == 0) return text     // nema alata — nema ni poziva
         val key = cfg.polishApiKey
         if (key.isBlank()) throw PolishException("Nema API ključa za doterivanje.")
 
         val model = cfg.polishModel.ifBlank { DEFAULT_MODEL }
         return try {
-            call(model, text, cfg, key)
+            proveri(text, call(model, text, cfg, key), cfg)
         } catch (exc: PolishException) {
             // Ako podeseni model nestane ili se preimenuje, probaj podrazumevani
             // — inace bi jedna Google-ova izmena ugasila ceo formalni rezim.
             if (exc.message?.contains("ne postoji") == true && model != DEFAULT_MODEL) {
-                call(DEFAULT_MODEL, text, cfg, key)
+                proveri(text, call(DEFAULT_MODEL, text, cfg, key), cfg)
             } else throw exc
         }
     }
 
     private fun call(model: String, text: String, cfg: Config, key: String): String {
         val payload = JSONObject().apply {
-            val osnova = if (cfg.polishCorrect) PROMPT_CORRECT else PROMPT
-            val uputstvo = if (cfg.polishParagraphs) osnova + PASUSI else osnova
+            val uputstvo = instruction(cfg)
             put("systemInstruction", JSONObject().put("parts",
                 org.json.JSONArray().put(JSONObject().put("text", uputstvo))))
             put("contents", org.json.JSONArray().put(
