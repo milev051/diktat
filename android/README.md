@@ -48,8 +48,12 @@ tvoje izmene).
 
 ```bash
 ./build.sh install     # napravi APK i pošalji na povezan telefon
-./build.sh             # samo napravi APK (~830 KB)
+./build.sh             # samo napravi APK (~1.6 MB, skupljen)
+./build.sh debug       # brži build bez skupljanja (~6 MB)
 ```
+
+Release je skupljen R8-om — bez toga Material biblioteka nadme APK na 6.4 MB.
+Potpisuje se debug ključem, pa se instalira preko postojeće instalacije.
 
 Bez kabla: prebaci `app/build/outputs/apk/debug/app-debug.apk` kako ti odgovara.
 Android traži da dozvoliš instalaciju iz nepoznatog izvora — to se odobrava
@@ -229,6 +233,12 @@ cd android && ./gradlew test
 Devet testova pokriva `<`, duplirana pravila, cele reči, hiljade, interpunkciju
 i kvačice. Ovo je uhvatilo da `<` **radi** onda kad je izgledalo da ne radi —
 problem je bio u sačuvanim pravilima na telefonu, ne u kodu.
+
+## Izgled
+
+Material 3 sa **dinamičkim bojama** — aplikacija preuzima paletu sa pozadine
+telefona. Prati **tamni režim** sistema; ranije je bila prisilno svetla, što je
+na tamnom telefonu bilo najuočljivije. Podešavanja su grupisana u kartice.
 
 ## Struktura
 

@@ -1,59 +1,116 @@
 package studio.room211.diktat
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.color.DynamicColors
+import studio.room211.diktat.Ui.body
+import studio.room211.diktat.Ui.button
+import studio.room211.diktat.Ui.card
+import studio.room211.diktat.Ui.dp
+import studio.room211.diktat.Ui.field
+import studio.room211.diktat.Ui.switch
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var cfg: Config
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
-    private lateinit var previewOut: TextView
     private lateinit var pendingLine: TextView
+    private lateinit var previewOut: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Boje se preuzimaju sa pozadine telefona (Material You).
+        DynamicColors.applyToActivityIfAvailable(this)
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         cfg = Config(this)
-        askForMicrophone()
+        askForPermissions()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 64)
+            val side = dp(16)
+            setPadding(side, dp(8), side, dp(32))
         }
 
-        root.addView(heading("Diktat  v" + versionName()))
-        root.addView(
-            body(
-                "Zadrži bočni taster, pričaj, pa ga zadrži ponovo. Tekst se upiše " +
-                    "tamo gde ti je kursor.\n\nTajmer gore desno: zeleno snima, " +
-                    "crveno od 15s, žuto dok se obrađuje. Staje na 30s."
+        root.addView(TextView(this).apply {
+            text = "Diktat"
+            setTextAppearance(
+                com.google.android.material.R.style.TextAppearance_Material3_HeadlineMedium
             )
-        )
-
-        root.addView(heading("Dozvole"))
-        statusLine = body("")
-        root.addView(statusLine)
-        root.addView(action("Postavi kao digitalnog asistenta") {
-            openAny("android.settings.VOICE_INPUT_SETTINGS",
-                Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, Settings.ACTION_SETTINGS)
+            setPadding(dp(4), dp(16), 0, 0)
         })
-        root.addView(action("Dozvoli prikaz preko drugih aplikacija") {
+        root.addView(TextView(this).apply {
+            text = "verzija ${versionName()}"
+            setTextAppearance(
+                com.google.android.material.R.style.TextAppearance_Material3_BodySmall
+            )
+            alpha = 0.6f
+            setPadding(dp(4), 0, 0, dp(16))
+        })
+
+        root.addView(dozvole())
+        root.addView(tastatura())
+        root.addView(ponasanje())
+        root.addView(obrada())
+        root.addView(jezik())
+        root.addView(skracenice())
+        root.addView(neuspeli())
+        root.addView(potrosnja())
+        root.addView(proba())
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+        }
+        setContentView(scroll)
+
+        // Sadrzaj ide ispod statusne trake, pa se razmak dodaje rucno.
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, bars.bottom)
+            insets
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        statusLine.text = if (InsertService.isRunning) {
+            "Pristupačnost je uključena — tekst se upisuje gde je kursor."
+        } else {
+            "Pristupačnost nije uključena — tekst će završiti u clipboard-u."
+        }
+        showTraffic()
+        showPending()
+    }
+
+    // ------------------------------------------------------------ kartice
+
+    private fun dozvole(): ViewGroup {
+        val (card, box) = card(this, "Dozvole")
+        statusLine = body(this, "")
+        box.addView(statusLine)
+        box.addView(button(this, "Postavi kao digitalnog asistenta") {
+            openAny(
+                "android.settings.VOICE_INPUT_SETTINGS",
+                Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, Settings.ACTION_SETTINGS,
+            )
+        })
+        box.addView(button(this, "Prikaz preko drugih aplikacija") {
             runCatching {
                 startActivity(
                     Intent(
@@ -63,226 +120,151 @@ class MainActivity : Activity() {
                 )
             }
         })
-        root.addView(action("Uključi unos teksta (Pristupačnost)") {
+        box.addView(button(this, "Unos teksta (Pristupačnost)") {
             openAny(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         })
-        root.addView(
-            body(
-                "Bez Pristupačnosti tekst ne može da se upiše u polje — tada " +
-                    "završi u clipboard-u pa ga lepiš ručno."
-            )
-        )
+        return card
+    }
 
-        root.addView(heading("Mikrofon na tastaturi"))
-        root.addView(
+    private fun tastatura(): ViewGroup {
+        val (card, box) = card(this, "Mikrofon na tastaturi")
+        box.addView(
             body(
-                "Umesto bočnog tastera možeš izabrati „Diktat\" kao Voice input; " +
-                    "tada mikrofon na Samsung tastaturi radi isto, bez Pristupačnosti."
+                this,
+                "Umesto bočnog tastera možeš izabrati Diktat kao Voice input; " +
+                    "tada mikrofon na tastaturi radi isto, bez Pristupačnosti.",
             )
         )
-        root.addView(action("Otvori Voice input") {
+        box.addView(button(this, "Otvori Voice input") {
             openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS)
         })
+        return card
+    }
 
-        root.addView(heading("Ponašanje"))
-        root.addView(toggle("Snimaj samo kad ima polja za unos", cfg.requireInputField) {
+    private fun ponasanje(): ViewGroup {
+        val (card, box) = card(this, "Ponašanje")
+        box.addView(switch(this, "Snimaj samo kad ima polja za unos", cfg.requireInputField) {
             cfg.requireInputField = it
         })
-        root.addView(toggle("Ne ostavljaj tekst u clipboard-u", cfg.restoreClipboard) {
+        box.addView(switch(this, "Ne ostavljaj tekst u clipboard-u", cfg.restoreClipboard) {
             cfg.restoreClipboard = it
         })
-        root.addView(
+        box.addView(
             body(
-                "Kad je drugo uključeno, clipboard se posle upisa vrati kakav je " +
-                    "bio, pa izdiktirano ne ostaje u istoriji. Ako upis ne prođe, " +
-                    "tekst ipak ostane u clipboard-u — bolje nego da se izgubi."
+                this,
+                "Clipboard se posle upisa vrati kakav je bio. Ako upis ne prođe, " +
+                    "tekst ipak ostane — bolje nego da se izgubi.",
             )
         )
+        return card
+    }
 
-        root.addView(heading("Obrada teksta"))
-        root.addView(toggle("Sve malim slovima", cfg.lowercase) { cfg.lowercase = it })
-        root.addView(toggle("Bez interpunkcije", cfg.stripPunctuation) { cfg.stripPunctuation = it })
-        root.addView(toggle("Spoji hiljade (5.000 → 5000)", cfg.joinThousands) {
+    private fun obrada(): ViewGroup {
+        val (card, box) = card(this, "Obrada teksta")
+        box.addView(switch(this, "Sve malim slovima", cfg.lowercase) { cfg.lowercase = it })
+        box.addView(switch(this, "Bez interpunkcije", cfg.stripPunctuation) {
+            cfg.stripPunctuation = it
+        })
+        box.addView(switch(this, "Spoji hiljade (5.000 → 5000)", cfg.joinThousands) {
             cfg.joinThousands = it
         })
-        root.addView(toggle("Razmak na kraju", cfg.trailingSpace) { cfg.trailingSpace = it })
-        root.addView(toggle("Maskiraj psovke zvezdicama", cfg.profanityFilter) {
+        box.addView(switch(this, "Razmak na kraju", cfg.trailingSpace) { cfg.trailingSpace = it })
+        box.addView(switch(this, "Maskiraj psovke zvezdicama", cfg.profanityFilter) {
             cfg.profanityFilter = it
         })
-        root.addView(toggle("Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
+        box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
             cfg.asciiDiacritics = it
         })
+        return card
+    }
 
-        root.addView(heading("Jezik"))
-        root.addView(EditText(this).apply {
-            setText(cfg.language)
-            inputType = InputType.TYPE_CLASS_TEXT
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setOnFocusChangeListener { _, focused ->
-                if (!focused) cfg.language = text.toString().trim().ifBlank { "sr-RS" }
-            }
-        })
-        root.addView(body("sr-RS, en-US, hr-HR…"))
-
-        root.addView(heading("Skraćenice"))
-        root.addView(toggle("Skraćuj česte fraze", cfg.abbreviations) { cfg.abbreviations = it })
-        root.addView(
-            body(
-                "Jedno pravilo po redu, oblik  fraza=skraćenica\n\n" +
-                    "Ako skraćenica počinje sa  <  pojede i razmak ispred:\n" +
-                    "   minuta=<min      →   „15 minuta\" postaje „15min\"\n\n" +
-                    "Isti spisak služi i kao ispravljač — ako prepoznavanje " +
-                    "stalno greši istu reč, dodaj  pogrešno=ispravno."
-            )
-        )
-        root.addView(EditText(this).apply {
-            setText(cfg.abbreviationRules)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setLines(8)
-            setTypeface(android.graphics.Typeface.MONOSPACE)
-            textSize = 13f
-            gravity = android.view.Gravity.TOP or android.view.Gravity.START
-            isVerticalScrollBarEnabled = true
-            setPadding(24, 20, 24, 20)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 12f
-                setColor(android.graphics.Color.parseColor("#F2F2F2"))
-                setStroke(2, android.graphics.Color.parseColor("#CCCCCC"))
-            }
-            // Bez ovoga spoljni ScrollView pojede pokret i polje se ne skroluje.
-            // Pokret se preuzima SAMO ako tekst stvarno prelazi visinu polja.
-            // Bezuslovno preuzimanje je zaglavljivalo celu stranicu.
-            setOnTouchListener { view, event ->
-                val text = view as android.widget.TextView
-                val vidljivo = view.height - view.paddingTop - view.paddingBottom
-                val moze = (text.layout?.height ?: 0) > vidljivo
-                view.parent?.requestDisallowInterceptTouchEvent(moze)
-                if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
-                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
-                ) {
-                    view.parent?.requestDisallowInterceptTouchEvent(false)
-                }
-                false
-            }
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    // Cuva se odmah: inace se izmena izgubi ako se ekran zatvori
-                    // pre nego sto polje izgubi fokus.
-                    cfg.abbreviationRules = s?.toString() ?: ""
-                }
-                override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
-                override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
-            })
-        })
-        root.addView(
-            body(
-                "Nova verzija donosi nova podrazumevana pravila (valute i " +
-                    "slično), ali tvoja sačuvana ostaju netaknuta. Pritisni " +
-                    "dugme ispod da pokupiš nova — pazi, briše tvoje izmene."
-            )
-        )
-        root.addView(body("Proba — upiši rečenicu i vidi šta pravila urade:"))
-        previewOut = body("")
-        val previewIn = EditText(this).apply {
-            hint = "npr. imam 5000 dinara i 15 minuta"
-            inputType = InputType.TYPE_CLASS_TEXT
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    previewOut.text = "→  " + TextPolish.apply(s?.toString() ?: "", cfg).trim()
-                }
-                override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
-                override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
-            })
+    private fun jezik(): ViewGroup {
+        val (card, box) = card(this, "Jezik")
+        val (layout, _) = field(this, "Kod jezika", cfg.language) {
+            cfg.language = it.trim().ifBlank { "sr-RS" }
         }
-        root.addView(previewIn)
-        root.addView(previewOut)
+        box.addView(layout)
+        box.addView(body(this, "sr-RS, en-US, hr-HR…"))
+        return card
+    }
 
-        root.addView(action("Vrati podrazumevane skraćenice") {
+    private fun skracenice(): ViewGroup {
+        val (card, box) = card(this, "Skraćenice")
+        box.addView(switch(this, "Skraćuj česte fraze", cfg.abbreviations) {
+            cfg.abbreviations = it
+        })
+        box.addView(
+            body(
+                this,
+                "Jedno pravilo po redu:  fraza=skraćenica\n" +
+                    "Znak  <  pojede i razmak ispred:  minuta=<min\n" +
+                    "Red sa  ~  je regularni izraz, {1} je uhvaćena grupa.",
+            )
+        )
+        val (rules, _) = field(
+            this, "Pravila", cfg.abbreviationRules, lines = 8, mono = true,
+        ) { cfg.abbreviationRules = it }
+        box.addView(rules)
+
+        previewOut = body(this, "")
+        val (preview, _) = field(this, "Proba pravila") { text ->
+            previewOut.text = "→  " + TextPolish.apply(text, cfg).trim()
+        }
+        box.addView(preview)
+        box.addView(previewOut)
+        box.addView(button(this, "Vrati podrazumevane skraćenice") {
             cfg.abbreviationRules = Abbreviations.defaultText()
             recreate()
         })
-
-        root.addView(heading("Neuspeli diktati"))
-        pendingLine = body("")
-        root.addView(pendingLine)
-        root.addView(action("Pošalji ponovo") { retryPending() })
-
-        root.addView(heading("Potrošnja podataka"))
-        trafficLine = body("")
-        root.addView(trafficLine)
-        root.addView(
-            body(
-                "Zvuk se šalje nesažet: 16 kHz × 16 bita = 32 KB po sekundi " +
-                    "govora. Odgovor je par stotina bajtova."
-            )
-        )
-        root.addView(toggle("Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
-            cfg.compressAudio = it
-        })
-        root.addView(
-            body(
-                "Ako sažimanje ne uspe, šalje se kao i pre — ušteda nikad ne " +
-                    "obara diktat. Traži Android 10 ili noviji."
-            )
-        )
-        root.addView(action("Poništi brojač") {
-            cfg.resetTraffic()
-            showTraffic()
-        showPending()
-        })
-
-        root.addView(heading("Proba"))
-        root.addView(EditText(this).apply {
-            hint = "ovde probaj diktat"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setLines(8)
-            gravity = android.view.Gravity.TOP or android.view.Gravity.START
-            setPadding(24, 20, 24, 20)
-            isVerticalScrollBarEnabled = true
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 12f
-                setColor(android.graphics.Color.WHITE)
-                setStroke(2, android.graphics.Color.parseColor("#CCCCCC"))
-            }
-            // Pokret se preuzima SAMO ako tekst stvarno prelazi visinu polja.
-            // Bezuslovno preuzimanje je zaglavljivalo celu stranicu.
-            setOnTouchListener { view, event ->
-                val text = view as android.widget.TextView
-                val vidljivo = view.height - view.paddingTop - view.paddingBottom
-                val moze = (text.layout?.height ?: 0) > vidljivo
-                view.parent?.requestDisallowInterceptTouchEvent(moze)
-                if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
-                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
-                ) {
-                    view.parent?.requestDisallowInterceptTouchEvent(false)
-                }
-                false
-            }
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        })
-
-        setContentView(ScrollView(this).apply { addView(root) })
+        return card
     }
 
-    override fun onResume() {
-        super.onResume()
-        val ready = InsertService.isRunning
-        title = if (ready) "Diktat — spreman" else "Diktat"
-        showTraffic()
-        statusLine.text = if (ready) {
-            "Pristupačnost je uključena — tekst se upisuje gde je kursor."
+    private fun neuspeli(): ViewGroup {
+        val (card, box) = card(this, "Neuspeli diktati")
+        pendingLine = body(this, "")
+        box.addView(pendingLine)
+        box.addView(button(this, "Pošalji ponovo") { retryPending() })
+        return card
+    }
+
+    private fun potrosnja(): ViewGroup {
+        val (card, box) = card(this, "Potrošnja podataka")
+        trafficLine = body(this, "")
+        box.addView(trafficLine)
+        box.addView(switch(this, "Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
+            cfg.compressAudio = it
+        })
+        box.addView(
+            body(this, "Ako sažimanje ne uspe, šalje se kao pre. Traži Android 10 ili noviji.")
+        )
+        box.addView(button(this, "Poništi brojač") {
+            cfg.resetTraffic()
+            showTraffic()
+        })
+        return card
+    }
+
+    private fun proba(): ViewGroup {
+        val (card, box) = card(this, "Proba diktata")
+        val (test, _) = field(this, "Ovde probaj diktat", lines = 6)
+        box.addView(test)
+        return card
+    }
+
+    // ------------------------------------------------------------ podaci
+
+    private fun showTraffic() {
+        val sent = cfg.bytesSent
+        val received = cfg.bytesReceived
+        val count = cfg.dictationCount
+        trafficLine.text = if (count == 0) {
+            "Još nije poslat nijedan diktat."
         } else {
-            "Pristupačnost NIJE uključena — tekst će završiti u clipboard-u."
+            "%d diktata, %d s govora\n↑ %s poslato   ↓ %s primljeno\nprosečno %s po diktatu"
+                .format(
+                    count, cfg.secondsSpoken, human(sent), human(received),
+                    human((sent + received) / count),
+                )
         }
     }
 
@@ -322,31 +304,17 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun showTraffic() {
-        val sent = cfg.bytesSent
-        val received = cfg.bytesReceived
-        val count = cfg.dictationCount
-        trafficLine.text = if (count == 0) {
-            "Još nije poslat nijedan diktat."
-        } else {
-            "%d diktata, %d s govora\n↑ %s poslato   ↓ %s primljeno\nprosečno %s po diktatu"
-                .format(
-                    count,
-                    cfg.secondsSpoken,
-                    human(sent),
-                    human(received),
-                    human((sent + received) / count),
-                )
-        }
-    }
-
     private fun human(bytes: Long): String = when {
         bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0)
         bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
         else -> "$bytes B"
     }
 
-    private fun askForMicrophone() {
+    private fun versionName(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+    }.getOrDefault("?")
+
+    private fun askForPermissions() {
         val missing = mutableListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
@@ -357,37 +325,6 @@ class MainActivity : Activity() {
         ) missing += Manifest.permission.POST_NOTIFICATIONS
         if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 1)
     }
-
-    /** Da se na prvi pogled vidi koja je verzija instalirana. */
-    private fun versionName(): String = runCatching {
-        packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-    }.getOrDefault("?")
-
-    private fun heading(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 17f
-        setTextColor(Color.BLACK)
-        setPadding(0, 40, 0, 8)
-    }
-
-    private fun body(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 14f
-        setLineSpacing(0f, 1.15f)
-    }
-
-    private fun action(label: String, run: () -> Unit) = Button(this).apply {
-        text = label
-        setOnClickListener { run() }
-    }
-
-    private fun toggle(label: String, initial: Boolean, onChange: (Boolean) -> Unit) =
-        Switch(this).apply {
-            text = label
-            isChecked = initial
-            setPadding(0, 16, 0, 16)
-            setOnCheckedChangeListener { _, checked -> onChange(checked) }
-        }
 
     private fun openAny(vararg actions: String) {
         for (action in actions) {

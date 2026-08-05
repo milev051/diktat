@@ -117,6 +117,10 @@ pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
 ./run.sh test 5          # snimi 5s i ispiši šta je čuo
 ```
 
+**Android** — release je skupljen R8-om, pa komponente iz manifesta moraju
+ostati u `proguard-rules.pro`; inače ih R8 preimenuje i sistem ih ne nađe.
+Provera: `aapt2 dump xmltree` nad gotovim APK-om mora da pokaže svih pet akcija.
+
 **Android** — build koji „prođe" ne znači da je izmena unutra. Proveri u dex-u:
 
 ```bash

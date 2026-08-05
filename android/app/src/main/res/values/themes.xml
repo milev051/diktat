@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Material 3 + DayNight. Ranije je bio prisilno svetli Theme.Material.Light,
+      pa je aplikacija u tamnom rezimu telefona bela i bode oci.
+      Dinamicke boje (Material You) se ukljucuju iz MainActivity.
+    -->
+    <style name="Theme.Diktat" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
