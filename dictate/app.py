@@ -19,9 +19,9 @@ import rumps
 
 from . import audio, config, debugdump, hotkey, insert, overlay, webstt
 
+# Dok snima, naslov je proteklo vreme ("0:12") umesto ikonice.
 ICON = {
     "idle": "⚪",
-    "recording": "🟢",
     "thinking": "🟡",
     "error": "⚠️",
 }
@@ -474,12 +474,15 @@ class DictateApp(rumps.App):
         elif phase != "error":
             self._error_shown_at = None
 
-        # Tajmer mora da se osvezava i kad se stanje formalno ne menja.
-        if phase == "recording" and self.cfg.get("show_overlay", True):
-            recorder = self._recorder
-            if recorder is not None:
-                clock = self._clock_text()
-                self._last_clock = clock   # ostaje na ekranu i dok se obradjuje
+        # Dok snima, u menu baru stoji proteklo vreme umesto ikonice. Ova grana
+        # mora da tece i kad se stanje formalno ne menja, jer sat ide sam.
+        if phase == "recording" and self._recorder is not None:
+            clock = self._clock_text()
+            self._last_clock = clock   # ostaje i dok se posle obradjuje
+            if self.title != clock:    # naslov se dira samo kad se sekunda promeni
+                self.title = clock
+                self.item_status.title = "Snimanje…"
+            if self.cfg.get("show_overlay", True):
                 if not self.hud.visible:
                     self.hud.show(clock, mono=True)
                 else:
@@ -488,11 +491,7 @@ class DictateApp(rumps.App):
                 with self._count_lock:
                     pending = self._pending
                 self.hud.set_busy(pending > 0)
-                # Ova grana izlazi pre osvezavanja naslova, pa ga postavlja sama.
-                if self.title != ICON["recording"]:
-                    self.title = ICON["recording"]
-                    self.item_status.title = "Snimanje…"
-                return
+            return
 
         if not dirty:
             return
