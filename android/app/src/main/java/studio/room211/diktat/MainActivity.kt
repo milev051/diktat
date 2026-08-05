@@ -125,29 +125,6 @@ class MainActivity : Activity() {
         })
         root.addView(body("sr-RS, en-US, hr-HR…"))
 
-        root.addView(heading("Potrošnja podataka"))
-        trafficLine = body("")
-        root.addView(trafficLine)
-        root.addView(
-            body(
-                "Zvuk se šalje nesažet: 16 kHz × 16 bita = 32 KB po sekundi " +
-                    "govora. Odgovor je par stotina bajtova."
-            )
-        )
-        root.addView(toggle("Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
-            cfg.compressAudio = it
-        })
-        root.addView(
-            body(
-                "Ako sažimanje ne uspe, šalje se kao i pre — ušteda nikad ne " +
-                    "obara diktat. Traži Android 10 ili noviji."
-            )
-        )
-        root.addView(action("Poništi brojač") {
-            cfg.resetTraffic()
-            showTraffic()
-        })
-
         root.addView(heading("Skraćenice"))
         root.addView(toggle("Skraćuj česte fraze", cfg.abbreviations) { cfg.abbreviations = it })
         root.addView(
@@ -230,6 +207,29 @@ class MainActivity : Activity() {
         root.addView(action("Vrati podrazumevane skraćenice") {
             cfg.abbreviationRules = Abbreviations.defaultText()
             recreate()
+        })
+
+        root.addView(heading("Potrošnja podataka"))
+        trafficLine = body("")
+        root.addView(trafficLine)
+        root.addView(
+            body(
+                "Zvuk se šalje nesažet: 16 kHz × 16 bita = 32 KB po sekundi " +
+                    "govora. Odgovor je par stotina bajtova."
+            )
+        )
+        root.addView(toggle("Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
+            cfg.compressAudio = it
+        })
+        root.addView(
+            body(
+                "Ako sažimanje ne uspe, šalje se kao i pre — ušteda nikad ne " +
+                    "obara diktat. Traži Android 10 ili noviji."
+            )
+        )
+        root.addView(action("Poništi brojač") {
+            cfg.resetTraffic()
+            showTraffic()
         })
 
         root.addView(heading("Proba"))

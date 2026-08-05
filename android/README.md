@@ -103,7 +103,7 @@ pravila sačuvana, dok se ne pritisne *Vrati podrazumevane skraćenice*.
 Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.
 
 Zvuk se šalje kao **FLAC** — oko 40% manje od sirovog PCM-a, uz identičan
-transkript. Ako sažimanje ne uspe (Android stariji od 10, ili greška enkodera),
+transkript. Potvrđeno na telefonu. Ako sažimanje ne uspe (Android stariji od 10, ili greška enkodera),
 šalje se kao pre; ušteda nikad ne obara diktat.
 
 Endpoint prima isključivo `audio/x-flac; rate=N`. Bez `rate=` ili sa
@@ -173,7 +173,8 @@ vredi ih znati:
   prvi pojede reč. Sada **poslednji red pobeđuje**.
 
 Velika polja (pravila, proba) su namerno **na dnu ekrana** — svi prekidači su
-iznad njih, da se do njih dolazi bez skrolovanja preko teksta.
+iznad njih, da se do njih dolazi bez skrolovanja preko teksta. Između ta dva
+polja stoji *Potrošnja podataka*, da ne budu jedno uz drugo.
 
 U sekciji *Skraćenice* postoji polje **Proba** — upišeš rečenicu i odmah vidiš
 šta pravila urade, bez diktiranja.
