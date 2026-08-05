@@ -57,7 +57,15 @@ EMOTIKONI = {
         "upravo rečenom — ne posle svake reči, nego na svake dve-tri"
     ),
 }
-EMOTIKONI_KRAJ = " Dodaješ isključivo emoji znakove — nijednu reč."
+# "ni broj ni oznaku" nije visak: izmereno je da model, kad mu se trazi
+# raznolikost, pocne da numerise reci (juce¹ sam² bio³) da bi sam sebi brojao.
+EMOTIKONI_KRAJ = " Dodaješ isključivo emoji znakove — nijednu reč, broj ni oznaku."
+# Koliko znakova se pamti; isti se ne sme vratiti dok se toliko drugih ne potrosi.
+EMOJI_PAMTI = 15
+EMOTIKONI_RAZNOLIKOST = (
+    "Nijedan emoji ne ponavljaj u istom tekstu — svaki mora da bude drugačiji. "
+    "Izbegavaj i ove, upravo su korišćeni: {vec}"
+)
 # Kad nijedan drugi alat ne sme da menja reci, ispred zadatka ide ovaj uvod.
 # Izmereno: nad tekstom koji se zavrsava sa "gledao film ... bio je jako dobar"
 # obicna formulacija navede model da dopise REC "film" pre znaka — dovrsavanje
@@ -100,6 +108,50 @@ def available(cfg) -> bool:
 def tidy_on(cfg) -> bool:
     """Sredjuje li model interpunkciju — od toga zavisi i sta mu se salje."""
     return bool(cfg.get("polish_tidy", True))
+
+
+# Jedan emoji ume da bude sastavljen od vise kodnih tacaka (ZWJ, ton koze,
+# selektor prikaza), pa se hvata kao celina — inace bi "👨‍💼" bio dva znaka.
+_EMOJI = re.compile(
+    "[\U0001F000-\U0001FAFF\u2190-\u2BFF\u2600-\u27BF\u2B00-\u2BFF]"
+    "[\uFE00-\uFE0F\U0001F3FB-\U0001F3FF]?"
+    "(?:\u200D[\U0001F000-\U0001FAFF\u2600-\u27BF][\uFE00-\uFE0F\U0001F3FB-\U0001F3FF]?)*"
+)
+
+
+def emoji_list(text: str) -> list[str]:
+    """Emotikoni iz teksta, redom kojim se pojavljuju."""
+    return _EMOJI.findall(text)
+
+
+def bez_ponavljanja(text: str) -> str:
+    """Izbaci emotikon koji se u istom tekstu vec pojavio.
+
+    Uputstvo dovede model blizu — ali u gustom rezimu zna da ponovi jedan znak.
+    Brisanje viska je bezbedno: tekst se ne dira, samo znak nestane.
+    """
+    videni = set()
+
+    def zameni(m):
+        znak = m.group(0)
+        if znak in videni:
+            return ""
+        videni.add(znak)
+        return znak
+
+    out = _EMOJI.sub(zameni, text)
+    out = re.sub(r"[^\S\n]{2,}", " ", out)      # dvostruki razmaci iza brisanja
+    return re.sub(r"[^\S\n]+\n", "\n", out).strip()
+
+
+def zapamti_emoji(text: str, cfg) -> None:
+    """Dopuni istoriju poslednjih EMOJI_PAMTI znakova, bez ponavljanja."""
+    istorija = list(cfg.get("polish_emoji_recent") or [])
+    for znak in emoji_list(text):
+        if znak in istorija:
+            istorija.remove(znak)
+        istorija.append(znak)
+    cfg["polish_emoji_recent"] = istorija[-EMOJI_PAMTI:]
 
 
 def emoji_rate(cfg) -> str:
@@ -256,10 +308,16 @@ def _uputstvo(cfg) -> str:
         granice.append(NE_SKRACUJ)
     if "emoji" in izabrani:
         gustina = EMOTIKONI.get(emoji_rate(cfg), EMOTIKONI["paragraph"])
-        if _sme_da_menja(cfg):
-            zadaci.append(gustina[0].upper() + gustina[1:] + "." + EMOTIKONI_KRAJ)
+        zadatak = (
+            gustina[0].upper() + gustina[1:] if _sme_da_menja(cfg)
+            else EMOTIKONI_VERNO + gustina
+        ) + "." + EMOTIKONI_KRAJ
+        vec = cfg.get("polish_emoji_recent") or []
+        if vec:
+            zadatak += " " + EMOTIKONI_RAZNOLIKOST.format(vec=" ".join(vec))
         else:
-            zadaci.append(EMOTIKONI_VERNO + gustina + "." + EMOTIKONI_KRAJ)
+            zadatak += " Nijedan emoji ne ponavljaj u istom tekstu."
+        zadaci.append(zadatak)
 
     if len(zadaci) == 1:
         posao = "Tvoj posao:\n" + zadaci[0]

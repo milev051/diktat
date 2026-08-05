@@ -83,6 +83,7 @@ grupu — inače tiho pokvari brojeve.
 | Ime fajla samo od vremena | dva zapisa u istoj sekundi se prepišu | milisekunde **plus brojač** |
 | …ali onda sortiranje **po imenu** | brojač razbije azbučni redosled, briše se pogrešan fajl | sortiraj po `st_mtime_ns` |
 | `self._pending` iskorišćeno dvaput | brojač i prodavnica se sudarili, pad u `_tick` | `_pending_store` odvojeno |
+| Emoji regex preko para surogata u Kotlinu | `[\uD83C-\uDBFF][\uDC00-\uDFFF]` ne uhvati ništa | Java regex radi nad kodnim tačkama — piši `\x{1F000}` |
 | `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
@@ -180,6 +181,16 @@ makar mu bilo zabranjeno: sažimanje ih vraća pravopisno uredne, sa velikim
 slovima i interpunkcijom. Uputstvo to ne rešava pouzdano, pa presuđuju pravila
 u kodu. Pravila se tada primenjuju **po pasusu**, jer `strip_punctuation`
 skuplja razmake i pojeo bi prazne redove.
+
+**Model nema pamćenje između poziva.** Da se emotikoni ne bi ponavljali, čuva
+se poslednjih 15 znakova (`polish_emoji_recent`) i šalje mu se kao spisak koji
+treba izbeći; ponovljeni unutar istog teksta se brišu u kodu. Brisanje je
+bezbedno — tekst se ne dira, samo znak nestane.
+
+**Traženje raznolikosti navede model da broji.** Izmereno: uz spisak već
+korišćenih znakova počne da numeriše reči (`juce¹ sam² bio³`) da bi sam sebi
+vodio račun, pa provera vernosti obori ceo izlaz. Zato uputstvo izričito kaže
+„nijednu reč, broj ni oznaku" — posle toga 4/4 verno.
 
 **Emotikon ume da izmami dopisanu REČ.** Izmereno: nad „…gledao film … bio je
 jako dobar" model doda reč `film` umesto znaka — dovršavanje rečenice mu je

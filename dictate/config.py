@@ -54,6 +54,7 @@ DEFAULTS = {
     "polish_paragraphs": True,    # podeli na pasuse, prazan red izmedju
     "polish_emoji": False,        # emotikoni u tekstu
     "polish_emoji_rate": "paragraph",  # paragraph | sentence | dense
+    "polish_emoji_recent": [],    # poslednjih 15 znakova, da se ne ponavljaju
     "polish_concise": False,      # skrati i pojednostavi, bez gubitka sadrzaja
 
     # --- Debug ---

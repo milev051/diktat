@@ -128,7 +128,7 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
 | …i ispravi očigledne greške | uključeno | `sa kolega` → `sa kolegom`; radi samo uz sređivanje |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
-| Emotikoni | isključeno | gustina se bira ispod: *Pasus* / *Rečenica* / *Gusto* |
+| Emotikoni | isključeno | gustina se bira ispod: *Pasus* / *Rečenica* / *Gusto*; znakovi se ne ponavljaju |
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
 kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.

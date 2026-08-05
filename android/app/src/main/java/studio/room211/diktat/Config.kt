@@ -131,6 +131,12 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_emoji", false)
         set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
 
+    /** Poslednjih 15 upotrebljenih emotikona, da se ne ponavljaju. */
+    var polishEmojiRecent: List<String>
+        get() = (prefs.getString("polish_emoji_recent", "") ?: "")
+            .split(" ").filter { it.isNotBlank() }
+        set(v) = prefs.edit().putString("polish_emoji_recent", v.joinToString(" ")).apply()
+
     /** Gustina emotikona: paragraph | sentence | dense. */
     var polishEmojiRate: String
         get() = prefs.getString("polish_emoji_rate", "paragraph") ?: "paragraph"

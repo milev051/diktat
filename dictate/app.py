@@ -724,6 +724,12 @@ class DictateApp(rumps.App):
         try:
             doteran = polish.polish(tekst, self.cfg)
             self._count_polish()
+            if self.cfg.get("polish_emoji", False):
+                doteran = polish.bez_ponavljanja(doteran)
+                # Istorija znakova ide u sledeci zahtev: model nema pamcenje
+                # izmedju poziva, pa bi inace svaki put posegnuo za istima.
+                polish.zapamti_emoji(doteran, self.cfg)
+                config.save(self.cfg)
             if not polish.tidy_on(self.cfg):
                 # Kad sredjivanje nije trazeno, model ga svejedno uradi cim
                 # prepisuje recenice — skracivanje ih vraca pravopisno uredne.

@@ -153,6 +153,11 @@ interpunkciju i kvačice **ne dira**:
 | …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
 | …emotikoni | isključeno | gustina: na kraju pasusa / rečenice / na svake dve-tri reči |
 
+Emotikoni se **ne ponavljaju**: poslednjih 15 znakova se pamti i šalje modelu
+kao spisak koji treba izbeći, a ako se neki ipak ponovi unutar istog teksta,
+višak se briše. Model nema pamćenje između poziva, pa bi inače svaki put
+posezao za istima.
+
 Ako nijedan alat nije izabran, poziva nema — tekst se lepi kao i inače.
 
 Kad nijedan izabrani alat **ne sme** da menja reči (npr. samo emotikon), izlaz
@@ -176,6 +181,7 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_concise` | `false` | skrati i pojednostavi |
 | `polish_emoji` | `false` | emotikoni u tekstu |
 | `polish_emoji_rate` | `paragraph` | `paragraph` \| `sentence` \| `dense` |
+| `polish_emoji_recent` | `[]` | poslednjih 15 znakova; upisuje ih aplikacija |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i

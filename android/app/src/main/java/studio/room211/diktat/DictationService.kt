@@ -229,7 +229,13 @@ class DictationService : Service() {
         handler.post { updatePill(elapsed(), busy = true) }
         thread {
             val doteran = runCatching {
-                val izlaz = Polish.polish(tekst, cfg).also { cfg.countPolish() }
+                var izlaz = Polish.polish(tekst, cfg).also { cfg.countPolish() }
+                if (cfg.polishEmoji) {
+                    // Istorija znakova ide u sledeci zahtev: model nema pamcenje
+                    // izmedju poziva, pa bi inace svaki put posegnuo za istima.
+                    izlaz = Polish.bezPonavljanja(izlaz)
+                    Polish.zapamtiEmoji(izlaz, cfg)
+                }
                 // Kad sredjivanje nije trazeno, model ga svejedno uradi cim
                 // prepisuje recenice — skracivanje ih vraca pravopisno uredne.
                 // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
