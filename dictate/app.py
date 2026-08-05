@@ -152,10 +152,19 @@ class DictateApp(rumps.App):
             "…skrati i pojednostavi",
             callback=self._make_polish_toggle("polish_concise", False),
         )
-        self.item_polish_emoji = rumps.MenuItem(
-            "…emotikon na kraju pasusa",
-            callback=self._make_polish_toggle("polish_emoji", False),
-        )
+        # Emotikoni su izbor od cetiri stanja, ne prekidac — gustina se bira
+        # istim potezom kojim se ukljucuju.
+        self.emoji_menu = rumps.MenuItem("…emotikoni")
+        self.emoji_items = {}
+        for kljuc, naziv in (
+            (None, "Isključeno"),
+            ("paragraph", "Na kraju pasusa"),
+            ("sentence", "Na kraju rečenice"),
+            ("dense", "Na svakih par reči"),
+        ):
+            stavka = rumps.MenuItem(naziv, callback=self._make_emoji_setter(kljuc))
+            self.emoji_items[kljuc] = stavka
+            self.emoji_menu.add(stavka)
 
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
@@ -192,7 +201,7 @@ class DictateApp(rumps.App):
             self.item_polish_correct,
             self.item_polish_para,
             self.item_polish_concise,
-            self.item_polish_emoji,
+            self.emoji_menu,
             self.item_polish_count,
             lang_menu,
             self.item_ascii,
@@ -202,6 +211,29 @@ class DictateApp(rumps.App):
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
         ]
+        # Alati su podelementi glavnog prekidaca: uvuceni ispod njega i zasivljeni
+        # dok je iskljucen. Bez uvlacenja se iz menija ne vidi sta cemu pripada.
+        self._polish_children = [
+            self.item_polish_tidy,
+            self.item_polish_para,
+            self.item_polish_concise,
+            self.emoji_menu,
+            self.item_polish_count,
+        ]
+        for stavka in self._polish_children:
+            stavka._menuitem.setIndentationLevel_(1)
+        self.item_polish_correct._menuitem.setIndentationLevel_(2)
+
+        # Callback-ovi se pamte da bi mogli da se vrate kad se obrada upali.
+        # Lista parova, ne recnik: rumps MenuItem nije hashable.
+        self._polish_callbacks = [
+            (self.item_polish_tidy, self._make_polish_toggle("polish_tidy", True)),
+            (self.item_polish_correct, self._toggle_polish_level),
+            (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
+            (self.item_polish_concise, self._make_polish_toggle("polish_concise", False)),
+            *[(v, self._make_emoji_setter(k)) for k, v in self.emoji_items.items()],
+        ]
+
         self._rebuild_mic_menu()
         self._rebuild_history_menu()
         self._sync_pending()
@@ -248,7 +280,20 @@ class DictateApp(rumps.App):
             1 if self.cfg.get("polish_paragraphs", True) else 0
         )
         self.item_polish_concise.state = 1 if self.cfg.get("polish_concise", False) else 0
-        self.item_polish_emoji.state = 1 if self.cfg.get("polish_emoji", False) else 0
+
+        gustina = polish.emoji_rate(self.cfg) if self.cfg.get("polish_emoji", False) else None
+        for kljuc, stavka in self.emoji_items.items():
+            stavka.state = 1 if kljuc == gustina else 0
+        self.emoji_menu.title = "…emotikoni: " + (
+            self.emoji_items[gustina].title.lower() if gustina else "isključeno"
+        )
+
+        # Alat se ne bira dok je glavni prekidac ugasen. Sivi se skidanjem
+        # callback-a, ne sa setEnabled_: NSMenu sam ukljucuje stavke koje imaju
+        # akciju, pa bi setEnabled_ bio pregazen pri sledecem otvaranju menija.
+        radi = bool(self.cfg.get("polish", False)) and polish.available(self.cfg)
+        for stavka, cb in self._polish_callbacks:
+            stavka.set_callback(cb if radi else None)
         # Ispravljanje ima smisla samo uz sredjivanje; ostalo radi i bez njega.
         self.item_polish_correct.title = (
             "…i ispravi očigledne greške" if self.cfg.get("polish_tidy", True)
@@ -945,6 +990,16 @@ class DictateApp(rumps.App):
             and polish.available(self.cfg)
             and bool(polish.tools(self.cfg))
         )
+
+    def _make_emoji_setter(self, rate):
+        """None gasi emotikone; ostalo ih pali i postavlja gustinu."""
+        def setter(_):
+            self.cfg["polish_emoji"] = rate is not None
+            if rate is not None:
+                self.cfg["polish_emoji_rate"] = rate
+            config.save(self.cfg)
+            self._sync_menu_marks()
+        return setter
 
     def _make_polish_toggle(self, key, default):
         def toggle(_):

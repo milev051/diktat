@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -20,6 +21,9 @@ import com.google.android.material.color.DynamicColors
 import studio.room211.diktat.Ui.body
 import studio.room211.diktat.Ui.button
 import studio.room211.diktat.Ui.card
+import studio.room211.diktat.Ui.choice
+import studio.room211.diktat.Ui.indent
+import studio.room211.diktat.Ui.setBranchEnabled
 import studio.room211.diktat.Ui.dp
 import studio.room211.diktat.Ui.field
 import studio.room211.diktat.Ui.switch
@@ -150,7 +154,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun formalni(): ViewGroup {
         val (card, box) = card(this, "AI obrada teksta")
-        box.addView(switch(this, "Uključi AI obradu", cfg.polish) { cfg.polish = it })
+        // Alati su podelementi glavnog prekidaca: uvuceni i zasivljeni dok je
+        // iskljucen. Bez toga se iz spiska ne vidi sta cemu pripada.
+        val alati = mutableListOf<View>()
+        // Gustina zavisi od DVA prekidaca — glavnog i emotikona — pa se drzi
+        // odvojeno; puni se nize, kad se sam izbor napravi.
+        val gustinaBox = mutableListOf<View>()
+        box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
+            cfg.polish = it
+            setBranchEnabled(alati, it)
+            setBranchEnabled(gustinaBox, it && cfg.polishEmoji)
+        })
         box.addView(
             body(
                 this,
@@ -163,12 +177,16 @@ class MainActivity : AppCompatActivity() {
                     "sačuvan i posle nadogradnje aplikacije.",
             )
         )
-        box.addView(switch(this, "Sredi tekst (interpunkcija, kvačice)", cfg.polishTidy) {
+        val tidy = indent(this, switch(this, "Sredi tekst (interpunkcija, kvačice)", cfg.polishTidy) {
             cfg.polishTidy = it
         })
-        box.addView(switch(this, "…i ispravi očigledne greške", cfg.polishCorrect) {
+        alati.add(tidy)
+        box.addView(tidy)
+        val correct = indent(this, switch(this, "…i ispravi očigledne greške", cfg.polishCorrect) {
             cfg.polishCorrect = it
-        })
+        }).apply { setPadding(dp(32), paddingTop, paddingRight, paddingBottom) }
+        alati.add(correct)
+        box.addView(correct)
         box.addView(
             body(
                 this,
@@ -178,12 +196,16 @@ class MainActivity : AppCompatActivity() {
                     "Radi samo uz sređivanje.",
             )
         )
-        box.addView(switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
+        val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
         })
-        box.addView(switch(this, "Skrati i pojednostavi", cfg.polishConcise) {
+        alati.add(pasusi)
+        box.addView(pasusi)
+        val skrati = indent(this, switch(this, "Skrati i pojednostavi", cfg.polishConcise) {
             cfg.polishConcise = it
         })
+        alati.add(skrati)
+        box.addView(skrati)
         box.addView(
             body(
                 this,
@@ -191,11 +213,27 @@ class MainActivity : AppCompatActivity() {
                     "Činjenice, brojevi i imena ostaju.",
             )
         )
-        box.addView(switch(this, "Emotikon na kraju pasusa", cfg.polishEmoji) {
+        val gustina = choice(
+            this,
+            listOf("paragraph" to "Pasus", "sentence" to "Rečenica", "dense" to "Gusto"),
+            cfg.polishEmojiRate,
+        ) { cfg.polishEmojiRate = it }
+        val emotikoni = indent(this, switch(this, "Emotikoni", cfg.polishEmoji) {
             cfg.polishEmoji = it
+            setBranchEnabled(listOf(gustina), it && cfg.polish)
         })
-        polishLine = body(this, "")
+        alati.add(emotikoni)
+        box.addView(emotikoni)
+        gustinaBox.add(gustina)
+        box.addView(indent(this, gustina))
+        box.addView(
+            indent(this, body(this, "Koliko često: jedan na kraju pasusa, jedan po rečenici, " +
+                "ili na svake dve-tri reči."))
+        )
+        setBranchEnabled(listOf(gustina), cfg.polishEmoji && cfg.polish)
+        polishLine = indent(this, body(this, ""))
         box.addView(polishLine)
+        setBranchEnabled(alati, cfg.polish)
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
         val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {

@@ -83,6 +83,7 @@ grupu — inače tiho pokvari brojeve.
 | Ime fajla samo od vremena | dva zapisa u istoj sekundi se prepišu | milisekunde **plus brojač** |
 | …ali onda sortiranje **po imenu** | brojač razbije azbučni redosled, briše se pogrešan fajl | sortiraj po `st_mtime_ns` |
 | `self._pending` iskorišćeno dvaput | brojač i prodavnica se sudarili, pad u `_tick` | `_pending_store` odvojeno |
+| `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
@@ -157,6 +158,12 @@ menjao svoja pravila. Uz pravila se pamti snimak podrazumevanih; poklapaju li
 se, nova se pokupe tiho.
 
 ---
+
+**Glavni prekidač AI obrade se ne ukida.** Bez njega bi gašenje obrade značilo
+gašenje svakog alata pojedinačno — i gubitak izbora. Alati su zato podelementi:
+uvučeni i zasivljeni dok je glavni isključen. Na macOS-u se sivi **skidanjem
+callback-a**, ne sa `setEnabled_`: NSMenu sam uključuje stavke koje imaju akciju,
+pa bi `setEnabled_` bio pregažen pri sledećem otvaranju menija.
 
 **Alati AI obrade su nezavisni; uputstvo se sklapa od izabranih.** Sređivanje
 (interpunkcija, velika slova, kvačice) je samo jedan od njih. Kad ono nije

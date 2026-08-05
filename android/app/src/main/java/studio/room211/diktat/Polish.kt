@@ -39,20 +39,23 @@ object Polish {
     private const val PASUSI =
         "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. " +
             "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
-    private const val EMOTIKONI =
-        "Na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 ili 📌) " +
-            "koji odgovara njegovom tonu. Ako je ceo tekst jedan pasus, dodaj jedan " +
-            "emoji na sam kraj teksta. Dodaješ isključivo emoji znak — nijednu reč, i " +
-            "nigde drugde."
+    // Gustina emotikona; kljucevi su vrednosti `polishEmojiRate`.
+    private val EMOTIKONI = mapOf(
+        "paragraph" to ("na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 " +
+            "ili 📌) koji odgovara njegovom tonu; ako je ceo tekst jedan pasus, emoji " +
+            "ide na sam kraj"),
+        "sentence" to ("na kraj svake rečenice dodaj tačno jedan emoji znak koji odgovara " +
+            "onome što ta rečenica kaže"),
+        "dense" to ("posle svake dve do tri reči ubaci po jedan emoji znak koji odgovara " +
+            "upravo rečenom — ne posle svake reči, nego na svake dve-tri"),
+    )
+    private const val EMOTIKONI_KRAJ = " Dodaješ isključivo emoji znakove — nijednu reč."
     // Kad nijedan drugi alat ne sme da menja reci, emotikon se trazi ovako.
     // Izmereno: nad tekstom koji se zavrsava sa "gledao film ... bio je jako
     // dobar" obicna formulacija navede model da dopise REC "film" pre znaka —
     // dovrsavanje recenice mu je ocekivanije od emotikona. "Prepisi od reci do
     // reci" to ukloni (3/3), dok je strozija granica gasila i sam emotikon.
-    private const val EMOTIKONI_VERNO =
-        "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i na kraj svakog " +
-            "pasusa dodaj tačno jedan emoji znak koji odgovara njegovom tonu. Ako je ceo " +
-            "tekst jedan pasus, emoji ide na sam kraj. Ne dopisuj nijednu reč — samo znak."
+    private const val EMOTIKONI_VERNO = "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i "
 
     private const val SAZMI =
         "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice " +
@@ -119,7 +122,13 @@ object Polish {
         }
         if (cfg.polishParagraphs) zadaci.add(PASUSI) else granice.add(NE_PASUSI)
         if (cfg.polishConcise) zadaci.add(SAZMI) else granice.add(NE_SKRACUJ)
-        if (cfg.polishEmoji) zadaci.add(if (smeDaMenja(cfg)) EMOTIKONI else EMOTIKONI_VERNO)
+        if (cfg.polishEmoji) {
+            val gustina = EMOTIKONI[cfg.polishEmojiRate] ?: EMOTIKONI.getValue("paragraph")
+            zadaci.add(
+                if (smeDaMenja(cfg)) gustina.replaceFirstChar { it.uppercase() } + "." + EMOTIKONI_KRAJ
+                else EMOTIKONI_VERNO + gustina + "." + EMOTIKONI_KRAJ
+            )
+        }
 
         val posao = if (zadaci.size == 1) {
             "Tvoj posao:\n" + zadaci[0]

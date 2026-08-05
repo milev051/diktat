@@ -91,7 +91,7 @@ Dva nezavisna podešavanja:
 | **Mikrofon** | izbor ulaza, ili sistemski podrazumevani |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
-| **AI obrada teksta** | alati ispod: sredi, ispravi, pasusi, skrati, emotikon |
+| **AI obrada teksta** | glavni prekidač; alati su uvučeni ispod njega i sivi dok je isključen |
 | **Jezik** | srpski, engleski, hrvatski |
 | **Snimaj za debug** | vidi „Ako se ne prepozna sve" |
 
@@ -151,7 +151,7 @@ interpunkciju i kvačice **ne dira**:
 | …i ispravi očigledne greške | uključeno | gramatička neslaganja; radi samo uz sređivanje |
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
-| …emotikon na kraju pasusa | isključeno | tačno jedan znak po pasusu |
+| …emotikoni | isključeno | gustina: na kraju pasusa / rečenice / na svake dve-tri reči |
 
 Ako nijedan alat nije izabran, poziva nema — tekst se lepi kao i inače.
 
@@ -174,7 +174,8 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `polish_concise` | `false` | skrati i pojednostavi |
-| `polish_emoji` | `false` | jedan emotikon na kraju svakog pasusa |
+| `polish_emoji` | `false` | emotikoni u tekstu |
+| `polish_emoji_rate` | `paragraph` | `paragraph` \| `sentence` \| `dense` |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i

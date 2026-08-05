@@ -119,7 +119,8 @@ Kartica *AI obrada teksta*: prekidač plus polje za **API ključ** (Google AI
 Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu. Dok se čeka, pilula
 pokazuje plavo **AI**.
 
-Alati su **nezavisni** — uputstvo se sklapa od izabranih:
+Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
+**podelementi** glavnog prekidača: uvučeni i sivi dok je AI obrada isključena.
 
 | alat | podrazumevano | šta radi |
 |---|---|---|
@@ -127,7 +128,7 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih:
 | …i ispravi očigledne greške | uključeno | `sa kolega` → `sa kolegom`; radi samo uz sređivanje |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
-| Emotikon na kraju pasusa | isključeno | tačno jedan znak po pasusu |
+| Emotikoni | isključeno | gustina se bira ispod: *Pasus* / *Rečenica* / *Gusto* |
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
 kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.

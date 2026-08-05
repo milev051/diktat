@@ -126,10 +126,15 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_tidy", true)
         set(v) = prefs.edit().putBoolean("polish_tidy", v).apply()
 
-    /** Jedan emotikon na kraju svakog pasusa. */
+    /** Emotikoni u tekstu. */
     var polishEmoji: Boolean
         get() = prefs.getBoolean("polish_emoji", false)
         set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
+
+    /** Gustina emotikona: paragraph | sentence | dense. */
+    var polishEmojiRate: String
+        get() = prefs.getString("polish_emoji_rate", "paragraph") ?: "paragraph"
+        set(v) = prefs.edit().putString("polish_emoji_rate", v).apply()
 
     /** Skrati i pojednostavi, bez gubitka sadrzaja. */
     var polishConcise: Boolean

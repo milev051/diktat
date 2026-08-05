@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
@@ -71,6 +72,60 @@ object Ui {
         minHeight = context.dp(48)          // udoban cilj za prst
         setPadding(0, context.dp(4), 0, context.dp(4))
         setOnCheckedChangeListener { _, checked -> onChange(checked) }
+    }
+
+    /**
+     * Segmentirani izbor jedne od nekoliko vrednosti.
+     *
+     * Prekidac ume samo dva stanja, a gustina emotikona ima tri — bez ovoga bi
+     * morala tri prekidaca koji se medjusobno iskljucuju.
+     */
+    fun choice(
+        context: Context,
+        options: List<Pair<String, String>>,
+        current: String,
+        onPick: (String) -> Unit,
+    ): MaterialButtonToggleGroup {
+        val group = MaterialButtonToggleGroup(context).apply {
+            isSingleSelection = true
+            isSelectionRequired = true
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = context.dp(4); bottomMargin = context.dp(4) }
+        }
+        val ids = mutableMapOf<Int, String>()
+        for ((kljuc, naziv) in options) {
+            val dugme = MaterialButton(
+                context, null,
+                com.google.android.material.R.attr.materialButtonOutlinedStyle,
+            ).apply {
+                id = View.generateViewId()
+                text = naziv
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            ids[dugme.id] = kljuc
+            group.addView(dugme)
+            if (kljuc == current) group.check(dugme.id)
+        }
+        group.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) ids[checkedId]?.let(onPick)
+        }
+        return group
+    }
+
+    /** Uvuce podelement, da se vidi kome pripada. */
+    fun <T : View> indent(context: Context, view: T): T = view.apply {
+        setPadding(context.dp(16), paddingTop, paddingRight, paddingBottom)
+    }
+
+    /** Ukljuci/iskljuci celu granu podelemenata odjednom. */
+    fun setBranchEnabled(views: List<View>, enabled: Boolean) {
+        for (v in views) {
+            v.isEnabled = enabled
+            v.alpha = if (enabled) 1f else 0.4f
+            if (v is ViewGroup) for (i in 0 until v.childCount) v.getChildAt(i).isEnabled = enabled
+        }
     }
 
     fun button(context: Context, label: String, onClick: () -> Unit) =

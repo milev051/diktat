@@ -41,22 +41,29 @@ PASUSI = (
     "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. "
     "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
 )
-EMOTIKONI = (
-    "Na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 ili 📌) "
-    "koji odgovara njegovom tonu. Ako je ceo tekst jedan pasus, dodaj jedan "
-    "emoji na sam kraj teksta. Dodaješ isključivo emoji znak — nijednu reč, i "
-    "nigde drugde."
-)
-# Kad nijedan drugi alat ne sme da menja reci, emotikon se trazi ovako. Izmereno:
-# nad tekstom koji se zavrsava sa "gledao film ... bio je jako dobar" obicna
-# formulacija navede model da dopise REC "film" pre znaka — dovrsavanje recenice
-# mu je ocekivanije od emotikona. "Prepisi od reci do reci" to ukloni (3/3), dok
-# je strozija granica gasila i sam emotikon.
-EMOTIKONI_VERNO = (
-    "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i na kraj svakog "
-    "pasusa dodaj tačno jedan emoji znak koji odgovara njegovom tonu. Ako je ceo "
-    "tekst jedan pasus, emoji ide na sam kraj. Ne dopisuj nijednu reč — samo znak."
-)
+# Gustina emotikona. Kljucevi su vrednosti `polish_emoji_rate`.
+EMOTIKONI = {
+    "paragraph": (
+        "na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 ili "
+        "📌) koji odgovara njegovom tonu; ako je ceo tekst jedan pasus, emoji "
+        "ide na sam kraj"
+    ),
+    "sentence": (
+        "na kraj svake rečenice dodaj tačno jedan emoji znak koji odgovara "
+        "onome što ta rečenica kaže"
+    ),
+    "dense": (
+        "posle svake dve do tri reči ubaci po jedan emoji znak koji odgovara "
+        "upravo rečenom — ne posle svake reči, nego na svake dve-tri"
+    ),
+}
+EMOTIKONI_KRAJ = " Dodaješ isključivo emoji znakove — nijednu reč."
+# Kad nijedan drugi alat ne sme da menja reci, ispred zadatka ide ovaj uvod.
+# Izmereno: nad tekstom koji se zavrsava sa "gledao film ... bio je jako dobar"
+# obicna formulacija navede model da dopise REC "film" pre znaka — dovrsavanje
+# recenice mu je ocekivanije od emotikona. "Prepisi od reci do reci" to ukloni
+# (3/3), dok je strozija granica gasila i sam emotikon.
+EMOTIKONI_VERNO = "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i "
 SAZMI = (
     "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice "
     "razbij na kraće i jasnije. Sve činjenice, brojevi, imena i zaključci "
@@ -93,6 +100,12 @@ def available(cfg) -> bool:
 def tidy_on(cfg) -> bool:
     """Sredjuje li model interpunkciju — od toga zavisi i sta mu se salje."""
     return bool(cfg.get("polish_tidy", True))
+
+
+def emoji_rate(cfg) -> str:
+    """paragraph | sentence | dense — koliko cesto emotikon."""
+    rate = cfg.get("polish_emoji_rate", "paragraph")
+    return rate if rate in EMOTIKONI else "paragraph"
 
 
 def tools(cfg) -> list[str]:
@@ -242,7 +255,11 @@ def _uputstvo(cfg) -> str:
     else:
         granice.append(NE_SKRACUJ)
     if "emoji" in izabrani:
-        zadaci.append(EMOTIKONI if _sme_da_menja(cfg) else EMOTIKONI_VERNO)
+        gustina = EMOTIKONI.get(emoji_rate(cfg), EMOTIKONI["paragraph"])
+        if _sme_da_menja(cfg):
+            zadaci.append(gustina[0].upper() + gustina[1:] + "." + EMOTIKONI_KRAJ)
+        else:
+            zadaci.append(EMOTIKONI_VERNO + gustina + "." + EMOTIKONI_KRAJ)
 
     if len(zadaci) == 1:
         posao = "Tvoj posao:\n" + zadaci[0]
