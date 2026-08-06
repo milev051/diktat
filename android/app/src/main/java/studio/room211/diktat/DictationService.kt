@@ -43,6 +43,20 @@ class DictationService : Service() {
 
     private lateinit var cfg: Config
     private val handler = Handler(Looper.getMainLooper())
+    // Tajmer se pamti kao JEDAN objekat da bi mogao da se skine pojedinacno.
+    // `::tick` bi svaki put napravio novi Runnable, pa `removeCallbacks` ne bi
+    // imao sta da uhvati — otud je ranije stajalo removeCallbacksAndMessages.
+    private val tickRunnable = Runnable { tick() }
+    // Osigurac: ako obrada nikad ne javi da je gotova (nit umre, poziv visi
+    // preko svog roka), pilula bi zauvek stajala i servis se ne bi ugasio.
+    // Granica je iznad najduzeg poziva (provera snimka ceka do 180s).
+    private val watchdogRunnable = Runnable {
+        if (!isRecording) {
+            pending.set(0)
+            toast("Obrada nije stigla — prekidam")
+            finishSession()
+        }
+    }
     private var recorder: Recorder? = null
     private var pill: TextView? = null
     private var windows: WindowManager? = null
@@ -112,7 +126,13 @@ class DictationService : Service() {
     private fun stopRecording() {
         if (!isRecording) return
         isRecording = false
-        handler.removeCallbacksAndMessages(null)
+        // Skida se SAMO tajmer. Ranije je ovde stajalo removeCallbacksAndMessages(null),
+        // sto je brisalo i `deliver` poruke koje su radne niti vec postavile u red:
+        // prepoznat segment bi nestao, `expected` bi zauvek stao, `pending` nikad
+        // ne bi pao na nulu — pa bi pilula ostala narandzasta sa poslednjom cifrom
+        // i servis se ne bi ugasio dok ga korisnik rucno ne prekine.
+        handler.removeCallbacks(tickRunnable)
+        handler.postDelayed(watchdogRunnable, 240_000)
         busy = true
         updatePill(elapsed(), busy = true)
 
@@ -358,6 +378,7 @@ class DictationService : Service() {
 
     private fun finishSession() {
         if (isRecording || pending.get() > 0) return
+        handler.removeCallbacks(watchdogRunnable)
         busy = false
         hidePill()
         stopSelf()
@@ -379,7 +400,7 @@ class DictationService : Service() {
             return
         }
         updatePill(sec, busy = false)
-        handler.postDelayed(::tick, 250)
+        handler.postDelayed(tickRunnable, 250)
     }
 
     // -------------------------------------------------------- prozor
@@ -448,7 +469,8 @@ class DictationService : Service() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
+        handler.removeCallbacks(tickRunnable)
+        handler.removeCallbacks(watchdogRunnable)
         recorder?.stop()
         hidePill()
         isRecording = false

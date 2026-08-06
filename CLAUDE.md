@@ -87,6 +87,8 @@ grupu — inače tiho pokvari brojeve.
 | `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
+| `handler.removeCallbacksAndMessages(null)` pri zaustavljanju | briše i `deliver` poruke koje su radne niti već postavile — segment nestane, `expected` stane, pilula zauvek narandžasta | skidaj **samo svoj** Runnable (`removeCallbacks(tickRunnable)`) |
+| `handler.postDelayed(::tick, …)` pa `removeCallbacks(::tick)` | `::tick` pravi nov objekat svaki put, pa nema šta da se skine | čuvaj jedan `Runnable` u polju |
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 | …ali **bezuslovno** preuzimanje pokreta | veliko polje zaglavi celu stranicu, donje sekcije nedostupne | preuzmi samo ako `layout.height > vidljiva visina` |
 
