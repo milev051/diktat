@@ -96,3 +96,39 @@ class Apostrof(unittest.TestCase):
 
     def test_brojevi_i_dalje_ostaju_celi(self):
         self.assertEqual(webstt.strip_punctuation("cena 3,5 u 10:00"), "cena 3,5 u 10:00")
+
+
+class Skracenice(unittest.TestCase):
+    """Ista pravila kao na Androidu — do sada ih Mac uopste nije imao."""
+
+    def pravila(self, tekst=None):
+        from dictate import abbrev
+        return abbrev.parse(tekst if tekst is not None else abbrev.default_text())
+
+    def primeni(self, tekst, pravila=None):
+        from dictate import abbrev
+        return abbrev.apply(tekst, pravila or self.pravila())
+
+    def test_osnovna_zamena(self):
+        self.assertEqual(self.primeni("ne znam gde je"), "nzm gde je")
+
+    def test_znak_manje_pojede_razmak_ispred(self):
+        self.assertEqual(self.primeni("traje 15 minuta"), "traje 15min")
+
+    def test_poklapaju_se_samo_cele_reci(self):
+        self.assertEqual(self.primeni("neznam nije fraza"), "neznam nije fraza")
+
+    def test_regularni_izraz_premesta_valutu(self):
+        self.assertEqual(self.primeni("kosta 100 dolara"), "kosta $100")
+
+    def test_poslednji_red_pobedjuje(self):
+        p = self.pravila("fraza=prvo\nfraza=drugo")
+        self.assertEqual(self.primeni("fraza", p), "drugo")
+
+    def test_komentar_i_prazan_red_se_preskacu(self):
+        p = self.pravila("# ovo je komentar\n\nne znam=nzm")
+        self.assertEqual(len(p), 1)
+
+    def test_neispravan_izraz_ne_obara_diktat(self):
+        p = self.pravila("~(nezatvorena=x\nne znam=nzm")
+        self.assertEqual(self.primeni("ne znam", p), "nzm")

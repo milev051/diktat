@@ -20,7 +20,8 @@ import rumps
 from Foundation import NSAttributedString
 
 from . import (
-    audio, config, debugdump, hotkey, insert, listen, overlay, pending, polish, webstt,
+    abbrev, audio, config, debugdump, hotkey, insert, listen, overlay, pending,
+    polish, webstt,
 )
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
@@ -599,6 +600,7 @@ class DictateApp(rumps.App):
         if izgovoreno:
             text = webstt.strip_punctuation(text)
             text = text.lower()
+        text = self._skracenice(text)
         if self.cfg.get("ascii_diacritics", False):
             text = webstt.to_ascii(text)
         return text
@@ -611,9 +613,19 @@ class DictateApp(rumps.App):
         sa njegovim oblikovanjem ne sudara.
         """
         text = webstt.join_thousands(text)
+        text = self._skracenice(text)
         if self.cfg.get("ascii_diacritics", False):
             text = webstt.to_ascii(text)
         return text
+
+    def _skracenice(self, text: str) -> str:
+        """Zamene koje korisnik sam definise; ista pravila kao na Androidu."""
+        if not self.cfg.get("abbreviations", True):
+            return text
+        pravila = abbrev.parse(
+            self.cfg.get("abbreviation_rules") or abbrev.default_text()
+        )
+        return abbrev.apply(text, pravila)
 
     def _rules_over_paragraphs(self, text: str) -> str:
         """Ista pravila, ali podela na pasuse prezivljava.

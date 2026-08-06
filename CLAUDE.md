@@ -132,6 +132,11 @@ naslova menja svake sekunde i ostale ikonice poskakuju.
 da", pa bi zamena pokvarila drugu upotrebu. U listi stoji samo `procenata=<%`,
 koje je jednoznačno. Isto pravilo važi za svaku reč sa dva značenja.
 
+**Skraćenice postoje na obe platforme.** Mac ih je dobio kasno (`dictate/abbrev.py`),
+pa se pravila prenose 1:1 iz `Abbreviations.kt` — `<` jede razmak ispred, `~`
+je regularni izraz, `{1}` je grupa, poslednji red pobeđuje. Ako se logika menja,
+menja se na oba mesta; testovi postoje i tamo i ovde.
+
 **Podrazumevane skraćenice utiču samo na nove instalacije.** Postojeća ima svoja
 pravila sačuvana; pokupi nova tek dugmetom u aplikaciji.
 

@@ -15,6 +15,8 @@ DEFAULTS = {
     # da model sredjuje tekst — prekidac za to stoji u AI grupi.
     "text_style": "spoken",
     "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
+    "abbreviations": True,        # „ne znam" -> „nzm"
+    "abbreviation_rules": "",     # prazno = ugradjena lista (dictate/abbrev.py)
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
     "segment_after_seconds": 0,   # 0 = seci na svakoj pauzi, ma koliko kratak segment

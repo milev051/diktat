@@ -107,6 +107,8 @@ Dva nezavisna podešavanja:
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `compress_audio` | `true` | FLAC ka endpointu, 36% manje; bez `ffmpeg`-a ide PCM |
 | `text_style` | `spoken` | `spoken` = mala slova bez interpunkcije (podrazumevano), `written` = AI sređuje |
+| `abbreviations` | `true` | „ne znam" → „nzm"; ista pravila kao na Androidu |
+| `abbreviation_rules` | `""` | prazno = ugrađena lista; format `fraza=skraćenica`, jedno po redu |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | samo uz `auto_segment` |
