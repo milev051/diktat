@@ -5,8 +5,8 @@ punim kontekstom. Po segmentu bi model video krhotine i izmisljao krajeve
 recenica, a i broj poziva bi skocio sa jednog na stotinak po diktatu.
 
 Alati su nezavisni: sredjivanje (interpunkcija, velika slova, kvacice) je samo
-JEDAN od njih. Moze se traziti samo skracivanje ili samo prevod a da model tekst
-inace ne dira — zato se uputstvo sklapa iz delova umesto da postoji fiksan
+JEDAN od njih. Moze se traziti samo prevod ili samo podela na pasuse a da model
+tekst inace ne dira — zato se uputstvo sklapa iz delova umesto da postoji fiksan
 prompt po rezimu. Kad nijedan alat nije izabran, poziva nema.
 """
 
@@ -47,11 +47,6 @@ PREVOD = (
     "Konačan tekst napiši na: {jezik}. Drži se tog opisa doslovno — ako traži "
     "mešavinu jezika ili neobičan stil, tako i uradi. Značenje mora da ostane "
     "isto: ne dodaj i ne izbacuj sadržaj."
-)
-SAZMI = (
-    "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice "
-    "razbij na kraće i jasnije. Sve činjenice, brojevi, imena i zaključci "
-    "moraju da ostanu — smeš da izbaciš reči, ne i sadržaj."
 )
 
 # Granice koje vaze uvek. Ostale zavise od izabranih alata i dodaju se u _uputstvo.
@@ -109,8 +104,6 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
         izabrani.append("tidy")
     if cfg.get("polish_paragraphs", True):
         izabrani.append("paragraphs")
-    if cfg.get("polish_concise", False):
-        izabrani.append("concise")
     if output_language(cfg):
         izabrani.append("translate")
     return izabrani
@@ -197,8 +190,7 @@ def _reci(text: str) -> list[str]:
 def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     """Menja li ijedan izabrani alat same reci."""
     return (
-        bool(cfg.get("polish_concise", False))
-        or bool(output_language(cfg))       # prevod po prirodi menja svaku rec
+        bool(output_language(cfg))          # prevod po prirodi menja svaku rec
         or "tidy" in tools(cfg, vec_sredjeno)
     )
 
@@ -245,9 +237,7 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         zadaci.append(PASUSI)
     else:
         granice.append(NE_PASUSI)
-    if "concise" in izabrani:
-        zadaci.append(SAZMI)
-    elif "translate" not in izabrani:
+    if "translate" not in izabrani:
         # Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
         granice.append(NE_SKRACUJ)
     if "translate" in izabrani:

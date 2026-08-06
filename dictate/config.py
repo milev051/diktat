@@ -51,7 +51,6 @@ DEFAULTS = {
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
     "vocabulary": "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK",
-    "polish_concise": False,
     # Slobodan opis: "makedonski", "pola makedonski pola srpski", "engleski
     # formalno"… Prazno = bez prevoda.
     "output_language": "",      # skrati i pojednostavi, bez gubitka sadrzaja
@@ -104,7 +103,7 @@ def _migrate(cfg: dict) -> dict:
                   "audio_check_low_only", "audio_check_threshold",
                   "polish_emoji", "polish_emoji_rate", "polish_emoji_recent",
                   "join_thousands", "trailing_space", "capitalize_first",
-                  "polish_level"):
+                  "polish_level", "polish_concise"):
         cfg.pop(mrtvo, None)
     return cfg
 

@@ -124,9 +124,8 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
 
 | alat | podrazumevano | šta radi |
 |---|---|---|
-| Sredi tekst | isključeno | interpunkcija, velika slova, kvačice; usput i gramatička neslaganja |
+| Sredi tekst | isključeno | tačke i velika slova; usput i gramatička neslaganja |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
-| Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
 | Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo

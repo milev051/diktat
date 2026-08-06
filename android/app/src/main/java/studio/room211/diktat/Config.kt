@@ -168,11 +168,6 @@ class Config(context: Context) {
         get() = prefs.getBoolean("audio_check", false)
         set(v) = prefs.edit().putBoolean("audio_check", v).apply()
 
-    /** Skrati i pojednostavi, bez gubitka sadrzaja. */
-    var polishConcise: Boolean
-        get() = prefs.getBoolean("polish_concise", false)
-        set(v) = prefs.edit().putBoolean("polish_concise", v).apply()
-
     /** Podeli doteran tekst na pasuse, prazan red izmedju. */
     var polishParagraphs: Boolean
         get() = prefs.getBoolean("polish_paragraphs", true)

@@ -89,7 +89,7 @@ Dva nezavisna podešavanja:
 |---|---|
 | **Istorija** | poslednjih `history_size` tekstova; klik kopira u clipboard |
 | **Snimanje / AI** | podmeniji; sve ostalo je u `config.json` |
-| **Mikrofon** | izbor ulaza, ili sistemski podrazumevani |
+| **Mikrofon** | izbor ulaza; lista se sama osvežava kad otvoriš podmeni |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
 | **AI obrada teksta** | glavni prekidač; alati su uvučeni ispod njega i sivi dok je isključen |
@@ -145,10 +145,9 @@ interpunkciju i kvačice **ne dira**:
 
 | alat | podrazumevano | šta radi |
 |---|---|---|
-| Sredi tekst | isključeno | interpunkcija, velika slova, kvačice; usput i gramatička neslaganja |
+| Sredi tekst | isključeno | tačke i velika slova; usput i gramatička neslaganja |
 | Bez kvačica | isključeno | `č ć ž š đ → c c z s dj`, primenjuje se na kraju |
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
-| …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
 | Jezik izlaza | prazno | slobodan opis: `makedonski`, `engleski formalno`, `pola makedonski pola srpski` |
 
 Ako nijedan alat nije izabran, poziva nema — tekst se lepi kao i inače.
@@ -169,7 +168,6 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
-| `polish_concise` | `false` | skrati i pojednostavi |
 | `output_language` | `""` | jezik izlaza, slobodan opis; prazno = bez prevoda |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 

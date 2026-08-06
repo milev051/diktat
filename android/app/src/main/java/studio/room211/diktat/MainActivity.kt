@@ -213,14 +213,16 @@ class MainActivity : AppCompatActivity() {
         )
 
 
-        val sredi = indent(this, switch(this, "Sredi tekst (interpunkcija, kvačice)",
+        val sredi = indent(this, switch(this, "Sredi tekst (tačke i velika slova)",
             cfg.polishTidy) { cfg.textStyle = if (it) "written" else "spoken" })
         alati.add(sredi)
         box.addView(sredi)
         box.addView(
-            indent(this, body(this, "Dodaje tačke, velika slova i kvačice, i usput " +
-                "sređuje reči koje se gramatički ne slažu. Isključeno: tekst ostaje " +
-                "malim slovima i bez interpunkcije, kako je izgovoren."))
+            indent(this, body(this, "Dodaje tačke i velika slova, i usput sređuje " +
+                "reči koje se gramatički ne slažu. Isključeno: tekst ostaje malim " +
+                "slovima i bez interpunkcije, kako je izgovoren.\n\n" +
+                "Kvačice ne zavise od ovoga — njih vraća samo prepoznavanje, a skida " +
+                "ih prekidač ispod."))
         )
 
         val kvacice = indent(this, switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)",
@@ -234,15 +236,6 @@ class MainActivity : AppCompatActivity() {
         alati.add(pasusi)
         box.addView(pasusi)
 
-        val skrati = indent(this, switch(this, "Skrati i pojednostavi", cfg.polishConcise) {
-            cfg.polishConcise = it
-        })
-        alati.add(skrati)
-        box.addView(skrati)
-        box.addView(
-            indent(this, body(this, "Izbacuje poštapalice i ponavljanja, duge rečenice " +
-                "deli na kraće. Činjenice, brojevi i imena ostaju."))
-        )
 
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it

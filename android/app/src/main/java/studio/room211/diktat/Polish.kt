@@ -46,11 +46,6 @@ object Polish {
             "mešavinu jezika ili neobičan stil, tako i uradi. Značenje mora da ostane " +
             "isto: ne dodaj i ne izbacuj sadržaj."
 
-    private const val SAZMI =
-        "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice " +
-            "razbij na kraće i jasnije. Sve činjenice, brojevi, imena i zaključci " +
-            "moraju da ostanu — smeš da izbaciš reči, ne i sadržaj."
-
     private const val NE_SKRACUJ = "ne preformulišaj i ne skraćuj rečenice"
     private const val NE_SREDJUJ =
         "ne diraj interpunkciju, velika slova i kvačice — u tom pogledu ostavi " +
@@ -74,13 +69,12 @@ object Polish {
      */
     fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
         cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs,
-        cfg.polishConcise, cfg.outputLanguage.isNotBlank(),
+        cfg.outputLanguage.isNotBlank(),
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
     private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
-        cfg.polishConcise ||
-            cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
+        cfg.outputLanguage.isNotBlank() ||         // prevod menja svaku rec
             (cfg.polishTidy && !vecSredjeno)
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
@@ -123,12 +117,8 @@ object Polish {
         }
         if (cfg.polishParagraphs) zadaci.add(PASUSI) else granice.add(NE_PASUSI)
         val prevod = cfg.outputLanguage.trim()
-        if (cfg.polishConcise) {
-            zadaci.add(SAZMI)
-        } else if (prevod.isEmpty()) {
-            // Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
-            granice.add(NE_SKRACUJ)
-        }
+        // Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
+        if (prevod.isEmpty()) granice.add(NE_SKRACUJ)
         if (prevod.isNotEmpty()) zadaci.add(PREVOD.format(prevod))
 
         val posao = if (zadaci.size == 1) {

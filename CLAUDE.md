@@ -303,7 +303,9 @@ Ne vraćaj ih kao zasebna podešavanja.
 **Ispravljanje grešaka je deo sređivanja, ne izbor.** Nivo „samo oblikuj"
 (`polish_level`) niko nije koristio, a prekidač je stajao siv jer zavisi od
 sređivanja. Sve što model radi nad tekstom stoji u jednoj grupi (AI), uključujući
-i „bez kvačica" koje se primenjuje posle njega.
+i „bez kvačica" koje se primenjuje posle njega. Naziv prekidača ne pominje
+kvačice: njih vraća samo prepoznavanje, a skida ih zaseban prekidač — dva
+mesta za istu stvar zbunjuju.
 
 **Zatečena podešavanja se prevode, ne brišu.** `_migrate` (Mac) i `Config.textStyle`
 (Android) izvode stil iz starih ključeva pri prvom čitanju. Isto važi za svako
@@ -318,6 +320,15 @@ Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz
 ~10s na 20s diktata; drugo šalje samo tekst i vraća se za sekundu. Držati ih
 zajedno je krilo tu razliku. Obična podešavanja (`Tekst`) idu **posle** AI-ja i
 imaju poslednju reč — to mora da piše u samoj kartici, ne samo u dokumentaciji.
+
+**Meni se posle klika sam zatvara i to se ne može isključiti.** NSMenu nema
+javni API za to; jedini način je da se odmah otvori ponovo
+(`button.performClick:` sa malim odlaganjem). Otvara se na prvom nivou, pa se u
+podmeni ulazi još jednom — to je granica, ne propust.
+
+**Lista mikrofona se osvežava iz delegata podmenija** (`menuNeedsUpdate:`), ne
+ručnom stavkom. Sam snimak to nikad nije pogađalo — uređaji se osvežavaju pred
+svaki diktat — ali je izbor u meniju lagao dok se slušalice priključe.
 
 **Ono što se ne koristi — izlazi.** Uklonjeni su emotikoni (cela logika, uz
 testove), izbor ulaznog jezika, ponavljanje neuspelih diktata iz menija, debug

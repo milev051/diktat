@@ -8,7 +8,7 @@ from dictate import polish
 def cfg(**kw):
     osnovno = {
         "polish_api_key": "x", "text_style": "written",
-        "polish_paragraphs": True, "polish_concise": False, "output_language": "",
+        "polish_paragraphs": True, "output_language": "",
     }
     osnovno.update(kw)
     return osnovno
@@ -17,7 +17,7 @@ def cfg(**kw):
 class Uputstvo(unittest.TestCase):
     def test_bez_sredjivanja_zabranjuje_interpunkciju(self):
         # Bez ove granice model sredi tekst svejedno — to je izmereno.
-        u = polish._uputstvo(cfg(text_style="spoken", polish_concise=True))
+        u = polish._uputstvo(cfg(text_style="spoken", output_language="engleski"))
         self.assertIn(polish.NE_SREDJUJ, u)
         self.assertNotIn(polish.SREDI, u)
 
@@ -25,9 +25,11 @@ class Uputstvo(unittest.TestCase):
         u = polish._uputstvo(cfg(polish_paragraphs=False))
         self.assertIn(polish.NE_PASUSI, u)
 
-    def test_bez_sazimanja_zabranjuje_skracivanje(self):
+    def test_zabrana_skracivanja_stoji_dok_nema_prevoda(self):
         self.assertIn(polish.NE_SKRACUJ, polish._uputstvo(cfg()))
-        self.assertNotIn(polish.NE_SKRACUJ, polish._uputstvo(cfg(polish_concise=True)))
+        self.assertNotIn(
+            polish.NE_SKRACUJ, polish._uputstvo(cfg(output_language="engleski"))
+        )
 
     def test_bez_alata_nema_poziva(self):
         prazan = cfg(text_style="spoken", polish_paragraphs=False)
@@ -46,8 +48,8 @@ class ProveraVernosti(unittest.TestCase):
         c = cfg(text_style="spoken")
         self.assertEqual(polish._proveri("bio je dobar", "Bio je dobar.", c), "Bio je dobar.")
 
-    def test_sazimanje_sme_da_menja_reci(self):
-        c = cfg(polish_concise=True)
+    def test_prevod_sme_da_menja_reci(self):
+        c = cfg(output_language="engleski")
         self.assertEqual(polish._proveri("pa ovaj bio je dobar", "bio je dobar", c), "bio je dobar")
 
 
@@ -81,9 +83,9 @@ class PosleSlusanjaNastavak(unittest.TestCase):
         self.assertIn(polish.PASUSI, u)
 
     def test_ostali_alati_ostaju(self):
-        c = cfg(polish_concise=True, output_language="engleski")
+        c = cfg(output_language="engleski")
         self.assertEqual(
-            sorted(polish.tools(c, vec_sredjeno=True)), ["concise", "paragraphs", "translate"]
+            sorted(polish.tools(c, vec_sredjeno=True)), ["paragraphs", "translate"]
         )
 
 

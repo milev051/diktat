@@ -15,6 +15,7 @@ import time
 import traceback
 
 import AppKit
+import objc
 import rumps
 from Foundation import NSAttributedString
 
@@ -37,6 +38,28 @@ TITLE_COLORS = {
 }
 
 ERROR_HUD_SECONDS = 4.0
+
+
+class _MicDelegate(AppKit.NSObject):
+    """Osvezava listu mikrofona svaki put kad se podmeni otvori.
+
+    Bez ovoga lista ostaje onakva kakva je bila pri pokretanju, pa slusalice
+    prikljucene u medjuvremenu nema u meniju. Sam SNIMAK to ne pogadja —
+    uredjaji se osvezavaju pred svaki diktat — ali izbor u meniju laze.
+    """
+
+    def initWithApp_(self, app):
+        self = objc.super(_MicDelegate, self).init()
+        if self is None:
+            return None
+        self._app = app
+        return self
+
+    def menuNeedsUpdate_(self, menu):  # noqa: N802 - ime trazi AppKit
+        try:
+            self._app.refresh_mic_list()
+        except Exception:  # noqa: BLE001 - delegat ne sme da obori meni
+            traceback.print_exc()
 
 
 class State:
@@ -120,10 +143,6 @@ class DictateApp(rumps.App):
 
     def _build_menu(self):
         self.history_menu = rumps.MenuItem("Istorija")
-        # Osvezavanje je deo izbora mikrofona, ne zasebna stavka.
-        self.item_refresh = rumps.MenuItem(
-            "Osveži listu", callback=self._refresh_audio
-        )
         self.mic_menu = rumps.MenuItem("Mikrofon")
 
         # Meni je grupisan po pitanju na koje odgovaras, a ne po tome kad je
@@ -142,7 +161,7 @@ class DictateApp(rumps.App):
         # Stil teksta je prekidac u AI grupi: "izgovoreno" je podrazumevano
         # ponasanje, a "sredjeno" je posao koji radi model.
         self.item_tidy = rumps.MenuItem(
-            "Sredi tekst (interpunkcija, kvačice)", callback=self._toggle_tidy
+            "Sredi tekst (tačke i velika slova)", callback=self._toggle_tidy
         )
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
@@ -161,10 +180,6 @@ class DictateApp(rumps.App):
             "Podeli na pasuse",
             callback=self._make_polish_toggle("polish_paragraphs", True),
         )
-        self.item_polish_concise = rumps.MenuItem(
-            "Skrati i pojednostavi",
-            callback=self._make_polish_toggle("polish_concise", False),
-        )
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
@@ -179,15 +194,13 @@ class DictateApp(rumps.App):
             self.item_tidy,
             self.item_ascii,
             self.item_polish_para,
-            self.item_polish_concise,
             self.item_language_out,
             rumps.separator,
             self.item_polish_count,
         ):
             ai_menu.add(stavka)
         for stavka in (self.item_listen, self.item_tidy, self.item_ascii,
-                       self.item_polish_para, self.item_polish_concise,
-                       self.item_language_out):
+                       self.item_polish_para, self.item_language_out):
             stavka._menuitem.setIndentationLevel_(1)
 
         self.menu = [
@@ -206,13 +219,26 @@ class DictateApp(rumps.App):
             (self.item_listen, self._toggle_listen),
             (self.item_tidy, self._toggle_tidy),
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
-            (self.item_polish_concise, self._make_polish_toggle("polish_concise", False)),
             (self.item_language_out, self._set_output_language),
         ]
 
         self._rebuild_mic_menu()
+        self._attach_mic_delegate()
         self._rebuild_history_menu()
         self._sync_menu_marks()
+
+    def refresh_mic_list(self):
+        """Ponovo ucitaj uredjaje iz sistema pa prepravi podmeni."""
+        audio.refresh_devices()
+        self._rebuild_mic_menu()
+
+    def _attach_mic_delegate(self):
+        """Podmeni sam trazi osvezavanje kad se otvori."""
+        menu = getattr(self.mic_menu, "_menu", None)
+        if menu is None:
+            return
+        self._mic_delegate = _MicDelegate.alloc().initWithApp_(self)
+        menu.setDelegate_(self._mic_delegate)
 
     def _rebuild_mic_menu(self):
         """Lista se pravi iznova jer se uredjaji prikljucuju i iskljucuju."""
@@ -238,8 +264,23 @@ class DictateApp(rumps.App):
             self.cfg["input_device"] = name
             config.save(self.cfg)
             self._mark_mic()
+            self._keep_menu_open()
 
         return setter
+
+    def _keep_menu_open(self):
+        """Vrati meni posle klika.
+
+        NSMenu se zatvara cim se stavka aktivira i to se javnim API-jem ne moze
+        iskljuciti; jedini nacin je da se odmah otvori ponovo. Otvara se na
+        prvom nivou, pa se u podmeni ulazi jos jednom.
+        """
+        nsapp = getattr(self, "_nsapp", None)
+        item = getattr(nsapp, "nsstatusitem", None) if nsapp else None
+        button = item.button() if item is not None else None
+        if button is None:
+            return
+        button.performSelector_withObject_afterDelay_("performClick:", None, 0.05)
 
     def _sync_menu_marks(self):
         mode = self.cfg.get("mode", "hold")
@@ -259,7 +300,6 @@ class DictateApp(rumps.App):
         )
         self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
-        self.item_polish_concise.state = 1 if self.cfg.get("polish_concise", False) else 0
 
         # Alat se ne bira dok je glavni prekidac ugasen. Sivi se skidanjem
         # callback-a, ne sa setEnabled_: NSMenu sam ukljucuje stavke koje imaju
@@ -997,6 +1037,7 @@ class DictateApp(rumps.App):
         self.cfg["audio_check"] = not bool(self.cfg.get("audio_check", False))
         config.save(self.cfg)
         self._sync_menu_marks()
+        self._keep_menu_open()
 
     def _toggle_polish(self, _):
         if not polish.available(self.cfg):
@@ -1007,6 +1048,7 @@ class DictateApp(rumps.App):
         if self.cfg["polish"] and not polish.tools(self.cfg):
             self.state.set(phase="error", message="Izaberi bar jedan alat")
         self._sync_menu_marks()
+        self._keep_menu_open()
 
     def _batch(self) -> bool:
         """Ceka li se kraj diktata zbog provere snimka."""
@@ -1034,6 +1076,7 @@ class DictateApp(rumps.App):
         self.cfg["text_style"] = "written" if sredjeno else "spoken"
         config.save(self.cfg)
         self._sync_menu_marks()
+        self._keep_menu_open()
 
     def _set_output_language(self, _):
         """Slobodan opis, ne spisak: „pola makedonski pola srpski" je isto vazeci."""
@@ -1056,18 +1099,21 @@ class DictateApp(rumps.App):
             self.cfg[key] = not bool(self.cfg.get(key, default))
             config.save(self.cfg)
             self._sync_menu_marks()
+            self._keep_menu_open()
         return toggle
 
     def _toggle_continuous(self, _):
         self.cfg["continuous"] = not bool(self.cfg.get("continuous", True))
         config.save(self.cfg)
         self._sync_menu_marks()
+        self._keep_menu_open()
 
     def _set_mode(self, mode):
         self.cfg["mode"] = mode
         config.save(self.cfg)
         self.listener.mode = mode
         self._sync_menu_marks()
+        self._keep_menu_open()
 
     def _toggle_ascii(self, _):
         self.cfg["ascii_diacritics"] = not bool(
@@ -1075,12 +1121,7 @@ class DictateApp(rumps.App):
         )
         config.save(self.cfg)
         self._sync_menu_marks()
-
-    def _refresh_audio(self, _):
-        audio.refresh_devices()
-        self._rebuild_mic_menu()
-        self.state.set(phase="idle", message="")
-        print(f"[diktat] mikrofon: {audio.current_input_name()}")
+        self._keep_menu_open()
 
     def _apply_debug(self, on):
         self._dump = (
