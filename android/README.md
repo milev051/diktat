@@ -147,6 +147,18 @@ podešeni model nestane (404), automatski se pokušava sa
 `gemini-flash-lite-latest`; ako i to padne, lepi se **nedoteran** tekst. Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
 preživljava instalaciju preko postojeće dok su paket i potpis isti.
 
+## AI sluša snimak
+
+Prekidač *AI sluša snimak (preciznije)* u kartici AI obrade. Snimak ide i modelu,
+zajedno sa onim što je Web Speech čuo; model sluša zvuk i ispravlja greške.
+Izmereno (greška po reči, tri rečenice sa šumom): Web Speech 0.30, model sam
+0.29, model uz prvi prepis **0.17**. Sam model u šumu halucinira, pa mu prvi
+prepis služi kao sidro.
+
+Zvuk ide kao FLAC u base64 — drugi put, pa se broji u potrošnju. Podstavka
+*…samo kad je pouzdanost niska* to smanjuje, ali propušta greške: endpoint
+prijavi 0.93 i za rečenicu sa odsečenom rečju.
+
 ## Potrošnja podataka
 
 Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.

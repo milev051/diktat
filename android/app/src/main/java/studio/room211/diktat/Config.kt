@@ -131,6 +131,16 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_emoji", false)
         set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
 
+    /** Model slusa snimak i ispravlja prepis. */
+    var audioCheck: Boolean
+        get() = prefs.getBoolean("audio_check", false)
+        set(v) = prefs.edit().putBoolean("audio_check", v).apply()
+
+    /** Salji snimak samo kad je pouzdanost ispod praga. */
+    var audioCheckLowOnly: Boolean
+        get() = prefs.getBoolean("audio_check_low_only", false)
+        set(v) = prefs.edit().putBoolean("audio_check_low_only", v).apply()
+
     /** Poslednjih 15 upotrebljenih emotikona, da se ne ponavljaju. */
     var polishEmojiRecent: List<String>
         get() = (prefs.getString("polish_emoji_recent", "") ?: "")
@@ -177,11 +187,18 @@ class Config(context: Context) {
     val dictationCount: Int get() = prefs.getInt("dictation_count", 0)
     val secondsSpoken: Long get() = prefs.getLong("seconds_spoken", 0)
 
-    fun addTraffic(sent: Long, received: Long, seconds: Double) {
+    fun addTraffic(
+        sent: Long,
+        received: Long,
+        seconds: Double,
+        countDictation: Boolean = true,
+    ) {
         prefs.edit()
             .putLong("bytes_sent", bytesSent + sent)
             .putLong("bytes_received", bytesReceived + received)
-            .putInt("dictation_count", dictationCount + 1)
+            // Provera snimka salje isti diktat drugi put — bajtovi se broje,
+            // ali broj diktata ne sme da poraste.
+            .putInt("dictation_count", dictationCount + if (countDictation) 1 else 0)
             .putLong("seconds_spoken", secondsSpoken + seconds.toLong())
             .apply()
     }

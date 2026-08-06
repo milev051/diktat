@@ -95,6 +95,11 @@ object WebStt {
         }
     }
 
+    /** Poslednja pouzdanost koju je endpoint prijavio, 0.0-1.0. */
+    @Volatile
+    var lastConfidence = 0.0
+        private set
+
     private fun parse(body: String): String {
         var best = ""
         var bestConf = -1.0
@@ -115,6 +120,7 @@ object WebStt {
                 }
             }
         }
+        lastConfidence = maxOf(bestConf, 0.0)
         return best
     }
 

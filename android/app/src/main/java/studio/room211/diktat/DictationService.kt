@@ -170,7 +170,13 @@ class DictationService : Service() {
         var text = ""
         var problem: String? = null
         try {
-            val sirov = WebStt.recognize(pcm, cfg)
+            var sirov = WebStt.recognize(pcm, cfg)
+            if (sirov.isNotBlank() && Listen.shouldCheck(cfg, WebStt.lastConfidence)) {
+                // Drugo misljenje o snimku; na svaki otkaz ostaje prvi prepis —
+                // dodatna provera ne sme da obori diktat.
+                sirov = runCatching { Listen.check(pcm, sirov, cfg).also { cfg.countPolish() } }
+                    .getOrDefault(sirov)
+            }
             // Kad model sredjuje tekst, dobija ga nedirnutog: skracenice i
             // skidanje kvacica mu otezavaju citanje. Kad NE sredjuje (samo
             // skracuje ili dodaje emotikon), nasa pravila moraju da odrade svoje.

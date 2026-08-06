@@ -209,6 +209,35 @@ red veličine 500 poziva dnevno, a jedan diktat je jedan poziv.
 Prepoznavanje govora ne zavisi od ovog ključa — formalni režim može da otkaže u
 celini, a diktat i dalje radi.
 
+## AI sluša snimak (preciznije prepoznavanje)
+
+Meni → **AI sluša snimak**. Snimak ide i jezičkom modelu, zajedno sa onim što je
+Web Speech čuo; model sluša zvuk i ispravlja greške. Traži isti API ključ i
+broji se u isti dnevni brojač.
+
+Izmereno na tri rečenice, čiste i sa šumom (SNR 5 dB) — greška po reči:
+
+| | čist | sa šumom |
+|---|---|---|
+| Web Speech sam | 0.21 | 0.30 |
+| model sam | **0.12** | 0.29 |
+| model + prepis kao oslonac | 0.17 | **0.17** |
+
+Model **sam** nije zamena: u šumu je vratio `poslao sam ponovo 250.000 dinara u
+1:33` umesto `...ponudu... u utorak u deset i trideset`. Kad ne čuje, dopuni
+umesto da ostavi rupu — zato mu se uvek šalje i prvi prepis kao sidro.
+
+Cena: snimak ide drugi put (WAV u base64, oko 40 KB po sekundi govora) i odgovor
+čeka 2–3s. Podstavka **…samo kad je pouzdanost niska** to smanjuje, ali je
+podrazumevano isključena: endpoint prijavljuje 0.93 i za prepis sa odsečenom
+rečju, pa filter štedi podatke a propušta greške.
+
+| ključ | podrazumevano | |
+|---|---|---|
+| `audio_check` | `false` | uključuje se iz menija |
+| `audio_check_low_only` | `false` | `true` = šalji samo ispod praga |
+| `audio_check_threshold` | `0.85` | prag pouzdanosti |
+
 ## Ako se ne prepozna sve što si rekao
 
 Uključi **Snimaj za debug** iz menija. Svaki diktat se tada snima u `~/Diktat-debug`:

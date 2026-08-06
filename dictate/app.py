@@ -18,7 +18,9 @@ import AppKit
 import rumps
 from Foundation import NSAttributedString
 
-from . import audio, config, debugdump, hotkey, insert, overlay, pending, polish, webstt
+from . import (
+    audio, config, debugdump, hotkey, insert, listen, overlay, pending, polish, webstt,
+)
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
 ICON = {
@@ -167,6 +169,16 @@ class DictateApp(rumps.App):
             self.emoji_items[kljuc] = stavka
             self.emoji_menu.add(stavka)
 
+        # Odvojeno od alata iznad: oni doteruju TEKST, ovo popravlja samo
+        # prepoznavanje. Trazi isti kljuc, pa se i broji u istom brojacu.
+        self.item_listen = rumps.MenuItem(
+            "AI sluša snimak (preciznije)", callback=self._toggle_listen
+        )
+        self.item_listen_low = rumps.MenuItem(
+            "…samo kad je pouzdanost niska",
+            callback=self._make_polish_toggle("audio_check_low_only", False),
+        )
+
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
@@ -203,6 +215,9 @@ class DictateApp(rumps.App):
             self.item_polish_para,
             self.item_polish_concise,
             self.emoji_menu,
+            None,
+            self.item_listen,
+            self.item_listen_low,
             self.item_polish_count,
             lang_menu,
             self.item_ascii,
@@ -223,6 +238,7 @@ class DictateApp(rumps.App):
         ]
         for stavka in self._polish_children:
             stavka._menuitem.setIndentationLevel_(1)
+        self.item_listen_low._menuitem.setIndentationLevel_(1)
         self.item_polish_correct._menuitem.setIndentationLevel_(2)
 
         # Callback-ovi se pamte da bi mogli da se vrate kad se obrada upali.
@@ -305,6 +321,17 @@ class DictateApp(rumps.App):
             else "AI obrada — nema API ključa"
         )
         self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
+
+        self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
+        self.item_listen_low.state = 1 if self.cfg.get("audio_check_low_only", False) else 0
+        self.item_listen.title = (
+            "AI sluša snimak (preciznije)" if polish.available(self.cfg)
+            else "AI sluša snimak — nema API ključa"
+        )
+        self.item_listen_low.set_callback(
+            self._make_polish_toggle("audio_check_low_only", False)
+            if listen.enabled(self.cfg) else None
+        )
         current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
@@ -515,7 +542,7 @@ class DictateApp(rumps.App):
     def _recognize(self, pcm: bytes) -> str:
         if not pcm:
             return ""
-        text = webstt.recognize(
+        text, conf = webstt.recognize_full(
             pcm,
             language=self.cfg.get("language", "sr-RS"),
             sample_rate=self.cfg["sample_rate"],
@@ -524,6 +551,8 @@ class DictateApp(rumps.App):
         )
         if not text:
             return text
+        if listen.should_check(self.cfg, conf):
+            text = self._slusaj(pcm, text, conf)
         if self._formal() and polish.tidy_on(self.cfg):
             # Kad model sredjuje tekst, dobija ga kakav jeste: skracenice i
             # skidanje kvacica bi mu otezali citanje, a interpunkciju ionako on
@@ -531,6 +560,18 @@ class DictateApp(rumps.App):
             # nasa pravila moraju da odrade svoje — inace bi izostala.
             return text
         return self._apply_rules(text)
+
+    def _slusaj(self, pcm: bytes, text: str, conf: float) -> str:
+        """Drugo misljenje o snimku; na svaki otkaz ostaje prvi prepis."""
+        try:
+            ispravljen = listen.check(pcm, self.cfg["sample_rate"], text, self.cfg)
+            self._count_polish()
+            if ispravljen != text:
+                print(f"[diktat] AI slusao (pouzdanost {conf:.2f}): {text!r} -> {ispravljen!r}")
+            return ispravljen
+        except Exception as exc:  # noqa: BLE001
+            print(f"[diktat] provera snimka nije uspela: {exc}")
+            return text
 
     def _apply_rules(self, text: str) -> str:
         """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
@@ -969,6 +1010,14 @@ class DictateApp(rumps.App):
 
     def _set_toggle(self, _):
         self._set_mode("toggle")
+
+    def _toggle_listen(self, _):
+        if not polish.available(self.cfg):
+            self.item_status.title = "Upiši polish_api_key u config.json"
+            return
+        self.cfg["audio_check"] = not bool(self.cfg.get("audio_check", False))
+        config.save(self.cfg)
+        self._sync_menu_marks()
 
     def _toggle_polish(self, _):
         if not polish.available(self.cfg):

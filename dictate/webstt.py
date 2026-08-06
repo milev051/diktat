@@ -52,8 +52,27 @@ def recognize(
     Bez `pFilter=0` Google maskira psovke zvezdicama ("sranje" -> "s*****").
     Ime parametra je osetljivo na velika slova — `pfilter` se ignorise.
     """
+    return recognize_full(
+        pcm, language, sample_rate, key, timeout, profanity_filter, retries
+    )[0]
+
+
+def recognize_full(
+    pcm: bytes,
+    language="sr-RS",
+    sample_rate=16000,
+    key=None,
+    timeout=30,
+    profanity_filter=False,
+    retries=1,
+):
+    """Kao `recognize`, ali vraca i pouzdanost — (tekst, 0.0-1.0).
+
+    Pouzdanost je jedini signal koji endpoint daje o tome koliko je siguran u
+    ono sto je cuo; po njoj se odlucuje da li vredi drugo misljenje.
+    """
     if not pcm:
-        return ""
+        return "", 0.0
 
     for attempt in range(retries + 1):
         try:
@@ -63,7 +82,7 @@ def recognize(
                 raise
             print(f"[diktat] {exc} — pokusavam ponovo")
             time.sleep(RETRY_WAIT)
-    return ""
+    return "", 0.0
 
 
 def _request(pcm, language, sample_rate, key, timeout, profanity_filter):
@@ -96,7 +115,7 @@ def _request(pcm, language, sample_rate, key, timeout, profanity_filter):
     return _parse(raw.decode("utf-8", "replace"))
 
 
-def _parse(body: str) -> str:
+def _parse(body: str):
     """Odgovor je vise JSON linija; prva je obicno prazna {"result":[]}."""
     best = ""
     best_conf = -1.0
@@ -114,7 +133,7 @@ def _parse(body: str) -> str:
                 conf = float(alt.get("confidence", 0.0))
                 if text and conf >= best_conf:
                     best, best_conf = text, conf
-    return best
+    return best, max(best_conf, 0.0)
 
 
 def _explain_http(code: int) -> str:

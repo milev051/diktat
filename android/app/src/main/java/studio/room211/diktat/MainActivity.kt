@@ -236,6 +236,24 @@ class MainActivity : AppCompatActivity() {
                 "dva do tri po rečenici, ili na svake dve-tri reči."))
         )
         setBranchEnabled(listOf(gustina), cfg.polishEmoji && cfg.polish)
+        // Odvojeno od alata iznad: oni doteruju TEKST, ovo popravlja samo
+        // prepoznavanje. Trazi isti kljuc, pa se broji u istom brojacu.
+        val samoNisko = indent(this, switch(this, "…samo kad je pouzdanost niska",
+            cfg.audioCheckLowOnly) { cfg.audioCheckLowOnly = it })
+        box.addView(switch(this, "AI sluša snimak (preciznije)", cfg.audioCheck) {
+            cfg.audioCheck = it
+            setBranchEnabled(listOf(samoNisko), it)
+        })
+        box.addView(
+            body(this, "Snimak ide i modelu, koji ispravlja prepoznat tekst. Tačnije " +
+                "u buci, ali šalje zvuk drugi put i traje 2–3s duže.\n\n" +
+                "Pouzdanost koju endpoint prijavljuje slabo razdvaja dobar prepis od " +
+                "lošeg — izmereno je 0,93 i za rečenicu sa odsečenom rečju — pa ovaj " +
+                "filter štedi podatke, ali propušta greške.")
+        )
+        box.addView(samoNisko)
+        setBranchEnabled(listOf(samoNisko), cfg.audioCheck)
+
         polishLine = indent(this, body(this, ""))
         box.addView(polishLine)
         setBranchEnabled(alati, cfg.polish)

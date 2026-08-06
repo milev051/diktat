@@ -55,6 +55,11 @@ DEFAULTS = {
     "polish_emoji": False,        # emotikoni u tekstu
     "polish_emoji_rate": "paragraph",  # paragraph | sentence | dense
     "polish_emoji_recent": [],    # poslednjih 15 znakova, da se ne ponavljaju
+    "audio_check": False,         # model slusa snimak i ispravlja prepis
+    # Podrazumevano iskljuceno: izmereno je da endpoint prijavi 0.93 i za prepis
+    # sa odsecenom recju, pa filter stedi podatke ali propusta greske.
+    "audio_check_low_only": False,
+    "audio_check_threshold": 0.85,
     "polish_concise": False,      # skrati i pojednostavi, bez gubitka sadrzaja
 
     # --- Debug ---

@@ -238,6 +238,21 @@ sistemskim uputstvom i bez njega.
 **API ključ nikad ne ide u git.** macOS: `config.json` (ignorisan). Android:
 `SharedPreferences`. Ni u `config.example.json`, ni u poruci commita.
 
+**Model koji sluša snimak mora da dobije i prvi prepis.** Izmereno (greška po
+reči, tri rečenice, SNR 5 dB): Web Speech 0.30, Gemini sam 0.29, Gemini uz
+prepis **0.17**. Sam model u šumu **halucinira** — vratio je „poslao sam ponovo
+250.000 dinara u 1:33" umesto „...ponudu... u utorak u deset i trideset". Kad ne
+čuje, dopuni umesto da ostavi rupu; prvi prepis mu je sidro.
+
+**Pouzdanost endpointa nije merilo tačnosti.** Izmereno: prepis sa odsečenom
+rečju („...sastanak sa kolegama iz kragu") prijavljen sa 0.93, isto koliko i
+tačan. Zato je „šalji samo kad je pouzdanost niska" podrazumevano isključeno —
+štedi podatke, ali ne hvata greške. Ne gradi logiku koja veruje tom broju.
+
+**Zvuk se modelu šalje u poznatom formatu.** `inline_data` prima `audio/wav` i
+`audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera
+snimka udvostručuje saobraćaj — otud odvojen prekidač, a ne stalno ponašanje.
+
 ## Endpoint
 
 ```
