@@ -147,8 +147,10 @@ class DictationService : Service() {
 
         val pcm = recorder?.stop() ?: ByteArray(0)
         recorder = null
-        keepAudio(session, 0, pcm)
-        thread { recognizeAndDeliver(pcm, last = true, sesija = session) }
+        // Kroz `ship` zbog tiketa: raniji diktat u istom servisu je vec pomerio
+        // `expected`, pa bi tvrdo zakucana nula zauvek cekala svoj red — pilula
+        // bi ostala sa poslednjom cifrom dok se servis rucno ne prekine.
+        ship(pcm, last = true)
     }
 
     /**

@@ -115,9 +115,25 @@ class InsertService : AccessibilityService() {
             node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
         }.getOrDefault(false)
 
+    /**
+     * Postojeci tekst polja, ili prazno.
+     *
+     * `node.text` na PRAZNOM polju vraca njegov hint ("Ovde probaj diktat"), pa
+     * bi nadovezivanje upisalo taj natpis ispred izdiktiranog teksta. Zato se
+     * gleda `isShowingHintText`, uz poredjenje sa `hintText` kao rezervu za
+     * uredjaje koji tu zastavicu ne postavljaju.
+     */
+    private fun postojeci(node: AccessibilityNodeInfo): String {
+        val tekst = node.text?.toString() ?: return ""
+        if (node.isShowingHintText) return ""
+        val hint = runCatching { node.hintText?.toString() }.getOrNull()
+        if (!hint.isNullOrEmpty() && hint == tekst) return ""
+        return tekst
+    }
+
     private fun setText(node: AccessibilityNodeInfo, text: String): Boolean =
         runCatching {
-            val merged = (node.text?.toString() ?: "") + text
+            val merged = postojeci(node) + text
             val args = Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, merged

@@ -2,6 +2,7 @@ package studio.room211.diktat
 
 import android.Manifest
 import android.content.Intent
+import android.graphics.Rect
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -90,6 +91,17 @@ class MainActivity : AppCompatActivity() {
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             view.setPadding(0, bars.top, 0, maxOf(bars.bottom, ime.bottom))
+            // Kad tastatura izadje, polje u koje se kuca mora samo da dodje u
+            // vidno polje — inace se do njega skroluje rukom svaki put.
+            if (ime.bottom > 0) {
+                view.post {
+                    currentFocus?.let { fokus ->
+                        fokus.requestRectangleOnScreen(
+                            Rect(0, 0, fokus.width, fokus.height + dp(24)), false
+                        )
+                    }
+                }
+            }
             insets
         }
     }
