@@ -188,3 +188,23 @@ class NacinUpisa(unittest.TestCase):
         from dictate import insert
         self.assertTrue(insert.kuca_se("bilo\nsta", "type"))
         self.assertFalse(insert.kuca_se("bez novog reda", "paste"))
+
+
+class ZavrsniRazmak(unittest.TestCase):
+    """Razmak na kraju se šalje kao pravi taster, ne kao unicode događaj."""
+
+    def test_rep_se_odvaja(self):
+        from dictate import insert
+        self.assertEqual(insert.razdvoji_rep("zdravo "), ("zdravo", 1))
+
+    def test_bez_repa(self):
+        from dictate import insert
+        self.assertEqual(insert.razdvoji_rep("zdravo"), ("zdravo", 0))
+
+    def test_razmaci_unutra_ostaju(self):
+        from dictate import insert
+        self.assertEqual(insert.razdvoji_rep("dve reci  "), ("dve reci", 2))
+
+    def test_prazan_tekst(self):
+        from dictate import insert
+        self.assertEqual(insert.razdvoji_rep(""), ("", 0))

@@ -8,6 +8,7 @@ import AppKit
 import Quartz
 
 KVK_ANSI_V = 0x09
+KVK_SPACE = 0x31
 PASTE_SETTLE = 0.12    # da OS stigne da registruje da je Cmd pusten
 TYPE_CHUNK = 20
 SYNTHETIC_TAIL = 0.15  # koliko jos drzimo zastavicu da event tap stigne da vidi
@@ -102,15 +103,34 @@ def _send_cmd_v() -> None:
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
 
 
+def razdvoji_rep(text: str):
+    """Odvoji razmake sa kraja od ostatka teksta.
+
+    Zavrsni razmak se ne sme poslati kao unicode dogadjaj: kad ostane sam u
+    svom komadu, deo aplikacija ga odbaci, pa se sledeci diktat zalepi za
+    prethodnu rec. Salje se kao PRAVI taster razmaka, isto kao kad ga covek
+    otkuca — to nijedna aplikacija ne tretira posebno.
+    """
+    telo = text.rstrip(" ")
+    return telo, len(text) - len(telo)
+
+
 def _type_unicode(text: str) -> None:
     """Kuca tekst direktno, bez diranja clipboard-a. Sporije, ali cistije."""
+    telo, razmaka = razdvoji_rep(text)
     with _synthetic():
         src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
-        for i in range(0, len(text), TYPE_CHUNK):
-            piece = text[i : i + TYPE_CHUNK]
+        for i in range(0, len(telo), TYPE_CHUNK):
+            piece = telo[i : i + TYPE_CHUNK]
             for is_down in (True, False):
                 evt = Quartz.CGEventCreateKeyboardEvent(src, 0, is_down)
                 Quartz.CGEventKeyboardSetUnicodeString(evt, len(piece), piece)
+                Quartz.CGEventSetFlags(evt, 0)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, evt)
+            time.sleep(0.006)
+        for _ in range(razmaka):
+            for is_down in (True, False):
+                evt = Quartz.CGEventCreateKeyboardEvent(src, KVK_SPACE, is_down)
                 Quartz.CGEventSetFlags(evt, 0)
                 Quartz.CGEventPost(Quartz.kCGHIDEventTap, evt)
             time.sleep(0.006)
