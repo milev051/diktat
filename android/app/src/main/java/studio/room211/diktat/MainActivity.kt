@@ -74,8 +74,9 @@ class MainActivity : AppCompatActivity() {
         // nastalo: Snimanje (kako), Tekst (kako izgleda), AI (sta model radi).
         root.addView(dozvole())
         root.addView(rezim())
+        root.addView(aiPrepoznavanje())
+        root.addView(aiObrada())
         root.addView(tekst())
-        root.addView(formalni())
         root.addView(jezik())
         root.addView(potrosnja())
         root.addView(neuspeli())
@@ -169,10 +170,38 @@ class MainActivity : AppCompatActivity() {
         return card
     }
 
-    private fun formalni(): ViewGroup {
-        val (card, box) = card(this, "AI")
-        // Sve sto model radi je na jednom mestu, ispod jednog prekidaca; alati
-        // su uvuceni i zasivljeni dok je iskljucen.
+    private fun aiPrepoznavanje(): ViewGroup {
+        // Odvojeno od obrade teksta: ovo salje ZVUK i traje najduze, dok obrada
+        // salje samo tekst i vraca se za sekundu.
+        val (card, box) = card(this, "AI — prepoznavanje govora")
+        box.addView(switch(this, "AI sluša snimak (preciznije)", cfg.audioCheck) {
+            cfg.audioCheck = it
+        })
+        box.addView(
+            body(
+                this,
+                "Model dobija i sam zvuk, pa ispravlja ono što je prepoznavanje " +
+                    "pogrešno čulo — najviše kod skraćenica i stranih naziva " +
+                    "(\u201EAI\u201C ume da postane \u201Epa\u201C).\n\n" +
+                    "Ovo je najsporiji deo: snimak se šalje drugi put, pa se za 20s " +
+                    "diktata čeka oko 10s. Sve ostalo ispod traje oko sekunde.\n\n" +
+                    "Kad je stil teksta \u201ESređeno\u201C, ovaj prolaz ujedno " +
+                    "postavlja interpunkciju — poseban poziv se tada preskače.",
+            )
+        )
+        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
+            cfg.vocabulary = it
+        }
+        box.addView(pojmovi)
+        box.addView(
+            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši. Idu " +
+                "modelu uz snimak, odvojeni zarezom.")
+        )
+        return card
+    }
+
+    private fun aiObrada(): ViewGroup {
+        val (card, box) = card(this, "AI — obrada teksta")
         val alati = mutableListOf<View>()
         val gustinaBox = mutableListOf<View>()
         val correctBox = mutableListOf<View>()
@@ -190,18 +219,6 @@ class MainActivity : AppCompatActivity() {
                     "pokazivač pokazuje AI. Radi samo uz API ključ (Google AI " +
                     "Studio), koji ostaje sačuvan i posle nadogradnje.",
             )
-        )
-
-        val slusa = indent(this, switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
-            cfg.audioCheck = it
-        })
-        alati.add(slusa)
-        box.addView(slusa)
-        box.addView(
-            indent(this, body(this, "Model dobija i sam zvuk, pa ispravlja ono što je " +
-                "prepoznavanje pogrešno čulo. Tačnije, ali šalje snimak drugi put i " +
-                "traje koju sekundu duže. Kad je stil teksta „Sređeno\", ovaj prolaz " +
-                "ujedno postavlja interpunkciju — poseban poziv se tada preskače."))
         )
 
         val correct = indent(this, switch(this, "Ispravi očigledne greške", cfg.polishCorrect) {
@@ -251,10 +268,20 @@ class MainActivity : AppCompatActivity() {
         gustinaBox.add(gustina)
         box.addView(indent(this, gustina))
 
+        val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
+            cfg.outputLanguage = it
+        }
+        alati.add(jezik)
+        box.addView(indent(this, jezik))
+        box.addView(
+            indent(this, body(this, "Slobodan opis, ne spisak: \u201Emakedonski\u201C, " +
+                "\u201Eengleski formalno\u201C, pa i \u201Epola makedonski pola " +
+                "srpski\u201C. Značenje ostaje isto."))
+        )
+
         polishLine = indent(this, body(this, ""))
         box.addView(polishLine)
 
-        // Napredno: kljuc, model i recnik pojmova — retko se diraju.
         box.addView(body(this, "Napredno"))
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
@@ -262,15 +289,6 @@ class MainActivity : AppCompatActivity() {
             cfg.polishModel = it
         }
         box.addView(model)
-        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
-            cfg.vocabulary = it
-        }
-        box.addView(pojmovi)
-        box.addView(
-            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši " +
-                "(\u201EAI\u201C ume da postane \u201Epa\u201C). Idu modelu uz snimak, " +
-                "odvojeni zarezom.")
-        )
 
         setBranchEnabled(alati, cfg.polish)
         setBranchEnabled(correctBox, cfg.polish && cfg.polishTidy)
@@ -279,7 +297,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun tekst(): ViewGroup {
-        val (card, box) = card(this, "Tekst")
+        val (card, box) = card(this, "Tekst — posle AI-ja")
+        box.addView(
+            body(
+                this,
+                "Ova podešavanja se primenjuju POSLE svega što AI uradi, pa ona " +
+                    "imaju poslednju reč. Izuzetak su mala slova i interpunkcija " +
+                    "uz stil \u201ESređeno\u201C: to je baš posao koji AI dobija, " +
+                    "pa bi jedno gasilo drugo.",
+            )
+        )
         // Jedan izbor umesto tri prekidaca koja su se ponistavala: ranije su
         // "sredi tekst", "sve malim slovima" i "bez interpunkcije" mogli da budu
         // ukljuceni istovremeno, a ishod je zavisio od redosleda u kodu.

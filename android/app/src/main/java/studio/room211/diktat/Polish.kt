@@ -106,6 +106,13 @@ object Polish {
     // reci" to ukloni (3/3), dok je strozija granica gasila i sam emotikon.
     private const val EMOTIKONI_VERNO = "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i "
 
+    // Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
+    // pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
+    private const val PREVOD =
+        "Konačan tekst napiši na: %s. Drži se tog opisa doslovno — ako traži " +
+            "mešavinu jezika ili neobičan stil, tako i uradi. Značenje mora da ostane " +
+            "isto: ne dodaj i ne izbacuj sadržaj."
+
     private const val SAZMI =
         "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice " +
             "razbij na kraće i jasnije. Sve činjenice, brojevi, imena i zaključci " +
@@ -133,12 +140,15 @@ object Polish {
      * sredjivanje bio drugi poziv za posao koji je vec obavljen.
      */
     fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
-        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs, cfg.polishEmoji, cfg.polishConcise,
+        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs, cfg.polishEmoji,
+        cfg.polishConcise, cfg.outputLanguage.isNotBlank(),
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
     private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
-        cfg.polishConcise || (cfg.polishTidy && !vecSredjeno && cfg.polishCorrect)
+        cfg.polishConcise ||
+            cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
+            (cfg.polishTidy && !vecSredjeno && cfg.polishCorrect)
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
 
@@ -177,7 +187,14 @@ object Polish {
             granice.add(NE_ISPRAVLJAJ)
         }
         if (cfg.polishParagraphs) zadaci.add(PASUSI) else granice.add(NE_PASUSI)
-        if (cfg.polishConcise) zadaci.add(SAZMI) else granice.add(NE_SKRACUJ)
+        val prevod = cfg.outputLanguage.trim()
+        if (cfg.polishConcise) {
+            zadaci.add(SAZMI)
+        } else if (prevod.isEmpty()) {
+            // Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
+            granice.add(NE_SKRACUJ)
+        }
+        if (prevod.isNotEmpty()) zadaci.add(PREVOD.format(prevod))
         if (cfg.polishEmoji) {
             val gustina = EMOTIKONI[cfg.polishEmojiRate] ?: EMOTIKONI.getValue("paragraph")
             var zadatak = (

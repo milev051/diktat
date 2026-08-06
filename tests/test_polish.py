@@ -116,3 +116,27 @@ class PosleSlusanja(unittest.TestCase):
         self.assertEqual(
             sorted(polish.tools(c, vec_sredjeno=True)), ["concise", "emoji", "paragraphs"]
         )
+
+
+class Prevod(unittest.TestCase):
+    """Slobodan opis jezika; prazno = bez prevoda."""
+
+    def test_prazno_ne_pravi_alat(self):
+        self.assertNotIn("translate", polish.tools(cfg(output_language="")))
+
+    def test_opis_ulazi_u_uputstvo(self):
+        u = polish._uputstvo(cfg(output_language="pola makedonski pola srpski"))
+        self.assertIn("pola makedonski pola srpski", u)
+
+    def test_prevod_sam_dovoljan_za_poziv(self):
+        c = cfg(text_style="spoken", polish_paragraphs=False, output_language="makedonski")
+        self.assertEqual(polish.tools(c), ["translate"])
+
+    def test_uz_prevod_nema_zabrane_preformulisanja(self):
+        # "ne preformulisi" i prevod se iskljucuju — druge reci su ceo posao.
+        u = polish._uputstvo(cfg(output_language="engleski"))
+        self.assertNotIn(polish.NE_SKRACUJ, u)
+
+    def test_provera_vernosti_ne_obara_prevod(self):
+        c = cfg(text_style="spoken", output_language="makedonski")
+        self.assertEqual(polish._proveri("bio sam tamo", "бев таму", c), "бев таму")

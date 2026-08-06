@@ -320,6 +320,16 @@ zasebna podešavanja.
 (Android) izvode stil iz starih ključeva pri prvom čitanju. Isto važi za svako
 buduće spajanje podešavanja — korisnik ne sme da izgubi ono što je namestio.
 
+**Jezik izlaza je slobodan opis, ne spisak.** Korisnik ume da traži „pola
+makedonski pola srpski" — spisak jezika to ne pokriva, a model razume iz opisa.
+Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz
+(prevod po prirodi menja svaku reč), i isključuje granicu „ne preformuliši".
+
+**AI prepoznavanje i AI obrada su odvojene sekcije.** Prvo šalje ZVUK i traje
+~10s na 20s diktata; drugo šalje samo tekst i vraća se za sekundu. Držati ih
+zajedno je krilo tu razliku. Obična podešavanja (`Tekst`) idu **posle** AI-ja i
+imaju poslednju reč — to mora da piše u samoj kartici, ne samo u dokumentaciji.
+
 **Meni je grupisan po pitanju na koje odgovaraš**, ne po tome kad je šta
 nastalo: Snimanje (kako), Tekst (kako izgleda), AI (šta model radi). Pre toga je
 bilo 12 stavki u ravnom spisku i 11 kartica; sada 5 podmenija i 8 kartica.

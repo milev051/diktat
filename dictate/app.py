@@ -175,7 +175,8 @@ class DictateApp(rumps.App):
         for stavka in (self.item_ascii, self.item_thousands, self.item_space):
             tekst_menu.add(stavka)
 
-        # Sve sto model radi je na jednom mestu, ispod jednog prekidaca.
+        # Sve sto model radi je na jednom mestu, ali u dva bloka: prepoznavanje
+        # (sporo, salje zvuk) i obrada teksta (brzo, salje samo tekst).
         ai_menu = rumps.MenuItem("AI")
         self.item_polish = rumps.MenuItem(
             "Uključi AI obradu", callback=self._toggle_polish
@@ -211,13 +212,33 @@ class DictateApp(rumps.App):
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
+        self.item_language_out = rumps.MenuItem(
+            "Jezik izlaza…", callback=self._set_output_language
+        )
+
+        # Zaglavlja bez callback-a: sluze samo da se vidi sta cemu pripada.
+        zaglavlje_prepoznavanje = rumps.MenuItem("Prepoznavanje govora")
+        zaglavlje_obrada = rumps.MenuItem("Obrada teksta")
         for stavka in (
-            self.item_polish, rumps.separator, self.item_listen,
-            self.item_polish_correct, self.item_polish_para,
-            self.item_polish_concise, self.emoji_menu,
-            rumps.separator, self.item_polish_count,
+            self.item_polish,
+            rumps.separator,
+            zaglavlje_prepoznavanje,
+            self.item_listen,
+            rumps.separator,
+            zaglavlje_obrada,
+            self.item_polish_correct,
+            self.item_polish_para,
+            self.item_polish_concise,
+            self.emoji_menu,
+            self.item_language_out,
+            rumps.separator,
+            self.item_polish_count,
         ):
             ai_menu.add(stavka)
+        for stavka in (self.item_listen, self.item_polish_correct,
+                       self.item_polish_para, self.item_polish_concise,
+                       self.emoji_menu, self.item_language_out):
+            stavka._menuitem.setIndentationLevel_(1)
 
         lang_menu = rumps.MenuItem("Jezik")
         self.lang_items = {}
@@ -257,6 +278,7 @@ class DictateApp(rumps.App):
             (self.item_polish_correct, self._toggle_polish_level),
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_concise, self._make_polish_toggle("polish_concise", False)),
+            (self.item_language_out, self._set_output_language),
             *[(v, self._make_emoji_setter(k)) for k, v in self.emoji_items.items()],
         ]
 
@@ -334,6 +356,8 @@ class DictateApp(rumps.App):
                 # Ispravljanje ima smisla samo kad model uopste sredjuje tekst.
                 aktivan = radi and stil == "written"
             stavka.set_callback(cb if aktivan else None)
+        jezik = polish.output_language(self.cfg)
+        self.item_language_out.title = f"Jezik izlaza: {jezik}" if jezik else "Jezik izlaza…"
         self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
 
         # Stil „pravopisno sredjeno" bez ukljucenog AI-ja nema ko da izvrsi.
@@ -1170,6 +1194,22 @@ class DictateApp(rumps.App):
             config.save(self.cfg)
             self._sync_menu_marks()
         return setter
+
+    def _set_output_language(self, _):
+        """Slobodan opis, ne spisak: „pola makedonski pola srpski" je isto vazeci."""
+        odgovor = rumps.Window(
+            message="Na kom jeziku tekst treba da izađe?\nPrazno = bez prevoda.",
+            title="Jezik izlaza",
+            default_text=polish.output_language(self.cfg),
+            ok="Sačuvaj",
+            cancel="Otkaži",
+            dimensions=(260, 24),
+        ).run()
+        if not odgovor.clicked:
+            return
+        self.cfg["output_language"] = odgovor.text.strip()
+        config.save(self.cfg)
+        self._sync_menu_marks()
 
     def _make_style_setter(self, stil):
         def setter(_):

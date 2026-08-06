@@ -76,6 +76,13 @@ EMOTIKONI_RAZNOLIKOST = (
 # recenice mu je ocekivanije od emotikona. "Prepisi od reci do reci" to ukloni
 # (3/3), dok je strozija granica gasila i sam emotikon.
 EMOTIKONI_VERNO = "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i "
+# Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
+# pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
+PREVOD = (
+    "Konačan tekst napiši na: {jezik}. Drži se tog opisa doslovno — ako traži "
+    "mešavinu jezika ili neobičan stil, tako i uradi. Značenje mora da ostane "
+    "isto: ne dodaj i ne izbacuj sadržaj."
+)
 SAZMI = (
     "Skrati tekst: izbaci poštapalice i ponavljanja, a predugačke rečenice "
     "razbij na kraće i jasnije. Sve činjenice, brojevi, imena i zaključci "
@@ -163,6 +170,11 @@ def zapamti_emoji(text: str, cfg) -> None:
     cfg["polish_emoji_recent"] = istorija[-EMOJI_PAMTI:]
 
 
+def output_language(cfg) -> str:
+    """Opis jezika na kome tekst treba da izadje; prazno = bez prevoda."""
+    return (cfg.get("output_language") or "").strip()
+
+
 def emoji_rate(cfg) -> str:
     """paragraph | sentence | dense — koliko cesto emotikon."""
     rate = cfg.get("polish_emoji_rate", "paragraph")
@@ -185,6 +197,8 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
         izabrani.append("emoji")
     if cfg.get("polish_concise", False):
         izabrani.append("concise")
+    if output_language(cfg):
+        izabrani.append("translate")
     return izabrani
 
 
@@ -268,9 +282,13 @@ def _reci(text: str) -> list[str]:
 
 def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     """Menja li ijedan izabrani alat same reci."""
-    return bool(cfg.get("polish_concise", False)) or (
-        "tidy" in tools(cfg, vec_sredjeno)
-        and cfg.get("polish_level", "correct") == "correct"
+    return (
+        bool(cfg.get("polish_concise", False))
+        or bool(output_language(cfg))       # prevod po prirodi menja svaku rec
+        or (
+            "tidy" in tools(cfg, vec_sredjeno)
+            and cfg.get("polish_level", "correct") == "correct"
+        )
     )
 
 
@@ -321,8 +339,11 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         granice.append(NE_PASUSI)
     if "concise" in izabrani:
         zadaci.append(SAZMI)
-    else:
+    elif "translate" not in izabrani:
+        # Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
         granice.append(NE_SKRACUJ)
+    if "translate" in izabrani:
+        zadaci.append(PREVOD.format(jezik=output_language(cfg)))
     if "emoji" in izabrani:
         gustina = EMOTIKONI.get(emoji_rate(cfg), EMOTIKONI["paragraph"])
         zadatak = (

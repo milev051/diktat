@@ -155,6 +155,15 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_emoji", false)
         set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
 
+    /**
+     * Slobodan opis jezika na kome tekst treba da izadje; prazno = bez prevoda.
+     * Spisak jezika ne bi bio dovoljan — korisnik ume da trazi i "pola
+     * makedonski pola srpski", sto model razume iz opisa.
+     */
+    var outputLanguage: String
+        get() = prefs.getString("output_language", "") ?: ""
+        set(v) = prefs.edit().putString("output_language", v).apply()
+
     /** Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak. */
     var vocabulary: String
         get() = prefs.getString("vocabulary", Listen.POJMOVI_PODRAZUMEVANO)

@@ -152,6 +152,7 @@ interpunkciju i kvačice **ne dira**:
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
 | …emotikoni | isključeno | gustina: na kraju pasusa / rečenice / dva-tri po rečenici / na svake dve-tri reči |
+| Jezik izlaza | prazno | slobodan opis: `makedonski`, `engleski formalno`, `pola makedonski pola srpski` |
 
 Emotikoni se **ne ponavljaju**: poslednjih 15 znakova se pamti i šalje modelu
 kao spisak koji treba izbeći, a ako se neki ipak ponovi unutar istog teksta,
@@ -178,6 +179,7 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `polish_concise` | `false` | skrati i pojednostavi |
+| `output_language` | `""` | jezik izlaza, slobodan opis; prazno = bez prevoda |
 | `polish_emoji` | `false` | emotikoni u tekstu |
 | `polish_emoji_rate` | `paragraph` | `paragraph` \| `sentence` \| `sentence3` \| `dense` |
 | `polish_emoji_recent` | `[]` | poslednjih 15 znakova; upisuje ih aplikacija |

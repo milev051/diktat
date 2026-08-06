@@ -129,6 +129,7 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
 | Emotikoni | isključeno | gustina se bira ispod: *Pasus* / *Rečenica* / *2–3* / *Gusto*; znakovi se ne ponavljaju |
+| Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
 kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.

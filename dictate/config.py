@@ -60,7 +60,10 @@ DEFAULTS = {
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
     "vocabulary": "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK",
-    "polish_concise": False,      # skrati i pojednostavi, bez gubitka sadrzaja
+    "polish_concise": False,
+    # Slobodan opis: "makedonski", "pola makedonski pola srpski", "engleski
+    # formalno"… Prazno = bez prevoda.
+    "output_language": "",      # skrati i pojednostavi, bez gubitka sadrzaja
 
     # --- Debug ---
     "debug": False,               # snimaj zvuk i tekst radi poredjenja
