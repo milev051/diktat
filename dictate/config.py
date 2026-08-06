@@ -60,6 +60,8 @@ DEFAULTS = {
     # sa odsecenom recju, pa filter stedi podatke ali propusta greske.
     "audio_check_low_only": False,
     "audio_check_threshold": 0.85,
+    # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
+    "vocabulary": "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK",
     "polish_concise": False,      # skrati i pojednostavi, bez gubitka sadrzaja
 
     # --- Debug ---

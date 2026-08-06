@@ -240,9 +240,12 @@ class MainActivity : AppCompatActivity() {
         // prepoznavanje. Trazi isti kljuc, pa se broji u istom brojacu.
         val samoNisko = indent(this, switch(this, "…samo kad je pouzdanost niska",
             cfg.audioCheckLowOnly) { cfg.audioCheckLowOnly = it })
+        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
+            cfg.vocabulary = it
+        }
         box.addView(switch(this, "AI sluša snimak (preciznije)", cfg.audioCheck) {
             cfg.audioCheck = it
-            setBranchEnabled(listOf(samoNisko), it)
+            setBranchEnabled(listOf(samoNisko, pojmovi), it)
         })
         box.addView(
             body(this, "Snimak ide i modelu, koji ispravlja prepoznat tekst. Tačnije " +
@@ -252,7 +255,12 @@ class MainActivity : AppCompatActivity() {
                 "filter štedi podatke, ali propušta greške.")
         )
         box.addView(samoNisko)
-        setBranchEnabled(listOf(samoNisko), cfg.audioCheck)
+        box.addView(pojmovi)
+        box.addView(
+            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši " +
+                "(„AI\" ume da postane „pa\"). Idu modelu uz snimak, odvojeni zarezom.")
+        )
+        setBranchEnabled(listOf(samoNisko, pojmovi), cfg.audioCheck)
 
         polishLine = indent(this, body(this, ""))
         box.addView(polishLine)

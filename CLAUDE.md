@@ -244,6 +244,11 @@ prepis **0.17**. Sam model u šumu **halucinira** — vratio je „poslao sam po
 250.000 dinara u 1:33" umesto „...ponudu... u utorak u deset i trideset". Kad ne
 čuje, dopuni umesto da ostavi rupu; prvi prepis mu je sidro.
 
+**Skraćenice i strani nazivi su najslabija tačka endpointa.** Izmereno: „AI"
+postane „pa" ili „i", „Gemini" postane „gemini", „na Androidu" postane „na and".
+Zato uz snimak ide `vocabulary` — spisak pojmova sa uputstvom da se napišu tačno
+tako. Merenje na pet rečenica: WER 0.197 → 0.080, bez greške 1/5 → 4/5.
+
 **Pouzdanost endpointa nije merilo tačnosti.** Izmereno: prepis sa odsečenom
 rečju („...sastanak sa kolegama iz kragu") prijavljen sa 0.93, isto koliko i
 tačan. Zato je „šalji samo kad je pouzdanost niska" podrazumevano isključeno —

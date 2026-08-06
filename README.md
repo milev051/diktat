@@ -232,9 +232,25 @@ Cena: snimak ide drugi put (WAV u base64, oko 40 KB po sekundi govora) i odgovor
 podrazumevano isključena: endpoint prijavljuje 0.93 i za prepis sa odsečenom
 rečju, pa filter štedi podatke a propušta greške.
 
+Merenje na pet rečenica (sintetizovan govor, bez šuma) — greška po reči:
+
+| | web sam | web + AI sluša |
+|---|---|---|
+| prosek | 0.197 | **0.080** |
+| bez ijedne greške | 1/5 | **4/5** |
+
+Šta je popravio: `precizno i model` → `precizno **AI** model`, `za gemini model
+na and` → `za **Gemini** model na **Androidu**`. Preostalo odstupanje je samo
+zapis brojeva (`250.000 RSD` umesto „dvesta pedeset hiljada dinara"), što nije
+greška u prepoznavanju.
+
+Skraćenice i strani nazivi su najslabija tačka endpointa — zato postoji
+`vocabulary`, spisak pojmova koji ide modelu uz snimak.
+
 | ključ | podrazumevano | |
 |---|---|---|
 | `audio_check` | `false` | uključuje se iz menija |
+| `vocabulary` | `AI, API, Gemini, …` | pojmovi koje endpoint stalno greši |
 | `audio_check_low_only` | `false` | `true` = šalji samo ispod praga |
 | `audio_check_threshold` | `0.85` | prag pouzdanosti |
 

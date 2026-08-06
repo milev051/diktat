@@ -29,6 +29,16 @@ object Listen {
     // vraca 0.92-0.95 — ali i pogresan ume da vrati 0.93, pa je ovo slab filter.
     const val PRAG = 0.85
 
+    // Skracenice i strani nazivi su najslabija tacka: endpoint ih mapira na
+    // obicnu rec ("AI" -> "pa", "i"), a model bez spiska nema po cemu da ih
+    // prepozna.
+    const val POJMOVI_PODRAZUMEVANO =
+        "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK"
+
+    private const val POJMOVI_DEO =
+        "\n\nOvi pojmovi se često javljaju u ovim diktatima; ako čuješ nešto slično, " +
+            "napiši ih tačno ovako: "
+
     private const val UPUTSTVO = """Slušaš snimak govora na srpskom i vraćaš tačan prepis.
 
 Drugi prepoznavač je čuo ovo: „%s"
@@ -69,6 +79,12 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
      * Vrati ispravljen prepis, ili baci izuzetak. Pozivalac na svaki otkaz
      * zadrzava prvi prepis — diktat ne sme da propadne zbog dodatne provere.
      */
+    private fun uputstvo(prepis: String, cfg: Config): String {
+        val osnova = UPUTSTVO.format(prepis)
+        val pojmovi = cfg.vocabulary.trim()
+        return if (pojmovi.isEmpty()) osnova else osnova + POJMOVI_DEO + pojmovi
+    }
+
     fun check(pcm: ByteArray, prepis: String, cfg: Config): String {
         val key = cfg.polishApiKey
         if (key.isBlank() || pcm.isEmpty()) throw Polish.PolishException("Nema ključa za proveru.")
@@ -81,7 +97,7 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
 
         val payload = JSONObject().apply {
             put("contents", JSONArray().put(JSONObject().put("parts", JSONArray()
-                .put(JSONObject().put("text", UPUTSTVO.format(prepis)))
+                .put(JSONObject().put("text", uputstvo(prepis, cfg)))
                 .put(JSONObject().put("inline_data", JSONObject()
                     .put("mime_type", tip)
                     .put("data", Base64.encodeToString(zvuk, Base64.NO_WRAP)))))))

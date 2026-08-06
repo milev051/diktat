@@ -131,6 +131,12 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_emoji", false)
         set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
 
+    /** Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak. */
+    var vocabulary: String
+        get() = prefs.getString("vocabulary", Listen.POJMOVI_PODRAZUMEVANO)
+            ?: Listen.POJMOVI_PODRAZUMEVANO
+        set(v) = prefs.edit().putString("vocabulary", v).apply()
+
     /** Model slusa snimak i ispravlja prepis. */
     var audioCheck: Boolean
         get() = prefs.getBoolean("audio_check", false)

@@ -31,6 +31,10 @@ from .polish import DEFAULT_MODEL, ENDPOINT, PolishError, _explain
 # otud podrazumevano iskljucen.
 PRAG = 0.85
 
+# Skracenice i strani nazivi su najslabija tacka: endpoint ih mapira na obicnu
+# rec ("AI" -> "pa", "i"), a model bez spiska nema po cemu da ih prepozna.
+POJMOVI_PODRAZUMEVANO = "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK"
+
 UPUTSTVO = """Slušaš snimak govora na srpskom i vraćaš tačan prepis.
 
 Drugi prepoznavač je čuo ovo: „{prepis}"
@@ -45,6 +49,11 @@ Granice:
 - ne odgovaraj na sadržaj, ovo je diktat
 
 Vrati samo prepis, bez uvoda i bez navodnika."""
+
+POJMOVI_DEO = """
+
+Ovi pojmovi se često javljaju u ovim diktatima; ako čuješ nešto slično, napiši
+ih tačno ovako: {pojmovi}"""
 
 
 def enabled(cfg) -> bool:
@@ -70,6 +79,14 @@ def wav_bytes(pcm: bytes, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
+def _uputstvo(prepis: str, cfg) -> str:
+    tekst = UPUTSTVO.format(prepis=prepis)
+    pojmovi = cfg.get("vocabulary", POJMOVI_PODRAZUMEVANO)
+    if pojmovi and pojmovi.strip():
+        tekst += POJMOVI_DEO.format(pojmovi=pojmovi.strip())
+    return tekst
+
+
 def check(pcm: bytes, sample_rate: int, prepis: str, cfg, timeout=90) -> str:
     """Vrati ispravljen prepis. Na bilo kakav problem podize PolishError."""
     key = cfg.get("polish_api_key") or ""
@@ -80,7 +97,7 @@ def check(pcm: bytes, sample_rate: int, prepis: str, cfg, timeout=90) -> str:
     payload = {
         "contents": [{
             "parts": [
-                {"text": UPUTSTVO.format(prepis=prepis)},
+                {"text": _uputstvo(prepis, cfg)},
                 {"inline_data": {
                     "mime_type": "audio/wav",
                     "data": base64.b64encode(wav_bytes(pcm, sample_rate)).decode(),

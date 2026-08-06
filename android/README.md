@@ -155,6 +155,10 @@ Izmereno (greška po reči, tri rečenice sa šumom): Web Speech 0.30, model sam
 0.29, model uz prvi prepis **0.17**. Sam model u šumu halucinira, pa mu prvi
 prepis služi kao sidro.
 
+Polje **Pojmovi koje često izgovaram** ide modelu uz snimak: skraćenice i strani
+nazivi su najslabija tačka endpointa („AI" ume da postane „pa"). Izmereno na pet
+rečenica: greška po reči 0.197 → **0.080**, bez ijedne greške 1/5 → **4/5**.
+
 Zvuk ide kao FLAC u base64 — drugi put, pa se broji u potrošnju. Podstavka
 *…samo kad je pouzdanost niska* to smanjuje, ali propušta greške: endpoint
 prijavi 0.93 i za rečenicu sa odsečenom rečju.
