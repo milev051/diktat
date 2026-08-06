@@ -91,7 +91,9 @@ grupu — inače tiho pokvari brojeve.
 | `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
-| Završni razmak poslat kao unicode događaj | ostane sam u svom komadu, deo aplikacija ga odbaci — sledeći diktat se zalepi za prethodnu reč | pošalji ga kao **pravi taster** razmaka (`KVK_SPACE`) |
+| Završni razmak poslat kao unicode događaj | ostane sam u svom komadu, deo aplikacija ga odbaci — sledeći diktat se zalepi za prethodnu reč | spoji ga sa komadom ispred; **ne** šalji kao zaseban taster |
+| …a taster razmaka kao „popravka" toga | pravi taster i unicode idu različitim putem kroz sistem, pa razmak stigne kasno — usred sledeće reči („sto" → „st o") ili udvojen | jedan te isti put za ceo tekst |
+| `delovi[-2] += delovi.pop()` | `pop` skrati listu pre upisa, pa `-2` gađa pogrešan element (`IndexError` na dva komada) | prvo `pop` u promenljivu, pa upis |
 | `node.text` kao „postojeći tekst" polja | prazno polje vraća svoj **natpis** — „Message" u ćaskanju — pa se on upiše ispred izdiktiranog | tri signala: prazno / `isShowingHintText` / jednako `hintText`; kursor (`textSelection >= 0`) potvrđuje stvaran sadržaj |
 | …a kad nijedan signal ne presudi | pogrešna procena ili upiše natpis ispred, ili **obriše** korisnikov tekst | tada se `SET_TEXT` ne koristi uopšte — pada na `PASTE`, koji ne može da promaši |
 | Rep u običnom režimu isporučen sa tiketom 0 | raniji diktat u istom servisu je pomerio `expected`, pa nula zauvek čeka red — pilula ostaje sa ciframa | pusti ga kroz `ship()`, koji dodeljuje pravi tiket |

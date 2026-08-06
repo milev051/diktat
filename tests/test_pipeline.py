@@ -191,20 +191,22 @@ class NacinUpisa(unittest.TestCase):
 
 
 class ZavrsniRazmak(unittest.TestCase):
-    """Razmak na kraju se šalje kao pravi taster, ne kao unicode događaj."""
+    """Razmak putuje sa tekstom, nikad sam."""
 
-    def test_rep_se_odvaja(self):
+    def komadi(self, tekst, velicina=4):
         from dictate import insert
-        self.assertEqual(insert.razdvoji_rep("zdravo "), ("zdravo", 1))
+        return insert.komadi(tekst, velicina)
 
-    def test_bez_repa(self):
-        from dictate import insert
-        self.assertEqual(insert.razdvoji_rep("zdravo"), ("zdravo", 0))
+    def test_komad_koji_je_sam_razmak_se_spaja(self):
+        # "abcd" + " " bi inace bio poseban dogadjaj koji aplikacija odbaci.
+        self.assertEqual(self.komadi("abcd "), ["abcd "])
 
-    def test_razmaci_unutra_ostaju(self):
-        from dictate import insert
-        self.assertEqual(insert.razdvoji_rep("dve reci  "), ("dve reci", 2))
+    def test_ceo_tekst_se_prenosi(self):
+        for tekst in ("zdravo kako si ", "a", "", "ab cd ef gh ij "):
+            self.assertEqual("".join(self.komadi(tekst)), tekst)
 
-    def test_prazan_tekst(self):
-        from dictate import insert
-        self.assertEqual(insert.razdvoji_rep(""), ("", 0))
+    def test_razmak_unutar_teksta_ne_dira_podelu(self):
+        self.assertEqual(self.komadi("ab cd"), ["ab c", "d"])
+
+    def test_sam_razmak_ostaje_jedini_komad(self):
+        self.assertEqual(self.komadi(" "), [" "])
