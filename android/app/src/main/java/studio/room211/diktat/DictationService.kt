@@ -297,7 +297,10 @@ class DictationService : Service() {
                 // Kad sredjivanje nije trazeno, model ga svejedno uradi cim
                 // prepisuje recenice — skracivanje ih vraca pravopisno uredne.
                 // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
-                if (cfg.polishTidy) izlaz else TextPolish.applyBlocks(izlaz, cfg)
+                // Uz sredjivanje ostaju bar skracenice: tekst je modelu isao
+                // nedirnut, pa bi inace potpuno izostale.
+                if (cfg.polishTidy) TextPolish.abbreviationsOnly(izlaz, cfg)
+                else TextPolish.applyBlocks(izlaz, cfg)
             }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.
                 handler.post { toast(exc.message ?: "doterivanje nije uspelo") }

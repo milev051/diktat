@@ -233,8 +233,9 @@ provera po segmentu je trošila 6–9 poziva na jednu diktiranu poruku, a model 
 uz to video krhotinu umesto celine. Zato tekst, kad je ovo uključeno, stiže
 **tek na kraju diktata** (kao i u AI obradi), a ne deo po deo.
 
-Cena: snimak ide drugi put (FLAC ako imaš `ffmpeg`, inače WAV; oko 25 odnosno
-40 KB po sekundi govora) i odgovor čeka nekoliko sekundi. Podstavka **…samo kad je pouzdanost niska** to smanjuje, ali je
+Cena: snimak ide drugi put, kao **AAC 32 kbps** (uz `ffmpeg`; bez njega FLAC pa
+WAV) — oko 4 KB po sekundi govora umesto 19, uz identičan prepis. Odgovor čeka
+nekoliko sekundi. Podstavka **…samo kad je pouzdanost niska** to smanjuje, ali je
 podrazumevano isključena: endpoint prijavljuje 0.93 i za prepis sa odsečenom
 rečju, pa filter štedi podatke a propušta greške.
 

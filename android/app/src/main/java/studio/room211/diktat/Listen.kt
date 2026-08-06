@@ -95,15 +95,28 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
         return if (pojmovi.isEmpty()) osnova else osnova + POJMOVI_DEO + pojmovi
     }
 
-    /** Jedan snimak kao `inline_data`, sazet ako enkoder radi. */
+    /**
+     * Jedan snimak kao `inline_data`, sazet koliko god moze.
+     *
+     * Redosled je namerno AAC pa FLAC pa WAV: izmereno na istom snimku 18 / 85 /
+     * 139 KB uz identican prepis. Na telefonskom uplinku je bas ta velicina bila
+     * glavni razlog cekanja, a model gubitno sazimanje ne primeti.
+     */
     private fun deo(pcm: ByteArray, cfg: Config): JSONObject {
-        // FLAC je 36-42% manji od PCM-a, a base64 svejedno doda trecinu — vredi.
-        val flac = if (cfg.compressAudio) runCatching { FlacEncoder.encode(pcm, cfg.sampleRate) }
-            .getOrNull() else null
-        val zvuk = flac ?: wav(pcm, cfg.sampleRate)
+        var zvuk: ByteArray? = null
+        var tip = "audio/wav"
+        if (cfg.compressAudio) {
+            zvuk = runCatching { AacEncoder.encode(pcm, cfg.sampleRate) }.getOrNull()
+            if (zvuk != null) {
+                tip = "audio/aac"
+            } else {
+                zvuk = runCatching { FlacEncoder.encode(pcm, cfg.sampleRate) }.getOrNull()
+                if (zvuk != null) tip = "audio/flac"
+            }
+        }
         return JSONObject().put("inline_data", JSONObject()
-            .put("mime_type", if (flac != null) "audio/flac" else "audio/wav")
-            .put("data", Base64.encodeToString(zvuk, Base64.NO_WRAP)))
+            .put("mime_type", tip)
+            .put("data", Base64.encodeToString(zvuk ?: wav(pcm, cfg.sampleRate), Base64.NO_WRAP)))
     }
 
     fun check(delovi: List<ByteArray>, prepis: String, cfg: Config): String {

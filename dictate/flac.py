@@ -1,4 +1,4 @@
-"""FLAC sazimanje preko ffmpeg-a, ako ga ima na masini.
+"""Sazimanje zvuka preko ffmpeg-a, ako ga ima na masini.
 
 Endpoint i model primaju FLAC i vracaju isti prepis kao za sirov PCM, a fajl je
 36-42% manji. Python nema ugradjen FLAC enkoder, a dodavati zavisnost zbog
@@ -21,6 +21,20 @@ def available() -> bool:
 
 def encode(pcm: bytes, sample_rate: int, timeout=20):
     """Vrati FLAC bajtove, ili None ako ffmpeg ne postoji ili je zakazao."""
+    return _run(pcm, sample_rate, ["-c:a", "flac", "-f", "flac"], timeout)
+
+
+def encode_aac(pcm: bytes, sample_rate: int, timeout=20):
+    """AAC 32 kbps za snimak koji ide MODELU — endpoint prima samo PCM i FLAC.
+
+    Izmereno na istom snimku: WAV 139 KB, FLAC 85 KB, AAC 18 KB, uz identican
+    prepis. Zvuk modelu ide u base64 (jos trecina vise), pa je bas ta velicina
+    bila glavni razlog cekanja na telefonu.
+    """
+    return _run(pcm, sample_rate, ["-c:a", "aac", "-b:a", "32k", "-f", "adts"], timeout)
+
+
+def _run(pcm: bytes, sample_rate: int, izlaz: list, timeout: int):
     if not pcm or not available():
         return None
     try:
@@ -28,8 +42,7 @@ def encode(pcm: bytes, sample_rate: int, timeout=20):
             [
                 _ffmpeg, "-loglevel", "error",
                 "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
-                "-c:a", "flac", "-f", "flac", "pipe:1",
-            ],
+            ] + izlaz + ["pipe:1"],
             input=pcm,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

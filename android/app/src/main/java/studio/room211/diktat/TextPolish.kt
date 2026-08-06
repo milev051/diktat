@@ -61,6 +61,16 @@ object TextPolish {
             .filter { it.isNotBlank() }
             .joinToString("\n\n") { apply(it, cfg, trailing = false).trim() }
 
+    /**
+     * Samo skracenice, nad tekstom koji je model vec sredio.
+     *
+     * U formalnom rezimu tekst ide modelu nedirnut, pa bi skracenice inace
+     * potpuno izostale — korisnik ih vidi kao "prestale su da rade".
+     */
+    fun abbreviationsOnly(text: String, cfg: Config): String =
+        if (!cfg.abbreviations || text.isBlank()) text
+        else Abbreviations.apply(text, Abbreviations.parse(cfg.abbreviationRules))
+
     fun apply(raw: String, cfg: Config, trailing: Boolean = true): String {
         var text = raw.trim()
         if (text.isEmpty()) return text

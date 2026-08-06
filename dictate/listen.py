@@ -105,12 +105,24 @@ def _uputstvo(prepis: str, cfg, delova: int = 1) -> str:
 
 
 def _deo(pcm: bytes, sample_rate: int, compress=True) -> dict:
-    """Jedan snimak kao `inline_data`, sazet ako ffmpeg postoji."""
-    sazeto = flac.encode(pcm, sample_rate) if compress else None
-    zvuk = sazeto if sazeto else wav_bytes(pcm, sample_rate)
+    """Jedan snimak kao `inline_data`, sazet koliko god moze.
+
+    Redosled je namerno AAC pa FLAC pa WAV: izmereno na istom snimku 18 / 85 /
+    139 KB uz identican prepis. Model gubitno sazimanje ne primeti, a zvuk se
+    salje u base64 pa svaki usteden bajt vredi.
+    """
+    zvuk, tip = None, "audio/wav"
+    if compress:
+        zvuk = flac.encode_aac(pcm, sample_rate)
+        if zvuk:
+            tip = "audio/aac"
+        else:
+            zvuk = flac.encode(pcm, sample_rate)
+            if zvuk:
+                tip = "audio/flac"
     return {"inline_data": {
-        "mime_type": "audio/flac" if sazeto else "audio/wav",
-        "data": base64.b64encode(zvuk).decode(),
+        "mime_type": tip,
+        "data": base64.b64encode(zvuk or wav_bytes(pcm, sample_rate)).decode(),
     }}
 
 

@@ -60,3 +60,32 @@ class Uputstvo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Sazimanje(unittest.TestCase):
+    """Zvuk koji ide modelu: AAC pa FLAC pa WAV."""
+
+    def setUp(self):
+        from dictate import flac
+        self.flac = flac
+        self.pcm = b"\x00\x01" * 16000
+
+    def test_bez_sazimanja_ide_wav(self):
+        deo = listen._deo(self.pcm, 16000, compress=False)
+        self.assertEqual(deo["inline_data"]["mime_type"], "audio/wav")
+
+    def test_sa_ffmpegom_ide_aac(self):
+        if not self.flac.available():
+            self.skipTest("nema ffmpeg-a")
+        deo = listen._deo(self.pcm, 16000)
+        self.assertEqual(deo["inline_data"]["mime_type"], "audio/aac")
+
+    def test_aac_je_visestruko_manji_od_flaca(self):
+        if not self.flac.available():
+            self.skipTest("nema ffmpeg-a")
+        aac = self.flac.encode_aac(self.pcm, 16000)
+        flac_ = self.flac.encode(self.pcm, 16000)
+        self.assertLess(len(aac), len(flac_))
+        # ADTS tok pocinje sinhro-recju 0xFFF.
+        self.assertEqual(aac[0], 0xFF)
+        self.assertEqual(aac[1] & 0xF0, 0xF0)

@@ -275,6 +275,21 @@ a dodavati zavisnost zbog uštede nije vredno. Mereno: 132 KB → 84 KB (36% man
 isti prepis i ista pouzdanost. Bez `ffmpeg`-a se šalje PCM kao i pre — ušteda ne
 sme da obori diktat.
 
+**Modelu ide AAC, endpointu FLAC.** Izmereno na istom snimku: WAV 139 KB, FLAC
+85 KB, **AAC 32 kbps 18 KB** — prepis identičan u sva tri. Model gubitno
+sažimanje ne primeti, a na telefonskom uplinku je baš ta veličina bila glavni
+razlog čekanja. Endpointu se AAC **ne sme** slati: prima samo PCM i FLAC.
+Kašnjenje modela je pri tom skoro isto za sve (`flash-lite` 1.9–2.1s,
+`2.5-flash-lite` 1.3s), pa se ubrzanje traži u veličini, ne u izboru modela.
+
+**ADTS zaglavlje se piše rukom.** `MediaCodec` vraća sirove AAC okvire bez
+kontejnera; ispred svakog ide 7 bajtova zaglavlja, inače je tok neupotrebljiv.
+Zato postoji `AacHeaderTest` — ta računica se ne menja bez testa.
+
+**Skraćenice se u formalnom režimu primenjuju POSLE modela.** Tekst mu ide
+nedirnut (tako bolje čita), pa bi inače potpuno izostale — korisnik to vidi kao
+„skraćenice su prestale da rade".
+
 **Zvuk se modelu šalje u poznatom formatu.** `inline_data` prima `audio/wav` i
 `audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera
 snimka udvostručuje saobraćaj — otud odvojen prekidač, a ne stalno ponašanje.
