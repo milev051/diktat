@@ -607,20 +607,24 @@ class DictateApp(rumps.App):
         rate = self.cfg["sample_rate"]
         return [(delovi[k], rate) for k in sorted(delovi)]
 
-    def _slusaj(self, session: int, tekst: str) -> str:
-        """Drugo misljenje o celom diktatu; na otkaz ostaje prvi prepis."""
+    def _slusaj(self, session: int, tekst: str):
+        """Drugo misljenje o celom diktatu; na otkaz ostaje prvi prepis.
+
+        Vraca (tekst, da li je model zaista slusao) — ako jeste, tekst vec ima
+        interpunkciju i kvacice, pa sledeci poziv nema sta da sredjuje.
+        """
         delovi = self._take_audio(session)
         if not delovi:
-            return tekst
+            return tekst, False
         try:
             ispravljen = listen.check_batch(delovi, tekst, self.cfg)
             self._count_polish()
             if ispravljen != tekst:
                 print(f"[diktat] AI slušao {len(delovi)} segm.: {tekst!r} -> {ispravljen!r}")
-            return ispravljen
+            return ispravljen, True
         except Exception as exc:  # noqa: BLE001
             print(f"[diktat] provera snimka nije uspela: {exc}")
-            return tekst
+            return tekst, False
 
     def _apply_rules(self, text: str) -> str:
         """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
@@ -847,11 +851,15 @@ class DictateApp(rumps.App):
             ]
 
     def _do_polish(self, sesija: int, tekst: str):
+        sredjeno = False
         if self._batch():
-            tekst = self._slusaj(sesija, tekst)
+            tekst, sredjeno = self._slusaj(sesija, tekst)
         # Tekst je cekao kraj diktata pa je jos sirov: ako model ne doteruje,
         # pravila moraju sada da odrade svoje.
-        doteran = self._doteraj(tekst) if self._formal() else self._rules_over_paragraphs(tekst)
+        doteran = (
+            self._doteraj(tekst, sredjeno) if self._formal()
+            else self._rules_over_paragraphs(tekst)
+        )
         with self._count_lock:
             self._polishing_count = max(0, self._polishing_count - 1)
             self._polishing = self._polishing_count > 0
@@ -868,9 +876,9 @@ class DictateApp(rumps.App):
             traceback.print_exc()
         self._settle_phase()
 
-    def _doteraj(self, tekst: str) -> str:
+    def _doteraj(self, tekst: str, vec_sredjeno=False) -> str:
         try:
-            doteran = polish.polish(tekst, self.cfg)
+            doteran = polish.polish(tekst, self.cfg, vec_sredjeno=vec_sredjeno)
             self._count_polish()
             if self.cfg.get("polish_emoji", False):
                 doteran = polish.bez_ponavljanja(doteran)
@@ -878,7 +886,7 @@ class DictateApp(rumps.App):
                 # izmedju poziva, pa bi inace svaki put posegnuo za istima.
                 polish.zapamti_emoji(doteran, self.cfg)
                 config.save(self.cfg)
-            if polish.tidy_on(self.cfg):
+            if polish.tidy_on(self.cfg) or vec_sredjeno:
                 # Uz sredjivanje ostaju samo podesavanja koja se sa njim ne
                 # sudaraju — tekst je modelu isao nedirnut, pa bi inace izostala.
                 doteran = self._after_model(doteran)

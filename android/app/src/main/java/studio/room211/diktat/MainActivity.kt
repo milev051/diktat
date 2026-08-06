@@ -256,7 +256,9 @@ class MainActivity : AppCompatActivity() {
         })
         box.addView(
             body(this, "Snimak ide i modelu, koji ispravlja prepoznat tekst. Tačnije " +
-                "u buci, ali šalje zvuk drugi put i traje 2–3s duže.\n\n" +
+                "u buci, ali šalje zvuk drugi put i traje koju sekundu duže.\n\n" +
+                "Taj prolaz ujedno sređuje interpunkciju i kvačice, pa se poseban " +
+                "poziv za „Sredi tekst\" tada preskače — isti posao se ne radi dvaput.\n\n" +
                 "Pouzdanost koju endpoint prijavljuje slabo razdvaja dobar prepis od " +
                 "lošeg — izmereno je 0,93 i za rečenicu sa odsečenom rečju — pa ovaj " +
                 "filter štedi podatke, ali propušta greške.")

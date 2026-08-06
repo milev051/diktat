@@ -303,12 +303,14 @@ class DictationService : Service() {
         handler.post { updatePill(elapsed(), busy = true) }
         thread {
             var polazni = tekst
+            // Ako je model slusao snimak, tekst vec ima interpunkciju i kvacice
+            // — sledeci poziv tada nema sta da sredjuje.
+            var sredjeno = false
             if (batch()) {
                 val delovi = takeAudio(sesija)
                 if (delovi.isNotEmpty()) {
-                    polazni = runCatching {
-                        Listen.check(delovi, tekst, cfg).also { cfg.countPolish() }
-                    }.getOrDefault(tekst)
+                    runCatching { Listen.check(delovi, tekst, cfg).also { cfg.countPolish() } }
+                        .onSuccess { polazni = it; sredjeno = true }
                 }
             }
             if (!formal()) {
@@ -320,7 +322,8 @@ class DictationService : Service() {
                 return@thread
             }
             val doteran = runCatching {
-                var izlaz = Polish.polish(polazni, cfg).also { cfg.countPolish() }
+                var izlaz = Polish.polish(polazni, cfg, sredjeno)
+                if (izlaz !== polazni) cfg.countPolish()
                 if (cfg.polishEmoji) {
                     // Istorija znakova ide u sledeci zahtev: model nema pamcenje
                     // izmedju poziva, pa bi inace svaki put posegnuo za istima.
@@ -332,7 +335,7 @@ class DictationService : Service() {
                 // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
                 // Uz sredjivanje ostaju bar skracenice: tekst je modelu isao
                 // nedirnut, pa bi inace potpuno izostale.
-                if (cfg.polishTidy) TextPolish.afterModel(izlaz, cfg)
+                if (cfg.polishTidy || sredjeno) TextPolish.afterModel(izlaz, cfg)
                 else TextPolish.applyBlocks(izlaz, cfg)
             }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.

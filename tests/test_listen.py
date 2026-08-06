@@ -54,6 +54,14 @@ class Uputstvo(unittest.TestCase):
         self.assertIn("3 uzastopna snimka", vise)
         self.assertIn(listen.VISE_DELOVA.strip(), vise)
 
+    def test_sredjivanje_se_trazi_kad_je_alat_ukljucen(self):
+        # Oblikovanje tada radi OVAJ prolaz, pa drugi poziv otpada.
+        u = listen._uputstvo("p", cfg(polish=True, polish_tidy=True))
+        self.assertIn("Piši pravilno", u)
+
+    def test_bez_alata_se_oblikovanje_ne_trazi(self):
+        self.assertNotIn("Piši pravilno", listen._uputstvo("p", cfg(polish=False)))
+
     def test_prepis_ulazi_u_uputstvo(self):
         self.assertIn("moj prepis", listen._uputstvo("moj prepis", cfg()))
 

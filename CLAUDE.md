@@ -248,6 +248,13 @@ pamte **po tiketu**, jer se prepoznaju paralelno pa bi redosled inače bio
 proizvoljan. Otkazan diktat mora da isprazni taj bafer, inače bi model u
 sledećoj proveri „čuo" prethodni diktat.
 
+**Sređivanje se ne radi dvaput.** Prolaz u kome model sluša snimak vraća tekst
+sa interpunkcijom, velikim slovima i kvačicama — pa je poseban poziv za „sredi
+tekst" bio drugi poziv za isti posao. Izmereno: vraćao je **identičan** tekst za
+0.7s. Zato `tools(cfg, vec_sredjeno=True)` izbacuje `tidy`; ako ništa drugo nije
+izabrano, drugog poziva uopšte nema. Uz to prvi prolaz sada **izričito** dobija
+zadatak da piše pravilno (`SREDI_DEO`), da oblikovanje ne bi zavisilo od sreće.
+
 **Model koji sluša snimak mora da dobije i prvi prepis.** Izmereno (greška po
 reči, tri rečenice, SNR 5 dB): Web Speech 0.30, Gemini sam 0.29, Gemini uz
 prepis **0.17**. Sam model u šumu **halucinira** — vratio je „poslao sam ponovo

@@ -63,6 +63,13 @@ VISE_DELOVA = """
 Snimci su uzastopni delovi jednog istog diktata, datim redom. Vrati ceo tekst
 spojen u jednu celinu, bez oznaka delova i bez praznih redova između njih."""
 
+# Kad je "sredi tekst" ukljuceno, oblikovanje radi OVAJ prolaz — drugi poziv se
+# tada preskace. Bez ovoga bi model oblikovao uzgred, pa nekad i ne bi.
+SREDI_DEO = """
+
+Piši pravilno: interpunkcija, velika slova i kvačice (č ć ž š đ) gde po
+pravopisu treba. Ne menjaj reči zbog toga — samo ih ispiši kako se pišu."""
+
 POJMOVI_DEO = """
 
 Ovi pojmovi se često javljaju u ovim diktatima; ako čuješ nešto slično, napiši
@@ -98,6 +105,8 @@ def _uputstvo(prepis: str, cfg, delova: int = 1) -> str:
     )
     if delova > 1:
         tekst += VISE_DELOVA
+    if cfg.get("polish_tidy", True) and cfg.get("polish", False):
+        tekst += SREDI_DEO
     pojmovi = cfg.get("vocabulary", POJMOVI_PODRAZUMEVANO)
     if pojmovi and pojmovi.strip():
         tekst += POJMOVI_DEO.format(pojmovi=pojmovi.strip())

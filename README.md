@@ -191,6 +191,11 @@ jednog na oko sto pedeset.
 
 Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
 
+Ako je *AI sluša snimak* uključeno, taj prolaz već vraća sređen tekst, pa se
+poseban poziv za *sredi tekst* **preskače** — isti posao se ne radi dvaput
+(izmereno: vraćao je identičan tekst za 0.7s). Ostali alati (pasusi, sažimanje,
+emotikoni) se i dalje traže drugim pozivom.
+
 Kad je *sredi tekst* uključeno, posle modela se primenjuju još samo `join_thousands`
 i `ascii_diacritics`. `lowercase` i `strip_punctuation` se preskaču: to je baš
 ono što je model dobio da uradi.

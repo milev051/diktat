@@ -35,6 +35,13 @@ object Listen {
     const val POJMOVI_PODRAZUMEVANO =
         "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK"
 
+    // Kad je "sredi tekst" ukljuceno, oblikovanje radi OVAJ prolaz — drugi
+    // poziv se tada preskace. Bez ovoga bi model oblikovao uzgred, pa nekad ne bi.
+    private const val SREDI_DEO = """
+
+Piši pravilno: interpunkcija, velika slova i kvačice (č ć ž š đ) gde po
+pravopisu treba. Ne menjaj reči zbog toga — samo ih ispiši kako se pišu."""
+
     private const val POJMOVI_DEO =
         "\n\nOvi pojmovi se često javljaju u ovim diktatima; ako čuješ nešto slično, " +
             "napiši ih tačno ovako: "
@@ -91,6 +98,7 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
         val sta = if (delova == 1) "snimak" else "$delova uzastopna snimka"
         var osnova = UPUTSTVO.format(sta, prepis)
         if (delova > 1) osnova += VISE_DELOVA
+        if (cfg.polish && cfg.polishTidy) osnova += SREDI_DEO
         val pojmovi = cfg.vocabulary.trim()
         return if (pojmovi.isEmpty()) osnova else osnova + POJMOVI_DEO + pojmovi
     }

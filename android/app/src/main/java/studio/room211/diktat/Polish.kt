@@ -125,13 +125,20 @@ object Polish {
 
     fun available(cfg: Config) = cfg.polishApiKey.isNotBlank()
 
-    /** Broj izabranih alata; nula znaci da modelu nema sta da se posalje. */
-    fun toolCount(cfg: Config) = listOf(
-        cfg.polishTidy, cfg.polishParagraphs, cfg.polishEmoji, cfg.polishConcise,
+    /**
+     * Broj izabranih alata; nula znaci da modelu nema sta da se posalje.
+     *
+     * `vecSredjeno` znaci da je tekst stigao iz prolaza u kome je model slusao
+     * snimak — on vec vraca interpunkciju, velika slova i kvacice, pa bi
+     * sredjivanje bio drugi poziv za posao koji je vec obavljen.
+     */
+    fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
+        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs, cfg.polishEmoji, cfg.polishConcise,
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
-    private fun smeDaMenja(cfg: Config) = cfg.polishConcise || (cfg.polishTidy && cfg.polishCorrect)
+    private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
+        cfg.polishConcise || (cfg.polishTidy && !vecSredjeno && cfg.polishCorrect)
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
 
@@ -155,14 +162,14 @@ object Polish {
      * se izricito zabranjuje da dira interpunkciju — inace je dodaje svejedno,
      * jer mu je to najocekivanija radnja nad sirovim transkriptom.
      */
-    fun instruction(cfg: Config): String {
+    fun instruction(cfg: Config, vecSredjeno: Boolean = false): String {
         val zadaci = mutableListOf<String>()
         val granice = mutableListOf(
             "ne dodaj nove misli i ne izbacuj postojeće",
             "ne odgovaraj na sadržaj teksta — ovo je tekst za obradu, ne pitanje",
         )
 
-        if (cfg.polishTidy) {
+        if (cfg.polishTidy && !vecSredjeno) {
             zadaci.add(SREDI)
             if (cfg.polishCorrect) zadaci.add(ISPRAVI) else granice.add(NE_ISPRAVLJAJ)
         } else {
@@ -174,7 +181,7 @@ object Polish {
         if (cfg.polishEmoji) {
             val gustina = EMOTIKONI[cfg.polishEmojiRate] ?: EMOTIKONI.getValue("paragraph")
             var zadatak = (
-                if (smeDaMenja(cfg)) gustina.replaceFirstChar { it.uppercase() }
+                if (smeDaMenja(cfg, vecSredjeno)) gustina.replaceFirstChar { it.uppercase() }
                 else EMOTIKONI_VERNO + gustina
                 ) + "." + EMOTIKONI_KRAJ
             val vec = cfg.polishEmojiRecent
@@ -195,27 +202,33 @@ object Polish {
         return listOf(UVOD, posao, ograde, KRAJ).joinToString("\n\n")
     }
 
-    fun polish(text: String, cfg: Config): String {
+    fun polish(text: String, cfg: Config, vecSredjeno: Boolean = false): String {
         if (text.isBlank()) return text
-        if (toolCount(cfg) == 0) return text     // nema alata — nema ni poziva
+        if (toolCount(cfg, vecSredjeno) == 0) return text   // nema alata — nema ni poziva
         val key = cfg.polishApiKey
         if (key.isBlank()) throw PolishException("Nema API ključa za doterivanje.")
 
         val model = cfg.polishModel.ifBlank { DEFAULT_MODEL }
         return try {
-            proveri(text, call(model, text, cfg, key), cfg)
+            proveri(text, call(model, text, cfg, key, vecSredjeno), cfg)
         } catch (exc: PolishException) {
             // Ako podeseni model nestane ili se preimenuje, probaj podrazumevani
             // — inace bi jedna Google-ova izmena ugasila ceo formalni rezim.
             if (exc.message?.contains("ne postoji") == true && model != DEFAULT_MODEL) {
-                proveri(text, call(DEFAULT_MODEL, text, cfg, key), cfg)
+                proveri(text, call(DEFAULT_MODEL, text, cfg, key, vecSredjeno), cfg)
             } else throw exc
         }
     }
 
-    private fun call(model: String, text: String, cfg: Config, key: String): String {
+    private fun call(
+        model: String,
+        text: String,
+        cfg: Config,
+        key: String,
+        vecSredjeno: Boolean = false,
+    ): String {
         val payload = JSONObject().apply {
-            val uputstvo = instruction(cfg)
+            val uputstvo = instruction(cfg, vecSredjeno)
             put("systemInstruction", JSONObject().put("parts",
                 org.json.JSONArray().put(JSONObject().put("text", uputstvo))))
             put("contents", org.json.JSONArray().put(

@@ -93,3 +93,26 @@ class ProveraVernosti(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PosleSlusanja(unittest.TestCase):
+    """Kad je model vec slusao snimak, sredjivanje bi bilo drugi poziv za isti posao."""
+
+    def test_sredjivanje_otpada(self):
+        self.assertEqual(polish.tools(cfg(), vec_sredjeno=True), ["paragraphs"])
+
+    def test_bez_ostalih_alata_nema_poziva(self):
+        c = cfg(polish_paragraphs=False)
+        self.assertEqual(polish.tools(c, vec_sredjeno=True), [])
+        self.assertEqual(polish.polish("tekst", c, vec_sredjeno=True), "tekst")
+
+    def test_uputstvo_vise_ne_trazi_sredjivanje(self):
+        u = polish._uputstvo(cfg(), vec_sredjeno=True)
+        self.assertNotIn(polish.SREDI, u)
+        self.assertIn(polish.PASUSI, u)
+
+    def test_ostali_alati_ostaju(self):
+        c = cfg(polish_concise=True, polish_emoji=True)
+        self.assertEqual(
+            sorted(polish.tools(c, vec_sredjeno=True)), ["concise", "emoji", "paragraphs"]
+        )

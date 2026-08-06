@@ -164,10 +164,15 @@ def emoji_rate(cfg) -> str:
     return rate if rate in EMOTIKONI else "paragraph"
 
 
-def tools(cfg) -> list[str]:
-    """Izabrani alati. Prazna lista znaci da modelu nema sta da se posalje."""
+def tools(cfg, vec_sredjeno=False) -> list[str]:
+    """Izabrani alati. Prazna lista znaci da modelu nema sta da se posalje.
+
+    `vec_sredjeno` znaci da je tekst stigao iz prolaza u kome je model slusao
+    snimak — on vec vraca interpunkciju, velika slova i kvacice, pa bi
+    sredjivanje bio drugi poziv za posao koji je vec obavljen.
+    """
     izabrani = []
-    if tidy_on(cfg):
+    if tidy_on(cfg) and not vec_sredjeno:
         izabrani.append("tidy")
     if cfg.get("polish_paragraphs", True):
         izabrani.append("paragraphs")
@@ -178,11 +183,11 @@ def tools(cfg) -> list[str]:
     return izabrani
 
 
-def polish(text: str, cfg, timeout=60) -> str:
+def polish(text: str, cfg, timeout=60, vec_sredjeno=False) -> str:
     """Vrati obradjen tekst. Na bilo kakav problem podize PolishError."""
     if not text.strip():
         return text
-    if not tools(cfg):
+    if not tools(cfg, vec_sredjeno):
         return text                 # nema alata — nema ni poziva
     key = cfg.get("polish_api_key") or ""
     if not key:
@@ -190,20 +195,22 @@ def polish(text: str, cfg, timeout=60) -> str:
 
     model = cfg.get("polish_model") or DEFAULT_MODEL
     try:
-        return _proveri(text, _pozovi(model, text, key, cfg, timeout), cfg)
+        return _proveri(text, _pozovi(model, text, key, cfg, timeout, vec_sredjeno), cfg)
     except PolishError as exc:
         # Ako podeseni model nestane ili se preimenuje, probaj podrazumevani —
         # inace bi jedna Google-ova izmena ugasila celu AI obradu.
         if "ne postoji" in str(exc) and model != DEFAULT_MODEL:
             print(f"[diktat] model {model} ne postoji, prelazim na {DEFAULT_MODEL}")
-            return _proveri(text, _pozovi(DEFAULT_MODEL, text, key, cfg, timeout), cfg)
+            return _proveri(
+                text, _pozovi(DEFAULT_MODEL, text, key, cfg, timeout, vec_sredjeno), cfg
+            )
         raise
 
 
-def _pozovi(model, text, key, cfg, timeout):
+def _pozovi(model, text, key, cfg, timeout, vec_sredjeno=False):
     url = f"{ENDPOINT}/{model}:generateContent?key={key}"
     payload = {
-        "systemInstruction": {"parts": [{"text": _uputstvo(cfg)}]},
+        "systemInstruction": {"parts": [{"text": _uputstvo(cfg, vec_sredjeno)}]},
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {"temperature": 0.0},
     }
@@ -254,10 +261,11 @@ def _reci(text: str) -> list[str]:
     return webstt.to_ascii(_NEREC.sub(" ", text)).lower().split()
 
 
-def _sme_da_menja(cfg) -> bool:
+def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     """Menja li ijedan izabrani alat same reci."""
     return bool(cfg.get("polish_concise", False)) or (
-        tidy_on(cfg) and cfg.get("polish_level", "correct") == "correct"
+        "tidy" in tools(cfg, vec_sredjeno)
+        and cfg.get("polish_level", "correct") == "correct"
     )
 
 
@@ -276,7 +284,7 @@ def _proveri(ulaz: str, izlaz: str, cfg) -> str:
     return ulaz
 
 
-def _uputstvo(cfg) -> str:
+def _uputstvo(cfg, vec_sredjeno=False) -> str:
     """Sklopi uputstvo od izabranih alata.
 
     Zadaci i granice moraju da se slazu: kad sredjivanje nije izabrano, modelu
@@ -286,7 +294,7 @@ def _uputstvo(cfg) -> str:
     if cfg.get("polish_prompt"):
         return cfg["polish_prompt"]
 
-    izabrani = tools(cfg)
+    izabrani = tools(cfg, vec_sredjeno)
     correct = cfg.get("polish_level", "correct") == "correct"
 
     zadaci = []
