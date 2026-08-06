@@ -15,13 +15,13 @@ class Config(context: Context) {
         get() = prefs.getString("api_key", "")!!
         set(v) = prefs.edit().putString("api_key", v).apply()
 
-    var lowercase: Boolean
-        get() = prefs.getBoolean("lowercase", true)
-        set(v) = prefs.edit().putBoolean("lowercase", v).apply()
+    /** Deo izbora `textStyle`, ne zaseban prekidac. */
+    val lowercase: Boolean
+        get() = textStyle == "spoken"
 
-    var stripPunctuation: Boolean
-        get() = prefs.getBoolean("strip_punctuation", true)
-        set(v) = prefs.edit().putBoolean("strip_punctuation", v).apply()
+    /** Deo izbora `textStyle`, ne zaseban prekidac. */
+    val stripPunctuation: Boolean
+        get() = textStyle == "spoken"
 
     var profanityFilter: Boolean
         get() = prefs.getBoolean("profanity_filter", false)
@@ -121,10 +121,34 @@ class Config(context: Context) {
         get() = prefs.getBoolean("polish_correct", true)
         set(v) = prefs.edit().putBoolean("polish_correct", v).apply()
 
-    /** Sredjivanje (interpunkcija, velika slova, kvacice) — samo JEDAN od alata. */
-    var polishTidy: Boolean
-        get() = prefs.getBoolean("polish_tidy", true)
-        set(v) = prefs.edit().putBoolean("polish_tidy", v).apply()
+    /**
+     * Izgled teksta: jedan izbor umesto tri prekidaca koja su se ponistavala.
+     *
+     *   "spoken"  — kako je izgovoreno: mala slova, bez interpunkcije
+     *   "written" — pravopisno sredjeno; to radi model, pa trazi kljuc
+     *   "raw"     — kako Google vrati, bez diranja
+     *
+     * Zatecena podesavanja se prevode pri prvom citanju, da niko ne izgubi ono
+     * sto je vec namestio.
+     */
+    var textStyle: String
+        get() {
+            prefs.getString("text_style", null)?.let { return it }
+            val prevedeno = when {
+                prefs.getBoolean("polish", false) && prefs.getBoolean("polish_tidy", true) ->
+                    "written"
+                prefs.getBoolean("lowercase", true) ||
+                    prefs.getBoolean("strip_punctuation", true) -> "spoken"
+                else -> "raw"
+            }
+            prefs.edit().putString("text_style", prevedeno).apply()
+            return prevedeno
+        }
+        set(v) = prefs.edit().putString("text_style", v).apply()
+
+    /** Sredjuje li model interpunkciju i kvacice. */
+    val polishTidy: Boolean
+        get() = textStyle == "written"
 
     /** Emotikoni u tekstu. */
     var polishEmoji: Boolean
@@ -144,11 +168,6 @@ class Config(context: Context) {
     var audioCheck: Boolean
         get() = prefs.getBoolean("audio_check", false)
         set(v) = prefs.edit().putBoolean("audio_check", v).apply()
-
-    /** Salji snimak samo kad je pouzdanost ispod praga. */
-    var audioCheckLowOnly: Boolean
-        get() = prefs.getBoolean("audio_check_low_only", false)
-        set(v) = prefs.edit().putBoolean("audio_check_low_only", v).apply()
 
     /** Poslednjih 15 upotrebljenih emotikona, da se ne ponavljaju. */
     var polishEmojiRecent: List<String>

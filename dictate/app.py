@@ -134,40 +134,69 @@ class DictateApp(rumps.App):
         )
         self.mic_menu = rumps.MenuItem("Mikrofon")
 
-        mode_menu = rumps.MenuItem("Režim")
+        # Meni je grupisan po pitanju na koje odgovaras, a ne po tome kad je
+        # sta nastalo: Snimanje (kako), Tekst (kako izgleda), AI (sta model radi).
+        snimanje_menu = rumps.MenuItem("Snimanje")
         self.item_hold = rumps.MenuItem("Drži taster", callback=self._set_hold)
         self.item_toggle = rumps.MenuItem("Prekidač", callback=self._set_toggle)
-        mode_menu.add(self.item_hold)
-        mode_menu.add(self.item_toggle)
-
         # Neprekidno je nezavisno od nacina aktivacije: bira se koliko dugo
         # snima, a ne kako se pokrece.
         self.item_continuous = rumps.MenuItem(
             "Neprekidno (bez granice)", callback=self._toggle_continuous
         )
-        # Alati su nezavisni: sredjivanje je samo jedan od njih, pa se moze
-        # traziti skracivanje ili emotikon a da model tekst inace ne dira.
-        self.item_polish = rumps.MenuItem(
-            "AI obrada teksta", callback=self._toggle_polish
+        for stavka in (self.item_hold, self.item_toggle, None, self.item_continuous):
+            snimanje_menu.add(stavka if stavka is not None else rumps.separator)
+
+        # Jedan izbor umesto tri prekidaca koja su se ponistavala: ranije su
+        # "sredi tekst", "sve malim slovima" i "bez interpunkcije" mogli da budu
+        # ukljuceni istovremeno, a ishod je zavisio od redosleda u kodu.
+        tekst_menu = rumps.MenuItem("Tekst")
+        self.style_items = {}
+        for kljuc, naziv in (
+            ("spoken", "Kako sam izgovorio (mala slova, bez tačaka)"),
+            ("written", "Pravopisno sređeno (radi AI)"),
+            ("raw", "Sirovo, kako Google vrati"),
+        ):
+            stavka = rumps.MenuItem(naziv, callback=self._make_style_setter(kljuc))
+            self.style_items[kljuc] = stavka
+            tekst_menu.add(stavka)
+        tekst_menu.add(rumps.separator)
+        self.item_ascii = rumps.MenuItem(
+            "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
         )
-        self.item_polish_tidy = rumps.MenuItem(
-            "…sredi tekst (interpunkcija, kvačice)",
-            callback=self._make_polish_toggle("polish_tidy", True),
+        self.item_thousands = rumps.MenuItem(
+            "Spoji hiljade (5.000 → 5000)",
+            callback=self._make_polish_toggle("join_thousands", True),
+        )
+        self.item_space = rumps.MenuItem(
+            "Razmak na kraju",
+            callback=self._make_polish_toggle("trailing_space", True),
+        )
+        for stavka in (self.item_ascii, self.item_thousands, self.item_space):
+            tekst_menu.add(stavka)
+
+        # Sve sto model radi je na jednom mestu, ispod jednog prekidaca.
+        ai_menu = rumps.MenuItem("AI")
+        self.item_polish = rumps.MenuItem(
+            "Uključi AI obradu", callback=self._toggle_polish
+        )
+        self.item_listen = rumps.MenuItem(
+            "Sluša snimak (preciznije prepoznavanje)", callback=self._toggle_listen
         )
         self.item_polish_correct = rumps.MenuItem(
-            "…i ispravi očigledne greške", callback=self._toggle_polish_level
+            "Ispravi očigledne greške", callback=self._toggle_polish_level
         )
         self.item_polish_para = rumps.MenuItem(
-            "…podeli na pasuse",
+            "Podeli na pasuse",
             callback=self._make_polish_toggle("polish_paragraphs", True),
         )
         self.item_polish_concise = rumps.MenuItem(
-            "…skrati i pojednostavi",
+            "Skrati i pojednostavi",
             callback=self._make_polish_toggle("polish_concise", False),
         )
-        # Emotikoni su izbor od cetiri stanja, ne prekidac — gustina se bira
-        # istim potezom kojim se ukljucuju.
-        self.emoji_menu = rumps.MenuItem("…emotikoni")
+        # Emotikoni su izbor od pet stanja, ne prekidac — gustina se bira istim
+        # potezom kojim se ukljucuju.
+        self.emoji_menu = rumps.MenuItem("Emotikoni")
         self.emoji_items = {}
         for kljuc, naziv in (
             (None, "Isključeno"),
@@ -179,24 +208,16 @@ class DictateApp(rumps.App):
             stavka = rumps.MenuItem(naziv, callback=self._make_emoji_setter(kljuc))
             self.emoji_items[kljuc] = stavka
             self.emoji_menu.add(stavka)
-
-        # Odvojeno od alata iznad: oni doteruju TEKST, ovo popravlja samo
-        # prepoznavanje. Trazi isti kljuc, pa se i broji u istom brojacu.
-        self.item_listen = rumps.MenuItem(
-            "AI sluša snimak (preciznije)", callback=self._toggle_listen
-        )
-        self.item_listen_low = rumps.MenuItem(
-            "…samo kad je pouzdanost niska",
-            callback=self._make_polish_toggle("audio_check_low_only", False),
-        )
-
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
-
-        self.item_ascii = rumps.MenuItem(
-            "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
-        )
+        for stavka in (
+            self.item_polish, rumps.separator, self.item_listen,
+            self.item_polish_correct, self.item_polish_para,
+            self.item_polish_concise, self.emoji_menu,
+            rumps.separator, self.item_polish_count,
+        ):
+            ai_menu.add(stavka)
 
         lang_menu = rumps.MenuItem("Jezik")
         self.lang_items = {}
@@ -218,44 +239,21 @@ class DictateApp(rumps.App):
             self.mic_menu,
             self.item_refresh,
             None,
-            mode_menu,
-            self.item_continuous,
-            self.item_polish,
-            self.item_polish_tidy,
-            self.item_polish_correct,
-            self.item_polish_para,
-            self.item_polish_concise,
-            self.emoji_menu,
-            None,
-            self.item_listen,
-            self.item_listen_low,
-            self.item_polish_count,
+            snimanje_menu,
+            tekst_menu,
+            ai_menu,
             lang_menu,
-            self.item_ascii,
             None,
             self.item_debug,
             rumps.MenuItem("Otvori config.json", callback=self._open_config),
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
         ]
-        # Alati su podelementi glavnog prekidaca: uvuceni ispod njega i zasivljeni
-        # dok je iskljucen. Bez uvlacenja se iz menija ne vidi sta cemu pripada.
-        self._polish_children = [
-            self.item_polish_tidy,
-            self.item_polish_para,
-            self.item_polish_concise,
-            self.emoji_menu,
-            self.item_polish_count,
-        ]
-        for stavka in self._polish_children:
-            stavka._menuitem.setIndentationLevel_(1)
-        self.item_listen_low._menuitem.setIndentationLevel_(1)
-        self.item_polish_correct._menuitem.setIndentationLevel_(2)
 
-        # Callback-ovi se pamte da bi mogli da se vrate kad se obrada upali.
-        # Lista parova, ne recnik: rumps MenuItem nije hashable.
+        # Alati se sive dok je glavni prekidac ugasen. Lista parova, ne recnik:
+        # rumps MenuItem nije hashable.
         self._polish_callbacks = [
-            (self.item_polish_tidy, self._make_polish_toggle("polish_tidy", True)),
+            (self.item_listen, self._toggle_listen),
             (self.item_polish_correct, self._toggle_polish_level),
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_concise, self._make_polish_toggle("polish_concise", False)),
@@ -299,54 +297,54 @@ class DictateApp(rumps.App):
         self.item_hold.state = 1 if mode == "hold" else 0
         self.item_toggle.state = 1 if mode == "toggle" else 0
         self.item_continuous.state = 1 if self.cfg.get("continuous", True) else 0
+
+        stil = config.style(self.cfg)
+        for kljuc, stavka in self.style_items.items():
+            stavka.state = 1 if kljuc == stil else 0
+        self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
+        self.item_thousands.state = 1 if self.cfg.get("join_thousands", True) else 0
+        self.item_space.state = 1 if self.cfg.get("trailing_space", True) else 0
+
+        ima_kljuc = polish.available(self.cfg)
+        radi = bool(self.cfg.get("polish", False)) and ima_kljuc
         self.item_polish.state = 1 if self.cfg.get("polish", False) else 0
-        self.item_polish_tidy.state = 1 if self.cfg.get("polish_tidy", True) else 0
+        self.item_polish.title = (
+            "Uključi AI obradu" if ima_kljuc else "Nema API ključa (config.json)"
+        )
+        self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
         self.item_polish_correct.state = (
             1 if self.cfg.get("polish_level", "correct") == "correct" else 0
         )
-        self.item_polish_para.state = (
-            1 if self.cfg.get("polish_paragraphs", True) else 0
-        )
+        self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_concise.state = 1 if self.cfg.get("polish_concise", False) else 0
 
         gustina = polish.emoji_rate(self.cfg) if self.cfg.get("polish_emoji", False) else None
         for kljuc, stavka in self.emoji_items.items():
             stavka.state = 1 if kljuc == gustina else 0
-        self.emoji_menu.title = "…emotikoni: " + (
+        self.emoji_menu.title = "Emotikoni: " + (
             self.emoji_items[gustina].title.lower() if gustina else "isključeno"
         )
 
         # Alat se ne bira dok je glavni prekidac ugasen. Sivi se skidanjem
         # callback-a, ne sa setEnabled_: NSMenu sam ukljucuje stavke koje imaju
         # akciju, pa bi setEnabled_ bio pregazen pri sledecem otvaranju menija.
-        radi = bool(self.cfg.get("polish", False)) and polish.available(self.cfg)
         for stavka, cb in self._polish_callbacks:
             aktivan = radi
             if stavka is self.item_polish_correct:
-                aktivan = radi and bool(self.cfg.get("polish_tidy", True))
+                # Ispravljanje ima smisla samo kad model uopste sredjuje tekst.
+                aktivan = radi and stil == "written"
             stavka.set_callback(cb if aktivan else None)
-        # Ispravljanje je podelement SREDJIVANJA: bez njega nema sta da ispravi.
-        self.item_polish_correct.title = "…i ispravi očigledne greške"
-        self.item_polish.title = (
-            "AI obrada teksta" if polish.available(self.cfg)
-            else "AI obrada — nema API ključa"
-        )
         self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
 
-        self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
-        self.item_listen_low.state = 1 if self.cfg.get("audio_check_low_only", False) else 0
-        self.item_listen.title = (
-            "AI sluša snimak (preciznije)" if polish.available(self.cfg)
-            else "AI sluša snimak — nema API ključa"
+        # Stil „pravopisno sredjeno" bez ukljucenog AI-ja nema ko da izvrsi.
+        self.style_items["written"].title = (
+            "Pravopisno sređeno (radi AI)" if radi
+            else "Pravopisno sređeno — traži uključen AI"
         )
-        self.item_listen_low.set_callback(
-            self._make_polish_toggle("audio_check_low_only", False)
-            if listen.enabled(self.cfg) else None
-        )
+
         current = self.cfg.get("language", "sr-RS")
         for code, item in self.lang_items.items():
             item.state = 1 if code == current else 0
-        self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
 
     # ------------------------------------------------------- preflight
 
@@ -630,15 +628,16 @@ class DictateApp(rumps.App):
         """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
         if self.cfg.get("join_thousands", True):
             text = webstt.join_thousands(text)
-        if self.cfg.get("strip_punctuation", True):
+        # „Kako sam izgovorio" znaci mala slova i bez interpunkcije; „sirovo"
+        # ostavlja ono sto Google vrati. „Pravopisno sredjeno" ovde nema sta da
+        # radi — to je posao modela, pa tekst prolazi nedirnut.
+        izgovoreno = config.style(self.cfg) == "spoken"
+        if izgovoreno:
             text = webstt.strip_punctuation(text)
-        if self.cfg.get("lowercase", False):
             text = text.lower()
         if self.cfg.get("ascii_diacritics", False):
-            return webstt.to_ascii(text)
-        if self.cfg.get("lowercase", False):
-            return text
-        if self.cfg.get("capitalize_first", True):
+            text = webstt.to_ascii(text)
+        if not izgovoreno and self.cfg.get("capitalize_first", False):
             return webstt.tidy(text)
         return text
 
@@ -1169,6 +1168,17 @@ class DictateApp(rumps.App):
             if rate is not None:
                 self.cfg["polish_emoji_rate"] = rate
             config.save(self.cfg)
+            self._sync_menu_marks()
+        return setter
+
+    def _make_style_setter(self, stil):
+        def setter(_):
+            self.cfg["text_style"] = stil
+            config.save(self.cfg)
+            if stil == "written" and not (
+                self.cfg.get("polish") and polish.available(self.cfg)
+            ):
+                self.item_status.title = "Uključi AI da bi sređivao tekst"
             self._sync_menu_marks()
         return setter
 

@@ -105,8 +105,7 @@ Dva nezavisna podešavanja:
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `compress_audio` | `true` | FLAC ka endpointu, 36% manje; bez `ffmpeg`-a ide PCM |
-| `lowercase` | `true` | ceo tekst malim slovima |
-| `strip_punctuation` | `true` | ukloni interpunkciju; `3,5`, `10:00` i `2.0` ostaju celi |
+| `text_style` | `spoken` | `spoken` = mala slova bez interpunkcije, `written` = AI sređuje, `raw` = kako Google vrati |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
 | `join_thousands` | `true` | `5.000` → `5000`; zarez ostaje decimalni |
 | `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |
@@ -176,7 +175,6 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_api_key` | `""` | bez njega režim ne radi |
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
-| `polish_tidy` | `true` | interpunkcija, velika slova, kvačice — samo jedan od alata |
 | `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `polish_concise` | `false` | skrati i pojednostavi |
@@ -267,7 +265,6 @@ Skraćenice i strani nazivi su najslabija tačka endpointa — zato postoji
 |---|---|---|
 | `audio_check` | `false` | uključuje se iz menija |
 | `vocabulary` | `AI, API, Gemini, …` | pojmovi koje endpoint stalno greši |
-| `audio_check_low_only` | `false` | `true` = šalji samo ispod praga |
 | `audio_check_max_seconds` | `120` | koliko zvuka najviše čuvamo za grupnu proveru |
 | `compress_audio` | `true` | FLAC preko `ffmpeg`-a; bez njega ide PCM/WAV |
 | `audio_check_threshold` | `0.85` | prag pouzdanosti |

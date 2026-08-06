@@ -7,7 +7,7 @@ from dictate import listen
 
 
 def cfg(**kw):
-    osnovno = {"polish_api_key": "x", "audio_check": True, "audio_check_low_only": False}
+    osnovno = {"polish_api_key": "x", "audio_check": True}
     osnovno.update(kw)
     return osnovno
 
@@ -22,10 +22,11 @@ class KadaSalje(unittest.TestCase):
     def test_ukljuceno_salje_uvek(self):
         self.assertTrue(listen.should_check(cfg(), 0.99))
 
-    def test_prag_propusta_samo_nisku_pouzdanost(self):
-        c = cfg(audio_check_low_only=True)
-        self.assertFalse(listen.should_check(c, 0.95))
-        self.assertTrue(listen.should_check(c, 0.60))
+    def test_pouzdanost_se_ne_gleda(self):
+        # Endpoint prijavi 0.93 i za prepis sa odsecenom recju — filtriranje po
+        # tom broju je stedelo podatke a propustalo greske, pa je uklonjeno.
+        self.assertTrue(listen.should_check(cfg(), 0.95))
+        self.assertTrue(listen.should_check(cfg(), 0.10))
 
 
 class Zaglavlje(unittest.TestCase):
@@ -56,11 +57,13 @@ class Uputstvo(unittest.TestCase):
 
     def test_sredjivanje_se_trazi_kad_je_alat_ukljucen(self):
         # Oblikovanje tada radi OVAJ prolaz, pa drugi poziv otpada.
-        u = listen._uputstvo("p", cfg(polish=True, polish_tidy=True))
+        u = listen._uputstvo("p", cfg(polish=True, text_style="written"))
         self.assertIn("Piši pravilno", u)
 
     def test_bez_alata_se_oblikovanje_ne_trazi(self):
-        self.assertNotIn("Piši pravilno", listen._uputstvo("p", cfg(polish=False)))
+        self.assertNotIn(
+            "Piši pravilno", listen._uputstvo("p", cfg(polish=True, text_style="spoken"))
+        )
 
     def test_prepis_ulazi_u_uputstvo(self):
         self.assertIn("moj prepis", listen._uputstvo("moj prepis", cfg()))

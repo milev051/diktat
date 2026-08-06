@@ -25,10 +25,6 @@ object Listen {
 
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    // Ispod ovoga se prepis smatra nesigurnim. Izmereno: dobar srpski diktat
-    // vraca 0.92-0.95 — ali i pogresan ume da vrati 0.93, pa je ovo slab filter.
-    const val PRAG = 0.85
-
     // Skracenice i strani nazivi su najslabija tacka: endpoint ih mapira na
     // obicnu rec ("AI" -> "pa", "i"), a model bez spiska nema po cemu da ih
     // prepozna.
@@ -71,11 +67,14 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
 
     fun enabled(cfg: Config) = cfg.audioCheck && cfg.polishApiKey.isNotBlank()
 
-    /** Vredi li slati snimak modelu. */
-    fun shouldCheck(cfg: Config, confidence: Double): Boolean {
-        if (!enabled(cfg)) return false
-        return if (cfg.audioCheckLowOnly) confidence < PRAG else true
-    }
+    /**
+     * Vredi li slati snimak modelu.
+     *
+     * Pouzdanost se vise ne gleda: izmereno je da endpoint prijavi 0.93 i za
+     * prepis sa odsecenom recju, pa je filtriranje po njoj stedelo podatke a
+     * propustalo greske.
+     */
+    fun shouldCheck(cfg: Config): Boolean = enabled(cfg)
 
     /** WAV je 44 bajta zaglavlja preko PCM-a; `inline_data` trazi poznat format. */
     fun wav(pcm: ByteArray, sampleRate: Int): ByteArray {

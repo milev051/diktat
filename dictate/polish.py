@@ -110,8 +110,13 @@ def available(cfg) -> bool:
 
 
 def tidy_on(cfg) -> bool:
-    """Sredjuje li model interpunkciju — od toga zavisi i sta mu se salje."""
-    return bool(cfg.get("polish_tidy", True))
+    """Sredjuje li model interpunkciju — od toga zavisi i sta mu se salje.
+
+    To vise nije zaseban prekidac nego stil teksta: „pravopisno sredjeno" je
+    posao koji radi model, pa se ovde samo cita izbor.
+    """
+    from . import config
+    return config.style(cfg) == "written"
 
 
 # Jedan emoji ume da bude sastavljen od vise kodnih tacaka (ZWJ, ton koze,

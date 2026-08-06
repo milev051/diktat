@@ -15,7 +15,7 @@ def napravi(**kw):
     app.cfg = {
         "sample_rate": 16000, "audio_check": True, "polish_api_key": "x",
         "audio_check_max_seconds": 120, "polish": False,
-        "strip_punctuation": True, "lowercase": True, "join_thousands": True,
+        "text_style": "spoken", "join_thousands": True,
     }
     app.cfg.update(kw)
     app._audio_lock = threading.Lock()
@@ -119,7 +119,7 @@ class KadaSeCekaKraj(unittest.TestCase):
         self.assertFalse(app._deferred())
 
     def test_ai_obrada_sama_takodje_odlaze(self):
-        app = napravi(audio_check=False, polish=True, polish_tidy=True)
+        app = napravi(audio_check=False, polish=True, text_style="written")
         self.assertTrue(app._deferred())
 
 
@@ -141,13 +141,13 @@ if __name__ == "__main__":
 class ZavrsnaObrada(unittest.TestCase):
     """Sta se primenjuje POSLE modela kad on sredjuje tekst."""
 
-    def test_kvacice_se_skidaju_ako_je_traženo(self):
+    def test_kvacice_se_skidaju_ako_je_trazeno(self):
         app = napravi(ascii_diacritics=True)
         self.assertEqual(app._after_model("Juče je bio čas."), "Juce je bio cas.")
 
     def test_interpunkcija_i_velika_slova_ostaju(self):
         # To je bas posao koji je model dobio — nasa pravila ga ne smeju gasiti.
-        app = napravi(lowercase=True, strip_punctuation=True)
+        app = napravi(text_style="written")
         self.assertEqual(app._after_model("Juče je bio čas."), "Juče je bio čas.")
 
     def test_hiljade_se_spajaju(self):

@@ -80,13 +80,14 @@ def enabled(cfg) -> bool:
     return bool(cfg.get("audio_check", False)) and bool(cfg.get("polish_api_key"))
 
 
-def should_check(cfg, confidence: float) -> bool:
-    """Vredi li slati snimak modelu."""
-    if not enabled(cfg):
-        return False
-    if not cfg.get("audio_check_low_only", False):
-        return True
-    return confidence < float(cfg.get("audio_check_threshold", PRAG))
+def should_check(cfg, confidence: float = 0.0) -> bool:
+    """Vredi li slati snimak modelu.
+
+    Pouzdanost se vise ne gleda: izmereno je da endpoint prijavi 0.93 i za
+    prepis sa odsecenom recju, pa je filtriranje po njoj stedelo podatke a
+    propustalo greske. Prekidac za to je uklonjen.
+    """
+    return enabled(cfg)
 
 
 def wav_bytes(pcm: bytes, sample_rate: int) -> bytes:
@@ -105,7 +106,8 @@ def _uputstvo(prepis: str, cfg, delova: int = 1) -> str:
     )
     if delova > 1:
         tekst += VISE_DELOVA
-    if cfg.get("polish_tidy", True) and cfg.get("polish", False):
+    from . import config
+    if config.style(cfg) == "written" and cfg.get("polish", False):
         tekst += SREDI_DEO
     pojmovi = cfg.get("vocabulary", POJMOVI_PODRAZUMEVANO)
     if pojmovi and pojmovi.strip():

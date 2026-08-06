@@ -201,8 +201,7 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 
 | | podrazumevano | |
 |---|---|---|
-| Sve malim slovima | uključeno | |
-| Bez interpunkcije | uključeno | brojevi ostaju celi — `3,5`, `10:00`, `2.0` |
+| Stil teksta | *Izgovoreno* | *Izgovoreno* = mala slova bez interpunkcije, *Sređeno* = AI sređuje, *Sirovo* = kako Google vrati |
 | Razmak na kraju | uključeno | da se rečenice nadovezuju |
 | Ne maskiraj psovke | uključeno | `pFilter=0`; isključeno daje `sranje` → `s*****` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |

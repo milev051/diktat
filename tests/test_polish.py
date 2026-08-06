@@ -7,7 +7,7 @@ from dictate import polish
 
 def cfg(**kw):
     osnovno = {
-        "polish_api_key": "x", "polish_tidy": True, "polish_level": "correct",
+        "polish_api_key": "x", "text_style": "written", "polish_level": "correct",
         "polish_paragraphs": True, "polish_concise": False, "polish_emoji": False,
     }
     osnovno.update(kw)
@@ -17,7 +17,7 @@ def cfg(**kw):
 class Uputstvo(unittest.TestCase):
     def test_bez_sredjivanja_zabranjuje_interpunkciju(self):
         # Bez ove granice model sredi tekst svejedno — to je izmereno.
-        u = polish._uputstvo(cfg(polish_tidy=False, polish_concise=True))
+        u = polish._uputstvo(cfg(text_style="spoken", polish_concise=True))
         self.assertIn(polish.NE_SREDJUJ, u)
         self.assertNotIn(polish.SREDI, u)
 
@@ -30,7 +30,7 @@ class Uputstvo(unittest.TestCase):
         self.assertNotIn(polish.NE_SKRACUJ, polish._uputstvo(cfg(polish_concise=True)))
 
     def test_emotikon_trazi_verno_prepisivanje_kad_niko_ne_menja_reci(self):
-        u = polish._uputstvo(cfg(polish_tidy=False, polish_emoji=True))
+        u = polish._uputstvo(cfg(text_style="spoken", polish_emoji=True))
         self.assertIn(polish.EMOTIKONI_VERNO, u)
 
     def test_emotikon_bez_verno_kad_sazimanje_ionako_menja_reci(self):
@@ -51,7 +51,7 @@ class Uputstvo(unittest.TestCase):
         self.assertIn("🤝 🎬", u)
 
     def test_bez_alata_nema_poziva(self):
-        prazan = cfg(polish_tidy=False, polish_paragraphs=False)
+        prazan = cfg(text_style="spoken", polish_paragraphs=False)
         self.assertEqual(polish.tools(prazan), [])
         self.assertEqual(polish.polish("tekst", prazan), "tekst")
 
@@ -79,11 +79,11 @@ class Emotikoni(unittest.TestCase):
 
 class ProveraVernosti(unittest.TestCase):
     def test_izmisljena_rec_obara_izlaz(self):
-        c = cfg(polish_tidy=False, polish_emoji=True)
+        c = cfg(text_style="spoken", polish_emoji=True)
         self.assertEqual(polish._proveri("bio je dobar", "bio je dobar film 🎬", c), "bio je dobar")
 
     def test_emotikon_i_interpunkcija_ne_smetaju(self):
-        c = cfg(polish_tidy=False, polish_emoji=True)
+        c = cfg(text_style="spoken", polish_emoji=True)
         self.assertEqual(polish._proveri("bio je dobar", "bio je dobar 🎬", c), "bio je dobar 🎬")
 
     def test_sazimanje_sme_da_menja_reci(self):

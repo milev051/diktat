@@ -52,3 +52,31 @@ class OdgovorEndpointa(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IzborStila(unittest.TestCase):
+    """Tri prekidaca su postala jedan izbor; zatecena podesavanja se prevode."""
+
+    def prevedi(self, staro):
+        from dictate import config
+        return config._migrate(dict(staro))["text_style"]
+
+    def test_mala_slova_postaju_izgovoreno(self):
+        self.assertEqual(self.prevedi({"lowercase": True, "strip_punctuation": True}), "spoken")
+
+    def test_ukljucen_ai_sa_sredjivanjem_postaje_sredjeno(self):
+        self.assertEqual(self.prevedi({"polish": True, "polish_tidy": True}), "written")
+
+    def test_bez_ijednog_postaje_sirovo(self):
+        self.assertEqual(
+            self.prevedi({"lowercase": False, "strip_punctuation": False}), "raw"
+        )
+
+    def test_postojeci_izbor_se_ne_dira(self):
+        self.assertEqual(self.prevedi({"text_style": "raw", "lowercase": True}), "raw")
+
+    def test_mrtvi_kljucevi_se_izbacuju(self):
+        from dictate import config
+        ostalo = config._migrate({"max_seconds": 290, "auto_segment": True, "lowercase": True})
+        for kljuc in ("max_seconds", "auto_segment", "lowercase", "strip_punctuation"):
+            self.assertNotIn(kljuc, ostalo)

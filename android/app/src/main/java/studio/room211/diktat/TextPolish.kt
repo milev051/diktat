@@ -83,6 +83,9 @@ object TextPolish {
     fun apply(raw: String, cfg: Config, trailing: Boolean = true): String {
         var text = raw.trim()
         if (text.isEmpty()) return text
+        // „Kako sam izgovorio" znaci mala slova i bez interpunkcije; „sirovo"
+        // ostavlja ono sto Google vrati; „sredjeno" je posao modela, pa se ovde
+        // ne dira.
         if (cfg.joinThousands) text = joinThousands(text)
         if (cfg.stripPunctuation) text = stripPunctuation(text)
         if (cfg.lowercase) text = text.lowercase()

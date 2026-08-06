@@ -11,18 +11,19 @@ DEFAULTS = {
     "language": "sr-RS",
     "api_key": "",                # prazno = ugradjeni javni Chromium kljuc
     "profanity_filter": False,    # True bi maskirao psovke ("sranje" -> "s*****")
-    "capitalize_first": False,    # veliko pocetno slovo
-    "lowercase": True,            # sve malim slovima
-    "strip_punctuation": True,    # skloni tacke i zareze (brojevi ostaju celi)
+    # Jedan izbor umesto tri prekidaca koja su se medjusobno ponistavala:
+    #   "spoken"  — kako je izgovoreno: mala slova, bez interpunkcije
+    #   "written" — pravopisno sredjeno; to radi AI, pa trazi kljuc
+    #   "raw"     — kako Google vrati, bez diranja
+    "text_style": "spoken",
+    "capitalize_first": False,    # veliko pocetno slovo (samo uz "raw")
     "join_thousands": True,       # "5.000" -> "5000"; zarez ostaje decimalni
-    "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj
+    "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
-    "auto_segment": False,
     "segment_after_seconds": 0,   # 0 = seci na svakoj pauzi, ma koliko kratak segment
     "pause_seconds": 0.7,         # koliko tisine znaci "kraj misli"
     "max_request_seconds": 30,    # snimanje staje ovde; endpoint odbija duze
-    "max_seconds": 290,           # gornja granica jednog pritiska tastera
 
     # --- Audio ---
     "sample_rate": 16000,
@@ -50,16 +51,11 @@ DEFAULTS = {
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
     "polish_level": "correct",    # "format" = samo oblikuj | "correct" = i ispravi ocigledne greske
-    "polish_tidy": True,          # interpunkcija, velika slova, kvacice — samo JEDAN od alata
     "polish_paragraphs": True,    # podeli na pasuse, prazan red izmedju
     "polish_emoji": False,        # emotikoni u tekstu
     "polish_emoji_rate": "paragraph",  # paragraph | sentence | dense
     "polish_emoji_recent": [],    # poslednjih 15 znakova, da se ne ponavljaju
     "audio_check": False,         # model slusa snimak i ispravlja prepis
-    # Podrazumevano iskljuceno: izmereno je da endpoint prijavi 0.93 i za prepis
-    # sa odsecenom recju, pa filter stedi podatke ali propusta greske.
-    "audio_check_low_only": False,
-    "audio_check_threshold": 0.85,
     "compress_audio": True,       # FLAC preko ffmpeg-a ako ga ima; inace PCM/WAV
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
@@ -97,10 +93,28 @@ def _migrate(cfg: dict) -> dict:
             vrednost = cfg.pop(staro)
             if vrednost not in (None, ""):
                 cfg[novo] = vrednost
-    for mrtvo in ("engine", "credentials_json", "project_id",
-                  "location", "model", "punctuation"):
+    # Tri prekidaca za izgled teksta postala su jedan izbor. Zatecena
+    # podesavanja se prevode, da niko ne izgubi ono sto je vec namestio.
+    if "text_style" not in cfg:
+        if cfg.get("polish") and cfg.get("polish_tidy", True):
+            cfg["text_style"] = "written"
+        elif cfg.get("lowercase", True) or cfg.get("strip_punctuation", True):
+            cfg["text_style"] = "spoken"
+        else:
+            cfg["text_style"] = "raw"
+
+    for mrtvo in ("engine", "credentials_json", "project_id", "location",
+                  "model", "punctuation", "lowercase", "strip_punctuation",
+                  "polish_tidy", "auto_segment", "max_seconds",
+                  "audio_check_low_only", "audio_check_threshold"):
         cfg.pop(mrtvo, None)
     return cfg
+
+
+def style(cfg) -> str:
+    """spoken | written | raw — jedini izvor istine o izgledu teksta."""
+    izbor = cfg.get("text_style", "spoken")
+    return izbor if izbor in ("spoken", "written", "raw") else "spoken"
 
 
 def save(cfg: dict) -> None:

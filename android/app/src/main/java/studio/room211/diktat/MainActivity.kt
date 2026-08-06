@@ -35,6 +35,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trafficLine: TextView
     private lateinit var pendingLine: TextView
     private lateinit var polishLine: TextView
+    private lateinit var stilLine: TextView
+    private lateinit var probaLine: TextView
     private lateinit var previewOut: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,16 +70,15 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(4), 0, 0, dp(16))
         })
 
+        // Grupisano po pitanju na koje odgovaras, a ne po tome kad je sta
+        // nastalo: Snimanje (kako), Tekst (kako izgleda), AI (sta model radi).
         root.addView(dozvole())
         root.addView(rezim())
+        root.addView(tekst())
         root.addView(formalni())
-        root.addView(tastatura())
-        root.addView(ponasanje())
-        root.addView(obrada())
         root.addView(jezik())
-        root.addView(skracenice())
-        root.addView(neuspeli())
         root.addView(potrosnja())
+        root.addView(neuspeli())
         root.addView(proba())
 
         val scroll = ScrollView(this).apply {
@@ -134,6 +135,19 @@ class MainActivity : AppCompatActivity() {
         box.addView(button(this, "Unos teksta (Pristupačnost)") {
             openAny(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         })
+        box.addView(button(this, "Mikrofon na tastaturi (Voice input)") {
+            openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS)
+        })
+        box.addView(
+            body(
+                this,
+                "Umesto bočnog tastera možeš izabrati Diktat kao Voice input; " +
+                    "tada mikrofon na tastaturi radi isto, bez Pristupačnosti.",
+            )
+        )
+        box.addView(switch(this, "Ne ostavljaj tekst u clipboard-u", cfg.restoreClipboard) {
+            cfg.restoreClipboard = it
+        })
         return card
     }
 
@@ -149,19 +163,20 @@ class MainActivity : AppCompatActivity() {
                     "Isključeno: jedan snimak do 30s, pa obrada.",
             )
         )
+        box.addView(switch(this, "Snimaj samo kad ima polja za unos", cfg.requireInputField) {
+            cfg.requireInputField = it
+        })
         return card
     }
 
     private fun formalni(): ViewGroup {
-        val (card, box) = card(this, "AI obrada teksta")
-        // Alati su podelementi glavnog prekidaca: uvuceni i zasivljeni dok je
-        // iskljucen. Bez toga se iz spiska ne vidi sta cemu pripada.
+        val (card, box) = card(this, "AI")
+        // Sve sto model radi je na jednom mestu, ispod jednog prekidaca; alati
+        // su uvuceni i zasivljeni dok je iskljucen.
         val alati = mutableListOf<View>()
-        // Gustina zavisi od DVA prekidaca — glavnog i emotikona — pa se drzi
-        // odvojeno; puni se nize, kad se sam izbor napravi.
         val gustinaBox = mutableListOf<View>()
-        // Isto i za "ispravi greske": zavisi od sredjivanja, ne od glavnog.
         val correctBox = mutableListOf<View>()
+
         box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
             cfg.polish = it
             setBranchEnabled(alati, it)
@@ -171,55 +186,52 @@ class MainActivity : AppCompatActivity() {
         box.addView(
             body(
                 this,
-                "Ceo diktat se sačeka, pa se jednim pozivom pošalje modelu. Dok " +
-                    "se čeka odgovor, pokazivač pokazuje AI.\n\n" +
-                    "Alati ispod su nezavisni — možeš tražiti samo kraći tekst ili " +
-                    "samo pasuse, a da model interpunkciju i kvačice ne dira. Ako " +
-                    "nijedan nije izabran, poziva nema.\n\n" +
-                    "Radi samo uz API ključ (Google AI Studio). Ključ ostaje " +
-                    "sačuvan i posle nadogradnje aplikacije.",
+                "Ceo diktat se sačeka pa jednim pozivom ode modelu; dok se čeka, " +
+                    "pokazivač pokazuje AI. Radi samo uz API ključ (Google AI " +
+                    "Studio), koji ostaje sačuvan i posle nadogradnje.",
             )
         )
-        // "Ispravi greske" je podelement SREDJIVANJA, ne glavnog prekidaca:
-        // bez sredjivanja nema sta da ispravlja, pa se sivi zajedno s njim.
-        val correct = indent(this, switch(this, "…i ispravi očigledne greške", cfg.polishCorrect) {
-            cfg.polishCorrect = it
-        }).apply { setPadding(dp(32), paddingTop, paddingRight, paddingBottom) }
-        val tidy = indent(this, switch(this, "Sredi tekst (interpunkcija, kvačice)", cfg.polishTidy) {
-            cfg.polishTidy = it
-            setBranchEnabled(correctBox, it && cfg.polish)
+
+        val slusa = indent(this, switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
+            cfg.audioCheck = it
         })
-        alati.add(tidy)
-        box.addView(tidy)
+        alati.add(slusa)
+        box.addView(slusa)
+        box.addView(
+            indent(this, body(this, "Model dobija i sam zvuk, pa ispravlja ono što je " +
+                "prepoznavanje pogrešno čulo. Tačnije, ali šalje snimak drugi put i " +
+                "traje koju sekundu duže. Kad je stil teksta „Sređeno\", ovaj prolaz " +
+                "ujedno postavlja interpunkciju — poseban poziv se tada preskače."))
+        )
+
+        val correct = indent(this, switch(this, "Ispravi očigledne greške", cfg.polishCorrect) {
+            cfg.polishCorrect = it
+        })
         alati.add(correct)
         correctBox.add(correct)
         box.addView(correct)
         box.addView(
-            body(
-                this,
-                "Ispravlja reči koje se gramatički ne slažu — „sa kolega\" → " +
-                    "„sa kolegom\". Reč koja je gramatički ispravna a značenjski " +
-                    "pogrešna se ne može ispraviti; tu rečenica nema greške. " +
-                    "Radi samo uz sređivanje.",
-            )
+            indent(this, body(this, "Sređuje reči koje se gramatički ne slažu — " +
+                "\u201Esa kolega\u201C \u2192 \u201Esa kolegom\u201C. Radi uz stil " +
+                "\u201ESređeno\u201C."))
         )
+
         val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
         })
         alati.add(pasusi)
         box.addView(pasusi)
+
         val skrati = indent(this, switch(this, "Skrati i pojednostavi", cfg.polishConcise) {
             cfg.polishConcise = it
         })
         alati.add(skrati)
         box.addView(skrati)
         box.addView(
-            body(
-                this,
-                "Izbacuje poštapalice i ponavljanja, duge rečenice deli na kraće. " +
-                    "Činjenice, brojevi i imena ostaju.",
-            )
+            indent(this, body(this, "Izbacuje poštapalice i ponavljanja, duge rečenice " +
+                "deli na kraće. Činjenice, brojevi i imena ostaju."))
         )
+
         val gustina = choice(
             this,
             listOf(
@@ -232,96 +244,61 @@ class MainActivity : AppCompatActivity() {
         ) { cfg.polishEmojiRate = it }
         val emotikoni = indent(this, switch(this, "Emotikoni", cfg.polishEmoji) {
             cfg.polishEmoji = it
-            setBranchEnabled(listOf(gustina), it && cfg.polish)
+            setBranchEnabled(gustinaBox, it && cfg.polish)
         })
         alati.add(emotikoni)
         box.addView(emotikoni)
         gustinaBox.add(gustina)
         box.addView(indent(this, gustina))
-        box.addView(
-            indent(this, body(this, "Koliko često: jedan na kraju pasusa, jedan po rečenici, " +
-                "dva do tri po rečenici, ili na svake dve-tri reči."))
-        )
-        setBranchEnabled(listOf(gustina), cfg.polishEmoji && cfg.polish)
-        // Odvojeno od alata iznad: oni doteruju TEKST, ovo popravlja samo
-        // prepoznavanje. Trazi isti kljuc, pa se broji u istom brojacu.
-        val samoNisko = indent(this, switch(this, "…samo kad je pouzdanost niska",
-            cfg.audioCheckLowOnly) { cfg.audioCheckLowOnly = it })
-        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
-            cfg.vocabulary = it
-        }
-        box.addView(switch(this, "AI sluša snimak (preciznije)", cfg.audioCheck) {
-            cfg.audioCheck = it
-            setBranchEnabled(listOf(samoNisko, pojmovi), it)
-        })
-        box.addView(
-            body(this, "Snimak ide i modelu, koji ispravlja prepoznat tekst. Tačnije " +
-                "u buci, ali šalje zvuk drugi put i traje koju sekundu duže.\n\n" +
-                "Taj prolaz ujedno sređuje interpunkciju i kvačice, pa se poseban " +
-                "poziv za „Sredi tekst\" tada preskače — isti posao se ne radi dvaput.\n\n" +
-                "Pouzdanost koju endpoint prijavljuje slabo razdvaja dobar prepis od " +
-                "lošeg — izmereno je 0,93 i za rečenicu sa odsečenom rečju — pa ovaj " +
-                "filter štedi podatke, ali propušta greške.")
-        )
-        box.addView(samoNisko)
-        box.addView(pojmovi)
-        box.addView(
-            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši " +
-                "(„AI\" ume da postane „pa\"). Idu modelu uz snimak, odvojeni zarezom.")
-        )
-        setBranchEnabled(listOf(samoNisko, pojmovi), cfg.audioCheck)
 
         polishLine = indent(this, body(this, ""))
         box.addView(polishLine)
-        setBranchEnabled(alati, cfg.polish)
-        setBranchEnabled(correctBox, cfg.polish && cfg.polishTidy)
+
+        // Napredno: kljuc, model i recnik pojmova — retko se diraju.
+        box.addView(body(this, "Napredno"))
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
         val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {
             cfg.polishModel = it
         }
         box.addView(model)
-        return card
-    }
-
-    private fun tastatura(): ViewGroup {
-        val (card, box) = card(this, "Mikrofon na tastaturi")
+        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
+            cfg.vocabulary = it
+        }
+        box.addView(pojmovi)
         box.addView(
-            body(
-                this,
-                "Umesto bočnog tastera možeš izabrati Diktat kao Voice input; " +
-                    "tada mikrofon na tastaturi radi isto, bez Pristupačnosti.",
-            )
+            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši " +
+                "(\u201EAI\u201C ume da postane \u201Epa\u201C). Idu modelu uz snimak, " +
+                "odvojeni zarezom.")
         )
-        box.addView(button(this, "Otvori Voice input") {
-            openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS)
-        })
+
+        setBranchEnabled(alati, cfg.polish)
+        setBranchEnabled(correctBox, cfg.polish && cfg.polishTidy)
+        setBranchEnabled(gustinaBox, cfg.polish && cfg.polishEmoji)
         return card
     }
 
-    private fun ponasanje(): ViewGroup {
-        val (card, box) = card(this, "Ponašanje")
-        box.addView(switch(this, "Snimaj samo kad ima polja za unos", cfg.requireInputField) {
-            cfg.requireInputField = it
-        })
-        box.addView(switch(this, "Ne ostavljaj tekst u clipboard-u", cfg.restoreClipboard) {
-            cfg.restoreClipboard = it
-        })
+    private fun tekst(): ViewGroup {
+        val (card, box) = card(this, "Tekst")
+        // Jedan izbor umesto tri prekidaca koja su se ponistavala: ranije su
+        // "sredi tekst", "sve malim slovima" i "bez interpunkcije" mogli da budu
+        // ukljuceni istovremeno, a ishod je zavisio od redosleda u kodu.
         box.addView(
-            body(
+            choice(
                 this,
-                "Clipboard se posle upisa vrati kakav je bio. Ako upis ne prođe, " +
-                    "tekst ipak ostane — bolje nego da se izgubi.",
-            )
+                listOf(
+                    "spoken" to "Izgovoreno",
+                    "written" to "Sređeno",
+                    "raw" to "Sirovo",
+                ),
+                cfg.textStyle,
+            ) { cfg.textStyle = it; stilLine.text = stilOpis(it) }
         )
-        return card
-    }
+        stilLine = body(this, stilOpis(cfg.textStyle))
+        box.addView(stilLine)
 
-    private fun obrada(): ViewGroup {
-        val (card, box) = card(this, "Obrada teksta")
-        box.addView(switch(this, "Sve malim slovima", cfg.lowercase) { cfg.lowercase = it })
-        box.addView(switch(this, "Bez interpunkcije", cfg.stripPunctuation) {
-            cfg.stripPunctuation = it
+        box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
+            cfg.asciiDiacritics = it
         })
         box.addView(switch(this, "Spoji hiljade (5.000 → 5000)", cfg.joinThousands) {
             cfg.joinThousands = it
@@ -332,10 +309,46 @@ class MainActivity : AppCompatActivity() {
         box.addView(switch(this, "Ne maskiraj psovke zvezdicama", !cfg.profanityFilter) {
             cfg.profanityFilter = !it
         })
-        box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
-            cfg.asciiDiacritics = it
+
+        box.addView(switch(this, "Skraćuj česte fraze", cfg.abbreviations) {
+            cfg.abbreviations = it
+        })
+        box.addView(
+            body(
+                this,
+                "Pravilo je \u201Efraza=skraćenica\u201C, jedno po redu. Ako skraćenica " +
+                    "počinje sa \u201E<\u201C, zalepi se za prethodnu reč " +
+                    "(minuta=<min \u2192 15min).",
+            )
+        )
+        val (pravila, _) = field(
+            this, "Pravila", cfg.abbreviationRules, lines = 6, mono = true,
+        ) { cfg.abbreviationRules = it }
+        box.addView(pravila)
+        val (proba, probaEdit) = field(this, "Proba pravila", "")
+        box.addView(proba)
+        probaLine = body(this, "")
+        box.addView(probaLine)
+        probaEdit.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(sadrzaj: android.text.Editable?) {
+                val ulaz = sadrzaj?.toString() ?: ""
+                probaLine.text = if (ulaz.isBlank()) "" else TextPolish.apply(ulaz, cfg).trim()
+            }
+            override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+            override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+        })
+        box.addView(button(this, "Vrati podrazumevane skraćenice") {
+            cfg.abbreviationRules = Abbreviations.defaultText()
+            recreate()
         })
         return card
+    }
+
+    private fun stilOpis(stil: String) = when (stil) {
+        "written" -> "Pravopisno sređeno — tačke, velika slova i kvačice. Radi AI, " +
+            "pa traži uključenu AI obradu i ključ."
+        "raw" -> "Kako Google vrati, bez diranja."
+        else -> "Mala slova i bez interpunkcije; brojevi i satnica ostaju celi."
     }
 
     private fun jezik(): ViewGroup {
@@ -345,37 +358,6 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(layout)
         box.addView(body(this, "sr-RS, en-US, hr-HR…"))
-        return card
-    }
-
-    private fun skracenice(): ViewGroup {
-        val (card, box) = card(this, "Skraćenice")
-        box.addView(switch(this, "Skraćuj česte fraze", cfg.abbreviations) {
-            cfg.abbreviations = it
-        })
-        box.addView(
-            body(
-                this,
-                "Jedno pravilo po redu:  fraza=skraćenica\n" +
-                    "Znak  <  pojede i razmak ispred:  minuta=<min\n" +
-                    "Red sa  ~  je regularni izraz, {1} je uhvaćena grupa.",
-            )
-        )
-        val (rules, _) = field(
-            this, "Pravila", cfg.abbreviationRules, lines = 8, mono = true,
-        ) { cfg.abbreviationRules = it }
-        box.addView(rules)
-
-        previewOut = body(this, "")
-        val (preview, _) = field(this, "Proba pravila") { text ->
-            previewOut.text = "→  " + TextPolish.apply(text, cfg).trim()
-        }
-        box.addView(preview)
-        box.addView(previewOut)
-        box.addView(button(this, "Vrati podrazumevane skraćenice") {
-            cfg.abbreviationRules = Abbreviations.defaultText()
-            recreate()
-        })
         return card
     }
 
