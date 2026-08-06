@@ -58,6 +58,10 @@ sledeći pritisak radi STOP umesto START i korisnik pritiska dvaput.
 se snimak čuva na disk i šalje ponovo iz menija. Prolazne greške (mreža, 429,
 5xx) se ponavljaju jednom; 400 i 403 nikad — drugi pokušaj bi dao isto.
 
+**Apostrof ide sa ostalim znacima.** Endpoint ga vraća u „je l'", „ć'š", i to u
+oba oblika — pravom (`'`) i krivom (`\u2019`). Oba moraju u pravilo, zajedno sa
+jednostrukim navodnicima; jedan bez drugog ostavlja pola slučajeva.
+
 **Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
 separator (`3,5`) i dvotačku kao satnicu (`10:00`). Tačka, zarez **i dvotačka**
 brišu se **samo kad nisu između cifara**; crtica samo kad stoji sama, da

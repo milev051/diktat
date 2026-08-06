@@ -16,7 +16,8 @@ object TextPolish {
         // izgube pri kopiranju izmedju alata, a onda pravilo tiho oslabi.
         """(?<!\d)[.,:]""" +                                 // tacka/zarez/dvotacka bez cifre ispred
             """|[.,:](?!\d)""" +                             // ili bez cifre iza
-            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D"()\[\]{}]""" +
+            // Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
+            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]""" +
             """|(?<=\s)[-\u2013\u2014](?=\s)"""
     )
 

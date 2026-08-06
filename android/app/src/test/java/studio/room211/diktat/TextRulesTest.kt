@@ -83,6 +83,13 @@ class TextRulesTest {
     }
 
     @Test
+    fun `apostrof odlazi sa ostalim znacima`() {
+        // Endpoint ga vraca u „je l'", „ć'š".
+        assertEquals("je l tako", TextPolish.stripPunctuation("je l' tako"))
+        assertEquals("je l tako", TextPolish.stripPunctuation("je l\u2019 tako"))
+    }
+
+    @Test
     fun `kvacice`() {
         assertEquals("Cacak zuti djak", TextPolish.toAscii("Čačak žuti đak"))
     }

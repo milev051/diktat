@@ -163,7 +163,8 @@ def _explain_http(code: int) -> str:
 _PUNCT = re.compile(
     r"(?<!\d)[.,:]"     # tacka/zarez/dvotacka bez cifre ispred
     r"|[.,:](?!\d)"     # ili bez cifre iza
-    r"|[!?;…«»„“”\"()\[\]{}]"
+    # Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
+    r"|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]"
     r"|(?<=\s)[-–—](?=\s)"
 )
 

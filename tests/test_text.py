@@ -80,3 +80,19 @@ class IzborStila(unittest.TestCase):
         ostalo = config._migrate({"max_seconds": 290, "auto_segment": True, "lowercase": True})
         for kljuc in ("max_seconds", "auto_segment", "lowercase", "strip_punctuation"):
             self.assertNotIn(kljuc, ostalo)
+
+
+class Apostrof(unittest.TestCase):
+    """Endpoint vraca apostrof u „je l'", „ć'š" — ide sa ostalim znacima."""
+
+    def test_pravi_apostrof(self):
+        self.assertEqual(webstt.strip_punctuation("je l' tako"), "je l tako")
+
+    def test_krivi_apostrof(self):
+        self.assertEqual(webstt.strip_punctuation("je l’ tako"), "je l tako")
+
+    def test_jednostruki_navodnici(self):
+        self.assertEqual(webstt.strip_punctuation("rekao ‘ovako’"), "rekao ovako")
+
+    def test_brojevi_i_dalje_ostaju_celi(self):
+        self.assertEqual(webstt.strip_punctuation("cena 3,5 u 10:00"), "cena 3,5 u 10:00")
