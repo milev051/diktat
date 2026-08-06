@@ -135,6 +135,7 @@ pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
 živ**, ne samo da nema greške u prevođenju. Dva pada su uhvaćena samo ovako:
 
 ```bash
+./run.sh tests           # 53 testa logike, bez mikrofona i mreze
 ./run.sh doctor          # dozvole, mikrofon, endpoint
 ./run.sh test 5          # snimi 5s i ispiši šta je čuo
 ```

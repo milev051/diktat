@@ -1,6 +1,8 @@
 #!/bin/bash
 # Pokretanje aplikacije:   ./run.sh
 # Provera podesavanja:     ./run.sh doctor
+# Snimi i prepisi 5s:      ./run.sh test 5
+# Testovi logike:          ./run.sh tests
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -11,6 +13,11 @@ fi
 
 if [ "${1:-}" = "doctor" ]; then
   exec .venv/bin/python doctor.py
+fi
+
+if [ "${1:-}" = "tests" ]; then
+  # Bez mikrofona i bez mreze — cista logika, za proveru posle izmene.
+  exec .venv/bin/python -m unittest discover -s tests "${@:2}"
 fi
 
 if [ "${1:-}" = "test" ]; then

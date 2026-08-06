@@ -262,6 +262,14 @@ Skraćenice i strani nazivi su najslabija tačka endpointa — zato postoji
 | `compress_audio` | `true` | FLAC preko `ffmpeg`-a; bez njega ide PCM/WAV |
 | `audio_check_threshold` | `0.85` | prag pouzdanosti |
 
+## Testovi
+
+```bash
+./run.sh tests     # 53 testa: pravila nad tekstom, uputstva modelu, tok diktata
+```
+
+Ne traže ni mikrofon ni mrežu ni ključ. Android ima svojih 24: `cd android && ./gradlew test`.
+
 ## Ako se ne prepozna sve što si rekao
 
 Uključi **Snimaj za debug** iz menija. Svaki diktat se tada snima u `~/Diktat-debug`:
