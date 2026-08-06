@@ -63,16 +63,27 @@ class InsertService : AccessibilityService() {
 
     // ------------------------------------------------------------------
 
+    /**
+     * SET_TEXT ide PRVI, PASTE tek ako on ne prodje.
+     *
+     * Android od 13 prikaze sistemsko obavestenje „kopirano" cim neka aplikacija
+     * upise u clipboard, a PASTE bez toga ne radi — pa se posle svakog diktata
+     * javljala poruka koja se ne moze ugasiti. SET_TEXT ne dira clipboard.
+     * Polje se ne prepisuje: postojeci tekst se cita i novi se nadovezuje.
+     */
     private fun insertNow(text: String, restoreClipboard: Boolean): Boolean {
-        val previous = if (restoreClipboard) currentClip() else null
-
-        // PASTE cita iz clipboard-a, pa mora da bude popunjen pre pokusaja.
-        putOnClipboard(text)
-
         repeat(TRIES) {
             val node = findEditable()
             if (node != null) {
-                val done = paste(node) || setText(node, text)
+                if (setText(node, text)) {
+                    runCatching { @Suppress("DEPRECATION") node.recycle() }
+                    return true
+                }
+                // Neke aplikacije (WebView, deo Compose polja) odbijaju SET_TEXT;
+                // tu ostaje clipboard, uz sistemsku poruku koju ne kontrolisemo.
+                val previous = if (restoreClipboard) currentClip() else null
+                putOnClipboard(text)
+                val done = paste(node)
                 runCatching { @Suppress("DEPRECATION") node.recycle() }
                 if (done) {
                     if (restoreClipboard) {
@@ -86,8 +97,9 @@ class InsertService : AccessibilityService() {
             }
             Thread.sleep(WAIT_MS)
         }
-        // Upis nije prosao — tekst ostaje u clipboard-u i kad je vracanje
-        // ukljuceno, jer je izgubiti ga gore od toga da ostane zapisan.
+        // Upis nije prosao — tekst ide u clipboard i kad je vracanje ukljuceno,
+        // jer je izgubiti ga gore od toga da ostane zapisan.
+        putOnClipboard(text)
         return false
     }
 

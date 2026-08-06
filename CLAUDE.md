@@ -91,6 +91,7 @@ grupu — inače tiho pokvari brojeve.
 | `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
+| PASTE kao prvi način upisa na Androidu | Android 13+ prikaže sistemsko „kopirano" pri svakom `setPrimaryClip`, posle svakog diktata | `ACTION_SET_TEXT` prvi (ne dira clipboard), PASTE tek kao rezerva |
 | Zastavica „poslednji segment" obrađena po DOLASKU poruke | rep je kratak pa se prepozna pre dužeg segmenta ispred sebe — obrada ne krene, pilula ostane sa ciframa, tekst se nikad ne upiše | zastavica važi za segment koji **izlazi iz reda**, ne za onaj koji stigne |
 | `handler.removeCallbacksAndMessages(null)` pri zaustavljanju | briše i `deliver` poruke koje su radne niti već postavile — segment nestane, `expected` stane, pilula zauvek narandžasta | skidaj **samo svoj** Runnable (`removeCallbacks(tickRunnable)`) |
 | `handler.postDelayed(::tick, …)` pa `removeCallbacks(::tick)` | `::tick` pravi nov objekat svaki put, pa nema šta da se skine | čuvaj jedan `Runnable` u polju |

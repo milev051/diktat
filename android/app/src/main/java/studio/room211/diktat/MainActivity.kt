@@ -72,8 +72,7 @@ class MainActivity : AppCompatActivity() {
         // nastalo: Snimanje (kako), Tekst (kako izgleda), AI (sta model radi).
         root.addView(dozvole())
         root.addView(rezim())
-        root.addView(aiPrepoznavanje())
-        root.addView(aiObrada())
+        root.addView(ai())
         root.addView(tekst())
         root.addView(potrosnja())
         root.addView(proba())
@@ -165,38 +164,10 @@ class MainActivity : AppCompatActivity() {
         return card
     }
 
-    private fun aiPrepoznavanje(): ViewGroup {
-        // Odvojeno od obrade teksta: ovo salje ZVUK i traje najduze, dok obrada
-        // salje samo tekst i vraca se za sekundu.
-        val (card, box) = card(this, "AI — prepoznavanje govora")
-        box.addView(switch(this, "AI sluša snimak (preciznije)", cfg.audioCheck) {
-            cfg.audioCheck = it
-        })
-        box.addView(
-            body(
-                this,
-                "Model dobija i sam zvuk, pa ispravlja ono što je prepoznavanje " +
-                    "pogrešno čulo — najviše kod skraćenica i stranih naziva " +
-                    "(\u201EAI\u201C ume da postane \u201Epa\u201C).\n\n" +
-                    "Ovo je najsporiji deo: snimak se šalje drugi put, pa se za 20s " +
-                    "diktata čeka oko 10s. Sve ostalo ispod traje oko sekunde.\n\n" +
-                    "Kad je stil teksta \u201ESređeno\u201C, ovaj prolaz ujedno " +
-                    "postavlja interpunkciju — poseban poziv se tada preskače.",
-            )
-        )
-        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
-            cfg.vocabulary = it
-        }
-        box.addView(pojmovi)
-        box.addView(
-            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši. Idu " +
-                "modelu uz snimak, odvojeni zarezom.")
-        )
-        return card
-    }
-
-    private fun aiObrada(): ViewGroup {
-        val (card, box) = card(this, "AI — obrada teksta")
+    private fun ai(): ViewGroup {
+        // Sve sto model radi je na jednom mestu, kao i u meniju na Mac-u. Razlika
+        // u trajanju se ne gubi: stoji uz sam prekidac koji je uzrokuje.
+        val (card, box) = card(this, "AI")
         val alati = mutableListOf<View>()
 
         box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
@@ -212,17 +183,28 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
+        val slusa = indent(this, switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
+            cfg.audioCheck = it
+        })
+        alati.add(slusa)
+        box.addView(slusa)
+        box.addView(
+            indent(this, body(this, "Model dobija i sam zvuk, pa ispravlja ono što je " +
+                "prepoznavanje pogrešno čulo — najviše skraćenice i strane nazive " +
+                "(\u201EAI\u201C ume da postane \u201Epa\u201C).\n\n" +
+                "Ovo je najsporiji deo: snimak ide drugi put, pa se za 20s diktata " +
+                "čeka oko 10s; ostalo traje oko sekunde. Čuva se najviše 120s zvuka " +
+                "po diktatu — preko toga se prepis više ne proverava."))
+        )
 
         val sredi = indent(this, switch(this, "Sredi tekst (tačke i velika slova)",
             cfg.polishTidy) { cfg.textStyle = if (it) "written" else "spoken" })
         alati.add(sredi)
         box.addView(sredi)
         box.addView(
-            indent(this, body(this, "Dodaje tačke i velika slova, i usput sređuje " +
-                "reči koje se gramatički ne slažu. Isključeno: tekst ostaje malim " +
-                "slovima i bez interpunkcije, kako je izgovoren.\n\n" +
-                "Kvačice ne zavise od ovoga — njih vraća samo prepoznavanje, a skida " +
-                "ih prekidač ispod."))
+            indent(this, body(this, "Dodaje tačke i velika slova, i usput sređuje reči " +
+                "koje se gramatički ne slažu. Isključeno: tekst ostaje malim slovima " +
+                "i bez interpunkcije, kako je izgovoren."))
         )
 
         val kvacice = indent(this, switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)",
@@ -235,7 +217,6 @@ class MainActivity : AppCompatActivity() {
         })
         alati.add(pasusi)
         box.addView(pasusi)
-
 
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
@@ -258,6 +239,14 @@ class MainActivity : AppCompatActivity() {
             cfg.polishModel = it
         }
         box.addView(model)
+        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
+            cfg.vocabulary = it
+        }
+        box.addView(pojmovi)
+        box.addView(
+            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši. Idu " +
+                "modelu uz snimak, odvojeni zarezom.")
+        )
 
         setBranchEnabled(alati, cfg.polish)
         return card
@@ -324,8 +313,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun proba(): ViewGroup {
         val (card, box) = card(this, "Proba diktata")
-        val (test, _) = field(this, "Ovde probaj diktat", lines = 6)
+        val (test, testEdit) = field(this, "Ovde probaj diktat", lines = 6)
         box.addView(test)
+        box.addView(button(this, "Obriši") { testEdit.setText("") })
         return card
     }
 
