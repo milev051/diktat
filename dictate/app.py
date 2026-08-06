@@ -839,7 +839,7 @@ class DictateApp(rumps.App):
         try:
             doteran = polish.polish(tekst, self.cfg, vec_sredjeno=vec_sredjeno)
             self._count_polish()
-            if polish.tidy_on(self.cfg) or vec_sredjeno:
+            if polish.tidy_on(self.cfg):
                 # Uz sredjivanje ostaju samo podesavanja koja se sa njim ne
                 # sudaraju — tekst je modelu isao nedirnut, pa bi inace izostala.
                 doteran = self._after_model(doteran)

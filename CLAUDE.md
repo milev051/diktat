@@ -321,6 +321,12 @@ Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz
 zajedno je krilo tu razliku. Obična podešavanja (`Tekst`) idu **posle** AI-ja i
 imaju poslednju reč — to mora da piše u samoj kartici, ne samo u dokumentaciji.
 
+**Ono što je model usput sredio ne preskače izbor korisnika.** Prolaz u kome
+model sluša snimak vraća tekst sa tačkama i upitnicima; ranije se zbog toga
+preskakalo pravilo za stil `spoken`, pa je znak pitanja bio tu kad je provera
+snimka uspela, a nestajao kad nije (predugačak diktat, otkaz poziva). Odluku
+donosi **samo** `text_style`, nikad „model je već formatirao".
+
 **Meni se posle klika sam zatvara i to se ne može isključiti.** NSMenu nema
 javni API za to; jedini način je da se odmah otvori ponovo
 (`button.performClick:` sa malim odlaganjem). Otvara se na prvom nivou, pa se u

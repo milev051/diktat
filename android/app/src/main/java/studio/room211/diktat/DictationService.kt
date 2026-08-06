@@ -329,7 +329,7 @@ class DictationService : Service() {
                 // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
                 // Uz sredjivanje ostaju bar skracenice: tekst je modelu isao
                 // nedirnut, pa bi inace potpuno izostale.
-                if (cfg.polishTidy || sredjeno) TextPolish.afterModel(izlaz, cfg)
+                if (cfg.polishTidy) TextPolish.afterModel(izlaz, cfg)
                 else TextPolish.applyBlocks(izlaz, cfg)
             }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.

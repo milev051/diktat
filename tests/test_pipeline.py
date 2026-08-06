@@ -153,3 +153,20 @@ class ZavrsnaObrada(unittest.TestCase):
     def test_hiljade_se_spajaju(self):
         app = napravi()
         self.assertEqual(app._after_model("Cena je 5.000 dinara."), "Cena je 5000 dinara.")
+
+
+class StilPresudjuje(unittest.TestCase):
+    """Ono sto je model usput sredio ne sme da preskoci izbor korisnika."""
+
+    def test_izgovoreno_skida_interpunkciju_i_kad_je_model_sredio(self):
+        # Prolaz u kome model slusa snimak vraca tekst sa tackama i upitnicima.
+        # Ranije se tada preskakalo pravilo, pa je znak pitanja cas bio cas nije.
+        app = napravi(text_style="spoken")
+        self.assertEqual(
+            app._rules_over_paragraphs("Da li si tu? Nisam siguran."),
+            "da li si tu nisam siguran",
+        )
+
+    def test_sredjeno_zadrzava_interpunkciju(self):
+        app = napravi(text_style="written")
+        self.assertEqual(app._after_model("Da li si tu?"), "Da li si tu?")
