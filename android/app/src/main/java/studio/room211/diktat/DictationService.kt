@@ -64,7 +64,9 @@ class DictationService : Service() {
     private var busy = false
     private var nextTicket = 0
     private var expected = 0
-    private val buffered = HashMap<Int, Pair<String, Int>>()
+    // Uz tekst i sesiju cuva se i "da li je ovo poslednji segment": zastavica
+    // mora da vazi za segment koji IZLAZI iz reda, ne za onaj koji stigne.
+    private val buffered = HashMap<Int, Triple<String, Int, Boolean>>()
     private val pending = java.util.concurrent.atomic.AtomicInteger(0)
     // Sve sto ceka kraj diktata drzi se PO SESIJI: nov diktat sme da pocne dok
     // se prethodni obradjuje, pa bi u zajednickoj kanti dva diktata zavrsila u
@@ -264,11 +266,17 @@ class DictationService : Service() {
         last: Boolean,
         sesija: Int,
     ) {
-        buffered[ticket] = text to sesija
+        buffered[ticket] = Triple(text, sesija, last)
         if (problem != null) toast(problem)
 
+        // Sesija ciji je POSLEDNJI segment upravo izasao iz reda. Rep je kratak
+        // pa se cesto prepozna pre duzeg segmenta ispred sebe; ako bi se kraj
+        // obradjivao po dolasku, obrada ne bi ni krenula — pilula bi ostala sa
+        // poslednjom cifrom, a tekst se nikad ne bi upisao.
+        var zavrsena: Int? = null
+
         while (buffered.containsKey(expected)) {
-            val (ready, cija) = buffered.remove(expected)!!
+            val (ready, cija, jeKraj) = buffered.remove(expected)!!
             expected++
             pending.decrementAndGet()
             synchronized(formalParts) {
@@ -283,14 +291,28 @@ class DictationService : Service() {
                     insertNow(ready)
                 }
             }
+            if (jeKraj) zavrsena = cija
         }
-        if (last) {
+        // Osigurac po uzoru na macOS verziju: sesija kojoj je sve isporuceno a
+        // vise ne snima mora da krene u obradu i onda kad zastavica "poslednji"
+        // iz nekog razloga izostane. Bez toga jedan izgubljen kraj znaci pilulu
+        // koja stoji zauvek.
+        val zaobradu = synchronized(formalParts) {
+            formalParts.keys.filter {
+                it != (if (isRecording) session else -1) && (pendingBy[it] ?: 0) == 0
+            }
+        }
+
+        zavrsena?.let { kraj ->
             isRecording = false
             // Gleda se SESIJA, ne "da li mikrofon radi": nov diktat sme da pocne
             // dok se prethodni obradjuje, pa bi cekanje na miran mikrofon spojilo
             // dva diktata u jedan poziv.
-            if (deferred() && (pendingBy[sesija] ?: 0) == 0) startPolish(sesija)
+            if (deferred() && (pendingBy[kraj] ?: 0) == 0) startPolish(kraj)
             else handler.post { finishSession() }
+        }
+        if (zavrsena == null && deferred()) {
+            for (sesijaZaObradu in zaobradu) startPolish(sesijaZaObradu)
         }
     }
 
@@ -364,16 +386,15 @@ class DictationService : Service() {
     }
 
     private fun insertNow(text: String) {
+        // Tekst i dalje zavrsava u clipboard-u kad upis ne prodje — izgubiti ga
+        // je gore. Poruka preko ekrana se ne prikazuje: pojavljivala se posle
+        // svakog diktata i samo smetala.
         if (!InsertService.isRunning) {
             copyToClipboard(text)
-            toast("Uključi Pristupačnost — tekst je u clipboard-u")
             return
         }
         // Upis ceka da se fokus vrati u polje, pa ne sme na glavnu nit.
-        thread {
-            val upisano = InsertService.insert(text, cfg.restoreClipboard)
-            if (!upisano) handler.post { toast("Nema gde da upišem — tekst je u clipboard-u") }
-        }
+        thread { InsertService.insert(text, cfg.restoreClipboard) }
     }
 
     private fun finishSession() {
