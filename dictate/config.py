@@ -36,7 +36,9 @@ DEFAULTS = {
     "min_seconds": 0.35,          # kraci pritisak se tretira kao obican Cmd
 
     # --- Izlaz ---
-    "insert_method": "paste",     # "paste" | "type" | "clipboard_only"
+    # "auto" kuca tekst i clipboard uopste ne dira; prelazi na lepljenje samo
+    # kad tekst ima nov red, jer bi ga kucanje poslalo kao Enter.
+    "insert_method": "auto",      # "auto" | "type" | "paste" | "clipboard_only"
     "restore_clipboard": True,
     "history_size": 10,           # koliko poslednjih tekstova cuvati za kopiranje
     "show_overlay": False,        # pilula sa vremenom preko ekrana
@@ -95,6 +97,13 @@ def _migrate(cfg: dict) -> dict:
             cfg["text_style"] = "written"
         else:
             cfg["text_style"] = "spoken"
+    # Zatecen "paste" je bio stari podrazumevani, ne izbor korisnika: prelazi se
+    # na "auto", da clipboard ostane cist. Ko bas hoce lepljenje, upise "paste"
+    # posle ove izmene i vise se ne dira.
+    if cfg.get("insert_method") == "paste" and not cfg.get("_insert_migrated"):
+        cfg["insert_method"] = "auto"
+        cfg["_insert_migrated"] = True
+
     # "raw" je uklonjen: niko ga nije koristio, a bio je treci ishod za isto pitanje.
     if cfg.get("text_style") == "raw":
         cfg["text_style"] = "spoken"

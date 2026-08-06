@@ -123,7 +123,7 @@ Dva nezavisna podešavanja:
 | `continuous_max_seconds` | `3600` | sigurnosna granica i za neprekidni režim |
 | `segment_after_seconds` | `0` | `0` = seci na svakoj pauzi, ma koliko kratka celina |
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
-| `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
+| `insert_method` | `auto` | `auto` = kuca tekst i ne dira clipboard (prelazi na lepljenje samo za tekst sa novim redom); `type` \| `paste` \| `clipboard_only` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
 | `history_size` | `10` | koliko poslednjih tekstova čuvati za kopiranje |
 | `show_overlay` | `false` | pilula sa vremenom preko ekrana |

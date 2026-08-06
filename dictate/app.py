@@ -756,7 +756,7 @@ class DictateApp(rumps.App):
                     try:
                         insert.insert(
                             ready,
-                            method=self.cfg.get("insert_method", "paste"),
+                            method=self.cfg.get("insert_method", "auto"),
                             restore_clipboard=self.cfg.get("restore_clipboard", True),
                         )
                     except Exception:  # noqa: BLE001
@@ -840,7 +840,7 @@ class DictateApp(rumps.App):
         try:
             insert.insert(
                 doteran,
-                method=self.cfg.get("insert_method", "paste"),
+                method=self.cfg.get("insert_method", "auto"),
                 restore_clipboard=self.cfg.get("restore_clipboard", True),
             )
         except Exception:  # noqa: BLE001

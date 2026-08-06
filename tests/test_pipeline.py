@@ -170,3 +170,21 @@ class StilPresudjuje(unittest.TestCase):
     def test_sredjeno_zadrzava_interpunkciju(self):
         app = napravi(text_style="written")
         self.assertEqual(app._after_model("Da li si tu?"), "Da li si tu?")
+
+
+class NacinUpisa(unittest.TestCase):
+    """Clipboard se ne dira bez potrebe — hvataci istorije beleže svaku izmenu."""
+
+    def test_obican_tekst_se_kuca(self):
+        from dictate import insert
+        self.assertTrue(insert.kuca_se("zdravo kako si", "auto"))
+
+    def test_pasusi_idu_preko_clipboarda(self):
+        # Kucanje bi nov red poslalo kao Enter — u ćaskanju to šalje poruku.
+        from dictate import insert
+        self.assertFalse(insert.kuca_se("prvi pasus\n\ndrugi", "auto"))
+
+    def test_izricit_izbor_se_postuje(self):
+        from dictate import insert
+        self.assertTrue(insert.kuca_se("bilo\nsta", "type"))
+        self.assertFalse(insert.kuca_se("bez novog reda", "paste"))

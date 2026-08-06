@@ -132,6 +132,14 @@ naslova menja svake sekunde i ostale ikonice poskakuju.
 da", pa bi zamena pokvarila drugu upotrebu. U listi stoji samo `procenata=<%`,
 koje je jednoznačno. Isto pravilo važi za svaku reč sa dva značenja.
 
+**Clipboard se ne dira bez potrebe.** Vraćanje starog sadržaja posle lepljenja
+ne pomaže: hvatači istorije (Raycast, Maccy, Paste) zabeleže svaku izmenu pre
+nego što se stari sadržaj vrati, pa se istorija puni diktatima. Zato macOS
+podrazumevano **kuca** tekst (`insert_method: auto`). Izuzetak je tekst sa novim
+redom — kucanje ga šalje kao Enter, što u ćaskanju pošalje poruku usred diktata;
+takav tekst ide preko clipboard-a. Android isto: `ACTION_SET_TEXT` prvi, PASTE
+samo kad se ne zna šta je u polju.
+
 **Skraćenice postoje na obe platforme.** Mac ih je dobio kasno (`dictate/abbrev.py`),
 pa se pravila prenose 1:1 iz `Abbreviations.kt` — `<` jede razmak ispred, `~`
 je regularni izraz, `{1}` je grupa, poslednji red pobeđuje. Ako se logika menja,

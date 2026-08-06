@@ -45,13 +45,31 @@ def set_clipboard(text: str) -> None:
     pb.setString_forType_(text, AppKit.NSPasteboardTypeString)
 
 
-def insert(text: str, method="paste", restore_clipboard=True) -> None:
+def kuca_se(text: str, method: str) -> bool:
+    """Ide li tekst kucanjem (bez clipboard-a) ili lepljenjem.
+
+    Podrazumevano („auto") je kucanje: clipboard se tada uopste ne dira, pa se
+    ne puni istorijom diktata. Vracanje starog sadrzaja to ne resava — hvataci
+    istorije (Raycast, Maccy, Paste) zabelezе svaku izmenu, i pre nego sto se
+    stari sadrzaj vrati.
+
+    Izuzetak je tekst sa NOVIM REDOM: kucanje ga salje kao Enter, pa bi u
+    caskanju poslalo poruku usred diktata. Takav tekst ide preko clipboard-a.
+    """
+    if method == "type":
+        return True
+    if method != "auto":
+        return False
+    return "\n" not in text
+
+
+def insert(text: str, method="auto", restore_clipboard=True) -> None:
     if not text:
         return
     if method == "clipboard_only":
         set_clipboard(text)
         return
-    if method == "type":
+    if kuca_se(text, method):
         _type_unicode(text)
         return
     _paste(text, restore_clipboard=restore_clipboard)
