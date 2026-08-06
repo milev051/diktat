@@ -115,23 +115,20 @@ class Config(context: Context) {
         set(v) = prefs.edit().putString("polish_api_key", v.trim()).apply()
 
     /** true = i ispravi ocigledne gramaticke greske, ne samo oblikuj. */
-    var polishCorrect: Boolean
-        get() = prefs.getBoolean("polish_correct", true)
-        set(v) = prefs.edit().putBoolean("polish_correct", v).apply()
-
     /**
      * Izgled teksta: jedan izbor umesto tri prekidaca koja su se ponistavala.
      *
-     *   "spoken"  — kako je izgovoreno: mala slova, bez interpunkcije
+     *   "spoken"  — podrazumevano: mala slova, bez interpunkcije
      *   "written" — pravopisno sredjeno; to radi model, pa trazi kljuc
-     *   "raw"     — kako Google vrati, bez diranja
      *
      * Zatecena podesavanja se prevode pri prvom citanju, da niko ne izgubi ono
      * sto je vec namestio.
      */
     var textStyle: String
         get() {
-            prefs.getString("text_style", null)?.let { return it }
+            // "raw" je uklonjen: niko ga nije koristio, a bio je treci ishod za
+            // isto pitanje. Ko ga je imao, dobija podrazumevano ponasanje.
+            prefs.getString("text_style", null)?.let { return if (it == "raw") "spoken" else it }
             val prevedeno = when {
                 prefs.getBoolean("polish", false) && prefs.getBoolean("polish_tidy", true) ->
                     "written"

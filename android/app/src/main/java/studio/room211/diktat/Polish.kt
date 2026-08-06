@@ -81,7 +81,7 @@ object Polish {
     private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
         cfg.polishConcise ||
             cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
-            (cfg.polishTidy && !vecSredjeno && cfg.polishCorrect)
+            (cfg.polishTidy && !vecSredjeno)
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
 
@@ -113,8 +113,10 @@ object Polish {
         )
 
         if (cfg.polishTidy && !vecSredjeno) {
+            // Ispravljanje je deo sredjivanja, ne zaseban izbor: prekidac za to
+            // se nije mogao dirati, a nivo "samo oblikuj" niko nije koristio.
             zadaci.add(SREDI)
-            if (cfg.polishCorrect) zadaci.add(ISPRAVI) else granice.add(NE_ISPRAVLJAJ)
+            zadaci.add(ISPRAVI)
         } else {
             granice.add(NE_SREDJUJ)
             granice.add(NE_ISPRAVLJAJ)

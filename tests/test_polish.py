@@ -7,7 +7,7 @@ from dictate import polish
 
 def cfg(**kw):
     osnovno = {
-        "polish_api_key": "x", "text_style": "written", "polish_level": "correct",
+        "polish_api_key": "x", "text_style": "written",
         "polish_paragraphs": True, "polish_concise": False, "output_language": "",
     }
     osnovno.update(kw)
@@ -58,6 +58,15 @@ if __name__ == "__main__":
 class PosleSlusanja(unittest.TestCase):
     """Kad je model vec slusao snimak, sredjivanje bi bilo drugi poziv za isti posao."""
 
+    def test_ispravljanje_ide_uz_sredjivanje(self):
+        # Nivo "samo oblikuj" je uklonjen: prekidac se nije mogao dirati, a
+        # ispravljanje je ionako deo sredjivanja.
+        u = polish._uputstvo(cfg())
+        self.assertIn(polish.ISPRAVI, u)
+        self.assertNotIn(polish.NE_ISPRAVLJAJ, u)
+
+
+class PosleSlusanjaNastavak(unittest.TestCase):
     def test_sredjivanje_otpada(self):
         self.assertEqual(polish.tools(cfg(), vec_sredjeno=True), ["paragraphs"])
 

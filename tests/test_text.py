@@ -67,13 +67,13 @@ class IzborStila(unittest.TestCase):
     def test_ukljucen_ai_sa_sredjivanjem_postaje_sredjeno(self):
         self.assertEqual(self.prevedi({"polish": True, "polish_tidy": True}), "written")
 
-    def test_bez_ijednog_postaje_sirovo(self):
-        self.assertEqual(
-            self.prevedi({"lowercase": False, "strip_punctuation": False}), "raw"
-        )
+    def test_sirovo_prelazi_u_izgovoreno(self):
+        # "raw" je uklonjen — niko ga nije koristio, a bio je treci ishod za
+        # isto pitanje. Ko ga je imao, dobija podrazumevano ponasanje.
+        self.assertEqual(self.prevedi({"text_style": "raw"}), "spoken")
 
     def test_postojeci_izbor_se_ne_dira(self):
-        self.assertEqual(self.prevedi({"text_style": "raw", "lowercase": True}), "raw")
+        self.assertEqual(self.prevedi({"text_style": "written"}), "written")
 
     def test_mrtvi_kljucevi_se_izbacuju(self):
         from dictate import config

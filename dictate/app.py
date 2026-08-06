@@ -139,24 +139,14 @@ class DictateApp(rumps.App):
         for stavka in (self.item_hold, self.item_toggle, None, self.item_continuous):
             snimanje_menu.add(stavka if stavka is not None else rumps.separator)
 
-        # Jedan izbor umesto tri prekidaca koja su se ponistavala: ranije su
-        # "sredi tekst", "sve malim slovima" i "bez interpunkcije" mogli da budu
-        # ukljuceni istovremeno, a ishod je zavisio od redosleda u kodu.
-        tekst_menu = rumps.MenuItem("Tekst")
-        self.style_items = {}
-        for kljuc, naziv in (
-            ("spoken", "Kako sam izgovorio (mala slova, bez tačaka)"),
-            ("written", "Pravopisno sređeno (radi AI)"),
-            ("raw", "Sirovo, kako Google vrati"),
-        ):
-            stavka = rumps.MenuItem(naziv, callback=self._make_style_setter(kljuc))
-            self.style_items[kljuc] = stavka
-            tekst_menu.add(stavka)
-        tekst_menu.add(rumps.separator)
+        # Stil teksta je prekidac u AI grupi: "izgovoreno" je podrazumevano
+        # ponasanje, a "sredjeno" je posao koji radi model.
+        self.item_tidy = rumps.MenuItem(
+            "Sredi tekst (interpunkcija, kvačice)", callback=self._toggle_tidy
+        )
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
         )
-        tekst_menu.add(self.item_ascii)
 
         # Sve sto model radi je na jednom mestu, ali u dva bloka: prepoznavanje
         # (sporo, salje zvuk) i obrada teksta (brzo, salje samo tekst).
@@ -166,9 +156,6 @@ class DictateApp(rumps.App):
         )
         self.item_listen = rumps.MenuItem(
             "Sluša snimak (preciznije prepoznavanje)", callback=self._toggle_listen
-        )
-        self.item_polish_correct = rumps.MenuItem(
-            "Ispravi očigledne greške", callback=self._toggle_polish_level
         )
         self.item_polish_para = rumps.MenuItem(
             "Podeli na pasuse",
@@ -189,7 +176,8 @@ class DictateApp(rumps.App):
             self.item_polish,
             rumps.separator,
             self.item_listen,
-            self.item_polish_correct,
+            self.item_tidy,
+            self.item_ascii,
             self.item_polish_para,
             self.item_polish_concise,
             self.item_language_out,
@@ -197,7 +185,7 @@ class DictateApp(rumps.App):
             self.item_polish_count,
         ):
             ai_menu.add(stavka)
-        for stavka in (self.item_listen, self.item_polish_correct,
+        for stavka in (self.item_listen, self.item_tidy, self.item_ascii,
                        self.item_polish_para, self.item_polish_concise,
                        self.item_language_out):
             stavka._menuitem.setIndentationLevel_(1)
@@ -207,7 +195,6 @@ class DictateApp(rumps.App):
             None,
             self.mic_menu,
             snimanje_menu,
-            tekst_menu,
             ai_menu,
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
@@ -217,7 +204,7 @@ class DictateApp(rumps.App):
         # rumps MenuItem nije hashable.
         self._polish_callbacks = [
             (self.item_listen, self._toggle_listen),
-            (self.item_polish_correct, self._toggle_polish_level),
+            (self.item_tidy, self._toggle_tidy),
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_concise, self._make_polish_toggle("polish_concise", False)),
             (self.item_language_out, self._set_output_language),
@@ -261,8 +248,7 @@ class DictateApp(rumps.App):
         self.item_continuous.state = 1 if self.cfg.get("continuous", True) else 0
 
         stil = config.style(self.cfg)
-        for kljuc, stavka in self.style_items.items():
-            stavka.state = 1 if kljuc == stil else 0
+        self.item_tidy.state = 1 if stil == "written" else 0
         self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
 
         ima_kljuc = polish.available(self.cfg)
@@ -272,9 +258,6 @@ class DictateApp(rumps.App):
             "Uključi AI obradu" if ima_kljuc else "Nema API ključa (config.json)"
         )
         self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
-        self.item_polish_correct.state = (
-            1 if self.cfg.get("polish_level", "correct") == "correct" else 0
-        )
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_concise.state = 1 if self.cfg.get("polish_concise", False) else 0
 
@@ -282,20 +265,11 @@ class DictateApp(rumps.App):
         # callback-a, ne sa setEnabled_: NSMenu sam ukljucuje stavke koje imaju
         # akciju, pa bi setEnabled_ bio pregazen pri sledecem otvaranju menija.
         for stavka, cb in self._polish_callbacks:
-            aktivan = radi
-            if stavka is self.item_polish_correct:
-                # Ispravljanje ima smisla samo kad model uopste sredjuje tekst.
-                aktivan = radi and stil == "written"
-            stavka.set_callback(cb if aktivan else None)
+            stavka.set_callback(cb if radi else None)
         jezik = polish.output_language(self.cfg)
         self.item_language_out.title = f"Jezik izlaza: {jezik}" if jezik else "Jezik izlaza…"
         self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
 
-        # Stil „pravopisno sredjeno" bez ukljucenog AI-ja nema ko da izvrsi.
-        self.style_items["written"].title = (
-            "Pravopisno sređeno (radi AI)" if radi
-            else "Pravopisno sređeno — traži uključen AI"
-        )
 
 
     # ------------------------------------------------------- preflight
@@ -587,8 +561,6 @@ class DictateApp(rumps.App):
             text = text.lower()
         if self.cfg.get("ascii_diacritics", False):
             text = webstt.to_ascii(text)
-        if not izgovoreno and self.cfg.get("capitalize_first", False):
-            return webstt.tidy(text)
         return text
 
     def _after_model(self, text: str) -> str:
@@ -1036,12 +1008,6 @@ class DictateApp(rumps.App):
             self.state.set(phase="error", message="Izaberi bar jedan alat")
         self._sync_menu_marks()
 
-    def _toggle_polish_level(self, _):
-        nivo = "format" if self.cfg.get("polish_level", "correct") == "correct" else "correct"
-        self.cfg["polish_level"] = nivo
-        config.save(self.cfg)
-        self._sync_menu_marks()
-
     def _batch(self) -> bool:
         """Ceka li se kraj diktata zbog provere snimka."""
         return listen.enabled(self.cfg)
@@ -1062,6 +1028,13 @@ class DictateApp(rumps.App):
             and bool(polish.tools(self.cfg))
         )
 
+    def _toggle_tidy(self, _):
+        """Sredjivanje radi model, pa bez ukljucenog AI-ja nema ko da ga izvrsi."""
+        sredjeno = config.style(self.cfg) != "written"
+        self.cfg["text_style"] = "written" if sredjeno else "spoken"
+        config.save(self.cfg)
+        self._sync_menu_marks()
+
     def _set_output_language(self, _):
         """Slobodan opis, ne spisak: „pola makedonski pola srpski" je isto vazeci."""
         odgovor = rumps.Window(
@@ -1077,17 +1050,6 @@ class DictateApp(rumps.App):
         self.cfg["output_language"] = odgovor.text.strip()
         config.save(self.cfg)
         self._sync_menu_marks()
-
-    def _make_style_setter(self, stil):
-        def setter(_):
-            self.cfg["text_style"] = stil
-            config.save(self.cfg)
-            if stil == "written" and not (
-                self.cfg.get("polish") and polish.available(self.cfg)
-            ):
-                self.state.set(phase="error", message="Uključi AI da bi sređivao tekst")
-            self._sync_menu_marks()
-        return setter
 
     def _make_polish_toggle(self, key, default):
         def toggle(_):

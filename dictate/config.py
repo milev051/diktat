@@ -11,12 +11,9 @@ DEFAULTS = {
     "language": "sr-RS",
     "api_key": "",                # prazno = ugradjeni javni Chromium kljuc
     "profanity_filter": False,    # True bi maskirao psovke ("sranje" -> "s*****")
-    # Jedan izbor umesto tri prekidaca koja su se medjusobno ponistavala:
-    #   "spoken"  — kako je izgovoreno: mala slova, bez interpunkcije
-    #   "written" — pravopisno sredjeno; to radi AI, pa trazi kljuc
-    #   "raw"     — kako Google vrati, bez diranja
+    # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci
+    # da model sredjuje tekst — prekidac za to stoji u AI grupi.
     "text_style": "spoken",
-    "capitalize_first": False,    # veliko pocetno slovo (samo uz "raw")
     "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
@@ -48,7 +45,6 @@ DEFAULTS = {
     "polish_api_key": "",         # Google AI Studio kljuc; ostaje pri nadogradnji
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
-    "polish_level": "correct",    # "format" = samo oblikuj | "correct" = i ispravi ocigledne greske
     "polish_paragraphs": True,    # podeli na pasuse, prazan red izmedju
     "audio_check": False,         # model slusa snimak i ispravlja prepis
     "compress_audio": True,       # FLAC preko ffmpeg-a ako ga ima; inace PCM/WAV
@@ -96,25 +92,26 @@ def _migrate(cfg: dict) -> dict:
     if "text_style" not in cfg:
         if cfg.get("polish") and cfg.get("polish_tidy", True):
             cfg["text_style"] = "written"
-        elif cfg.get("lowercase", True) or cfg.get("strip_punctuation", True):
-            cfg["text_style"] = "spoken"
         else:
-            cfg["text_style"] = "raw"
+            cfg["text_style"] = "spoken"
+    # "raw" je uklonjen: niko ga nije koristio, a bio je treci ishod za isto pitanje.
+    if cfg.get("text_style") == "raw":
+        cfg["text_style"] = "spoken"
 
     for mrtvo in ("engine", "credentials_json", "project_id", "location",
                   "model", "punctuation", "lowercase", "strip_punctuation",
                   "polish_tidy", "auto_segment", "max_seconds",
                   "audio_check_low_only", "audio_check_threshold",
                   "polish_emoji", "polish_emoji_rate", "polish_emoji_recent",
-                  "join_thousands", "trailing_space"):
+                  "join_thousands", "trailing_space", "capitalize_first",
+                  "polish_level"):
         cfg.pop(mrtvo, None)
     return cfg
 
 
 def style(cfg) -> str:
-    """spoken | written | raw — jedini izvor istine o izgledu teksta."""
-    izbor = cfg.get("text_style", "spoken")
-    return izbor if izbor in ("spoken", "written", "raw") else "spoken"
+    """spoken | written — jedini izvor istine o izgledu teksta."""
+    return "written" if cfg.get("text_style") == "written" else "spoken"
 
 
 def save(cfg: dict) -> None:

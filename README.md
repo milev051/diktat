@@ -88,7 +88,7 @@ Dva nezavisna podešavanja:
 | Stavka | |
 |---|---|
 | **Istorija** | poslednjih `history_size` tekstova; klik kopira u clipboard |
-| **Snimanje / Tekst / AI** | podmeniji; sve ostalo je u `config.json` |
+| **Snimanje / AI** | podmeniji; sve ostalo je u `config.json` |
 | **Mikrofon** | izbor ulaza, ili sistemski podrazumevani |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
@@ -106,9 +106,8 @@ Dva nezavisna podešavanja:
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `compress_audio` | `true` | FLAC ka endpointu, 36% manje; bez `ffmpeg`-a ide PCM |
-| `text_style` | `spoken` | `spoken` = mala slova bez interpunkcije, `written` = AI sređuje, `raw` = kako Google vrati |
+| `text_style` | `spoken` | `spoken` = mala slova bez interpunkcije (podrazumevano), `written` = AI sređuje |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
-| `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | samo uz `auto_segment` |
 | `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
@@ -146,8 +145,8 @@ interpunkciju i kvačice **ne dira**:
 
 | alat | podrazumevano | šta radi |
 |---|---|---|
-| …sredi tekst | uključeno | interpunkcija, velika slova, kvačice |
-| …i ispravi očigledne greške | uključeno | gramatička neslaganja; radi samo uz sređivanje |
+| Sredi tekst | isključeno | interpunkcija, velika slova, kvačice; usput i gramatička neslaganja |
+| Bez kvačica | isključeno | `č ć ž š đ → c c z s dj`, primenjuje se na kraju |
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
 | Jezik izlaza | prazno | slobodan opis: `makedonski`, `engleski formalno`, `pola makedonski pola srpski` |
@@ -169,7 +168,6 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_api_key` | `""` | bez njega režim ne radi |
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
-| `polish_level` | `correct` | `format` = samo oblikuj, `correct` = i ispravi očigledne greške |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `polish_concise` | `false` | skrati i pojednostavi |
 | `output_language` | `""` | jezik izlaza, slobodan opis; prazno = bez prevoda |

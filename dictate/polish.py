@@ -24,7 +24,7 @@ DEFAULT_MODEL = "gemini-flash-lite-latest"
 # isto ali za ~12s, a gemma prepisuje uputstvo umesto da ga izvrsi.
 UVOD = "Dobijaš sirov transkript govora na srpskom, dobijen prepoznavanjem glasa."
 
-# Izmereno: "correct" ispravlja gramaticka neslaganja ("deca su otisao" ->
+# Izmereno: ispravljanje sredjuje gramaticka neslaganja ("deca su otisao" ->
 # "otisla", "sa kolega" -> "sa kolegom"). Ne moze i nece moci da ispravi rec
 # koja je gramaticki ISPRAVNA a znacenjski pogresna ("ne registrujem" umesto
 # "ne registruje") — tu recenica nema greske, pa model nema po cemu da posumnja.
@@ -199,10 +199,7 @@ def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     return (
         bool(cfg.get("polish_concise", False))
         or bool(output_language(cfg))       # prevod po prirodi menja svaku rec
-        or (
-            "tidy" in tools(cfg, vec_sredjeno)
-            and cfg.get("polish_level", "correct") == "correct"
-        )
+        or "tidy" in tools(cfg, vec_sredjeno)
     )
 
 
@@ -231,17 +228,15 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         return cfg["polish_prompt"]
 
     izabrani = tools(cfg, vec_sredjeno)
-    correct = cfg.get("polish_level", "correct") == "correct"
 
     zadaci = []
     granice = list(GRANICE)
 
     if "tidy" in izabrani:
+        # Ispravljanje je deo sredjivanja, ne zaseban izbor: nivo "samo oblikuj"
+        # niko nije koristio, a stajao je kao prekidac koji se ne moze dirati.
         zadaci.append(SREDI)
-        if correct:
-            zadaci.append(ISPRAVI)
-        else:
-            granice.append(NE_ISPRAVLJAJ)
+        zadaci.append(ISPRAVI)
     else:
         granice.append(NE_SREDJUJ)
         granice.append(NE_ISPRAVLJAJ)

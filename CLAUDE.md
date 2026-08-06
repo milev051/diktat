@@ -293,12 +293,17 @@ mikrofon je upravo ono što ih je spajalo.
 `audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera
 snimka udvostručuje saobraćaj — otud odvojen prekidač, a ne stalno ponašanje.
 
-**Izgled teksta je JEDAN izbor, ne tri prekidača.** „Sredi tekst", „sve malim
+**Izgled teksta ima dva stanja, ne tri prekidača.** „Sredi tekst", „sve malim
 slovima" i „bez interpunkcije" su mogli da budu uključeni istovremeno, a ishod
-je zavisio od redosleda u kodu — korisnik to vidi kao „podešavanje ne radi".
-Sada postoji `text_style`: `spoken` | `written` | `raw`, a `lowercase`,
-`strip_punctuation` i `polish_tidy` se iz njega **izvode**. Ne vraćaj ih kao
-zasebna podešavanja.
+je zavisio od redosleda u kodu. Sada je `text_style`: `spoken` (podrazumevano)
+ili `written`, a `lowercase`, `strip_punctuation` i `polish_tidy` se iz njega
+**izvode**. `raw` je postojao pa uklonjen — bio je treći ishod za isto pitanje.
+Ne vraćaj ih kao zasebna podešavanja.
+
+**Ispravljanje grešaka je deo sređivanja, ne izbor.** Nivo „samo oblikuj"
+(`polish_level`) niko nije koristio, a prekidač je stajao siv jer zavisi od
+sređivanja. Sve što model radi nad tekstom stoji u jednoj grupi (AI), uključujući
+i „bez kvačica" koje se primenjuje posle njega.
 
 **Zatečena podešavanja se prevode, ne brišu.** `_migrate` (Mac) i `Config.textStyle`
 (Android) izvode stil iz starih ključeva pri prvom čitanju. Isto važi za svako

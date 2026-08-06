@@ -34,9 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
     private lateinit var polishLine: TextView
-    private lateinit var stilLine: TextView
     private lateinit var probaLine: TextView
-    private var ispravkaRed = mutableListOf<View>()
     private lateinit var previewOut: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -200,12 +198,10 @@ class MainActivity : AppCompatActivity() {
     private fun aiObrada(): ViewGroup {
         val (card, box) = card(this, "AI — obrada teksta")
         val alati = mutableListOf<View>()
-        val correctBox = mutableListOf<View>()
 
         box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
             cfg.polish = it
             setBranchEnabled(alati, it)
-            setBranchEnabled(correctBox, it)
         })
         box.addView(
             body(
@@ -216,19 +212,21 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        // Ispravljanje ima smisla samo uz stil „Sređeno". Ranije je stajalo sivo
-        // i zbunjivalo — sada se prosto ne vidi dok nije na redu.
-        val correct = indent(this, switch(this, "Ispravi očigledne greške", cfg.polishCorrect) {
-            cfg.polishCorrect = it
-        })
-        val correctOpis = indent(this, body(this, "Sređuje reči koje se gramatički ne " +
-            "slažu — \u201Esa kolega\u201C \u2192 \u201Esa kolegom\u201C."))
-        alati.add(correct)
-        correctBox.add(correct)
-        correctBox.add(correctOpis)
-        box.addView(correct)
-        box.addView(correctOpis)
-        ispravkaRed = correctBox
+
+        val sredi = indent(this, switch(this, "Sredi tekst (interpunkcija, kvačice)",
+            cfg.polishTidy) { cfg.textStyle = if (it) "written" else "spoken" })
+        alati.add(sredi)
+        box.addView(sredi)
+        box.addView(
+            indent(this, body(this, "Dodaje tačke, velika slova i kvačice, i usput " +
+                "sređuje reči koje se gramatički ne slažu. Isključeno: tekst ostaje " +
+                "malim slovima i bez interpunkcije, kako je izgovoren."))
+        )
+
+        val kvacice = indent(this, switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)",
+            cfg.asciiDiacritics) { cfg.asciiDiacritics = it })
+        alati.add(kvacice)
+        box.addView(kvacice)
 
         val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
@@ -269,48 +267,11 @@ class MainActivity : AppCompatActivity() {
         box.addView(model)
 
         setBranchEnabled(alati, cfg.polish)
-        setBranchEnabled(correctBox, cfg.polish)
-        prikaziIspravku()
         return card
     }
 
-    /** „Ispravi greške" se vidi samo uz stil „Sređeno". */
-    private fun prikaziIspravku() {
-        val vidljivo = if (cfg.polishTidy) View.VISIBLE else View.GONE
-        ispravkaRed.forEach { it.visibility = vidljivo }
-    }
-
     private fun tekst(): ViewGroup {
-        val (card, box) = card(this, "Tekst — posle AI-ja")
-        box.addView(
-            body(
-                this,
-                "Ova podešavanja se primenjuju POSLE svega što AI uradi, pa ona " +
-                    "imaju poslednju reč. Izuzetak su mala slova i interpunkcija " +
-                    "uz stil \u201ESređeno\u201C: to je baš posao koji AI dobija, " +
-                    "pa bi jedno gasilo drugo.",
-            )
-        )
-        // Jedan izbor umesto tri prekidaca koja su se ponistavala: ranije su
-        // "sredi tekst", "sve malim slovima" i "bez interpunkcije" mogli da budu
-        // ukljuceni istovremeno, a ishod je zavisio od redosleda u kodu.
-        box.addView(
-            choice(
-                this,
-                listOf(
-                    "spoken" to "Izgovoreno",
-                    "written" to "Sređeno",
-                    "raw" to "Sirovo",
-                ),
-                cfg.textStyle,
-            ) { cfg.textStyle = it; stilLine.text = stilOpis(it); prikaziIspravku() }
-        )
-        stilLine = body(this, stilOpis(cfg.textStyle))
-        box.addView(stilLine)
-
-        box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
-            cfg.asciiDiacritics = it
-        })
+        val (card, box) = card(this, "Skraćenice i psovke")
         // Prekidac je obrnut od podesavanja: ukljucen znaci pFilter=0, sto je i
         // podrazumevano. Da pise "maskiraj", jedini bi stajao iskljucen.
         box.addView(switch(this, "Ne maskiraj psovke zvezdicama", !cfg.profanityFilter) {
@@ -349,13 +310,6 @@ class MainActivity : AppCompatActivity() {
             recreate()
         })
         return card
-    }
-
-    private fun stilOpis(stil: String) = when (stil) {
-        "written" -> "Pravopisno sređeno — tačke, velika slova i kvačice. Radi AI, " +
-            "pa traži uključenu AI obradu i ključ."
-        "raw" -> "Kako Google vrati, bez diranja."
-        else -> "Mala slova i bez interpunkcije; brojevi i satnica ostaju celi."
     }
 
     private fun potrosnja(): ViewGroup {

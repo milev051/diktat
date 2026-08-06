@@ -124,8 +124,7 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
 
 | alat | podrazumevano | šta radi |
 |---|---|---|
-| Sredi tekst | uključeno | interpunkcija, velika slova, kvačice |
-| …i ispravi očigledne greške | uključeno | `sa kolega` → `sa kolegom`; radi samo uz sređivanje |
+| Sredi tekst | isključeno | interpunkcija, velika slova, kvačice; usput i gramatička neslaganja |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
 | Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
@@ -201,7 +200,6 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 
 | | podrazumevano | |
 |---|---|---|
-| Stil teksta | *Izgovoreno* | *Izgovoreno* = mala slova bez interpunkcije, *Sređeno* = AI sređuje, *Sirovo* = kako Google vrati |
 | Ne maskiraj psovke | uključeno | `pFilter=0`; isključeno daje `sranje` → `s*****` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
 | Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
