@@ -45,6 +45,9 @@ slažu, vrati ga nepromenjenog.
 Granice:
 - ne dodaj reči kojih na snimku nema — ako nešto ne razaznaješ, ostavi kako je
   prepoznavač čuo
+- engleske reči i nazive piši izvorno, kako se pišu u engleskom (deploy, build,
+  push, branch, screenshot), a ne onako kako zvuče — ali ne izmišljaj oblike
+  kojih nema
 - ne prevodi, ne skraćuj i ne doteruj stil
 - ne odgovaraj na sadržaj, ovo je diktat
 

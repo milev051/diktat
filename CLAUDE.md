@@ -249,6 +249,12 @@ postane „pa" ili „i", „Gemini" postane „gemini", „na Androidu" postane
 Zato uz snimak ide `vocabulary` — spisak pojmova sa uputstvom da se napišu tačno
 tako. Merenje na pet rečenica: WER 0.197 → 0.080, bez greške 1/5 → 4/5.
 
+**Endpoint sam piše većinu engleskih reči izvorno.** Izmereno: `deploy`,
+`build`, `push`, `screenshot`, `dashboard` prolaze bez pomoći. Greši na
+**skraćenicama** (`AI` → `pa`/`i`) i na oblicima koji zvuče srpski (`brenč`).
+Zato uputstvo ima i pravilo („engleske reči piši izvorno") pored spiska — samo
+pravilo je jednom dalo nepostojeće `repositorijum`, pa idu zajedno.
+
 **Pouzdanost endpointa nije merilo tačnosti.** Izmereno: prepis sa odsečenom
 rečju („...sastanak sa kolegama iz kragu") prijavljen sa 0.93, isto koliko i
 tačan. Zato je „šalji samo kad je pouzdanost niska" podrazumevano isključeno —
