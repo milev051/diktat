@@ -50,13 +50,19 @@ class DictationService : Service() {
     private var busy = false
     private var nextTicket = 0
     private var expected = 0
-    private val buffered = HashMap<Int, String>()
+    private val buffered = HashMap<Int, Pair<String, Int>>()
     private val pending = java.util.concurrent.atomic.AtomicInteger(0)
-    private val formalParts = mutableListOf<String>()
+    // Sve sto ceka kraj diktata drzi se PO SESIJI: nov diktat sme da pocne dok
+    // se prethodni obradjuje, pa bi u zajednickoj kanti dva diktata zavrsila u
+    // jednom pozivu i upisala se spojena.
+    private var sessionSeq = 0
+    private var session = 0
+    private val formalParts = sortedMapOf<Int, MutableList<String>>()
+    private val pendingBy = HashMap<Int, Int>()
     // Zvuk segmenata za grupnu proveru; kljuc je ticket, da redosled ostane
     // hronoloski i kad se segmenti prepoznaju paralelno.
-    private val audioParts = sortedMapOf<Int, ByteArray>()
-    private var audioSeconds = 0.0
+    private val audioParts = HashMap<Int, java.util.SortedMap<Int, ByteArray>>()
+    private val audioSeconds = HashMap<Int, Double>()
     @Volatile private var polishing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -96,6 +102,7 @@ class DictationService : Service() {
             return
         }
         isRecording = true
+        session = ++sessionSeq
         startedAt = System.currentTimeMillis()
         showPill()
         tick()
@@ -118,8 +125,8 @@ class DictationService : Service() {
 
         val pcm = recorder?.stop() ?: ByteArray(0)
         recorder = null
-        keepAudio(0, pcm)
-        thread { recognizeAndDeliver(pcm, last = true) }
+        keepAudio(session, 0, pcm)
+        thread { recognizeAndDeliver(pcm, last = true, sesija = session) }
     }
 
     /**
@@ -167,9 +174,13 @@ class DictationService : Service() {
             return
         }
         val myTicket = nextTicket++
-        keepAudio(myTicket, pcm)
+        val mojaSesija = session
+        keepAudio(mojaSesija, myTicket, pcm)
         pending.incrementAndGet()
-        thread { recognizeAndDeliver(pcm, last = last, ticket = myTicket) }
+        synchronized(formalParts) { pendingBy[mojaSesija] = (pendingBy[mojaSesija] ?: 0) + 1 }
+        thread {
+            recognizeAndDeliver(pcm, last = last, ticket = myTicket, sesija = mojaSesija)
+        }
     }
 
     /**
@@ -179,24 +190,29 @@ class DictationService : Service() {
      * 6-9 poziva na jednu diktiranu poruku, a model je video krhotinu umesto
      * celine. Granica postoji jer neprekidan rezim ume da traje satima.
      */
-    private fun keepAudio(ticket: Int, pcm: ByteArray) {
+    private fun keepAudio(sesija: Int, ticket: Int, pcm: ByteArray) {
         if (pcm.isEmpty() || !Listen.enabled(cfg)) return
         val sek = pcm.size / 2.0 / cfg.sampleRate
         synchronized(audioParts) {
-            if (audioSeconds + sek > cfg.audioCheckMaxSeconds) return
-            audioParts[ticket] = pcm
-            audioSeconds += sek
+            val moji = audioParts.getOrPut(sesija) { sortedMapOf() }
+            if ((audioSeconds[sesija] ?: 0.0) + sek > cfg.audioCheckMaxSeconds) return
+            moji[ticket] = pcm
+            audioSeconds[sesija] = (audioSeconds[sesija] ?: 0.0) + sek
         }
     }
 
-    private fun takeAudio(): List<ByteArray> = synchronized(audioParts) {
-        val delovi = audioParts.values.toList()
-        audioParts.clear()
-        audioSeconds = 0.0
+    private fun takeAudio(sesija: Int): List<ByteArray> = synchronized(audioParts) {
+        val delovi = audioParts.remove(sesija)?.values?.toList() ?: emptyList()
+        audioSeconds.remove(sesija)
         delovi
     }
 
-    private fun recognizeAndDeliver(pcm: ByteArray, last: Boolean, ticket: Int = 0) {
+    private fun recognizeAndDeliver(
+        pcm: ByteArray,
+        last: Boolean,
+        ticket: Int = 0,
+        sesija: Int = session,
+    ) {
         var text = ""
         var problem: String? = null
         try {
@@ -214,29 +230,46 @@ class DictationService : Service() {
             PendingStore(this).save(pcm)
             problem += " — snimak sačuvan za ponovni pokušaj"
         }
-        handler.post { deliver(text, problem, ticket, last) }
+        handler.post { deliver(text, problem, ticket, last, sesija) }
     }
 
     /**
      * Ubacuje strogo po redosledu snimanja. Prepoznavanja teku paralelno i mogu
      * da se zavrse van reda — kratak drugi segment lako stigne pre dugog prvog.
      */
-    private fun deliver(text: String, problem: String?, ticket: Int, last: Boolean) {
-        buffered[ticket] = text
+    private fun deliver(
+        text: String,
+        problem: String?,
+        ticket: Int,
+        last: Boolean,
+        sesija: Int,
+    ) {
+        buffered[ticket] = text to sesija
         if (problem != null) toast(problem)
 
         while (buffered.containsKey(expected)) {
-            val ready = buffered.remove(expected)!!
+            val (ready, cija) = buffered.remove(expected)!!
             expected++
             pending.decrementAndGet()
+            synchronized(formalParts) {
+                pendingBy[cija] = maxOf(0, (pendingBy[cija] ?: 0) - 1)
+            }
             if (ready.isNotBlank()) {
-                if (deferred()) synchronized(formalParts) { formalParts.add(ready.trim()) }
-                else insertNow(ready)
+                if (deferred()) {
+                    synchronized(formalParts) {
+                        formalParts.getOrPut(cija) { mutableListOf() }.add(ready.trim())
+                    }
+                } else {
+                    insertNow(ready)
+                }
             }
         }
         if (last) {
             isRecording = false
-            if (deferred() && pending.get() == 0) startPolish()
+            // Gleda se SESIJA, ne "da li mikrofon radi": nov diktat sme da pocne
+            // dok se prethodni obradjuje, pa bi cekanje na miran mikrofon spojilo
+            // dva diktata u jedan poziv.
+            if (deferred() && (pendingBy[sesija] ?: 0) == 0) startPolish(sesija)
             else handler.post { finishSession() }
         }
     }
@@ -252,16 +285,16 @@ class DictationService : Service() {
     private fun deferred() = formal() || batch()
 
     /** Ceo diktat ide modelu jednim pozivom, pa tek onda u polje. */
-    private fun startPolish() {
+    private fun startPolish(sesija: Int) {
         val tekst = synchronized(formalParts) {
-            val t = formalParts.filter { it.isNotBlank() }.joinToString(" ").trim()
-            formalParts.clear()
-            t
+            val moji = formalParts.remove(sesija) ?: mutableListOf()
+            pendingBy.remove(sesija)
+            moji.filter { it.isNotBlank() }.joinToString(" ").trim()
         }
         if (tekst.isBlank()) {
             // Otkazan ili prazan diktat: zvuk mora da ode, inace bi usao u
             // sledecu proveru i model bi "cuo" prosli diktat.
-            takeAudio()
+            takeAudio(sesija)
             handler.post { finishSession() }
             return
         }
@@ -271,7 +304,7 @@ class DictationService : Service() {
         thread {
             var polazni = tekst
             if (batch()) {
-                val delovi = takeAudio()
+                val delovi = takeAudio(sesija)
                 if (delovi.isNotEmpty()) {
                     polazni = runCatching {
                         Listen.check(delovi, tekst, cfg).also { cfg.countPolish() }
@@ -299,7 +332,7 @@ class DictationService : Service() {
                 // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
                 // Uz sredjivanje ostaju bar skracenice: tekst je modelu isao
                 // nedirnut, pa bi inace potpuno izostale.
-                if (cfg.polishTidy) TextPolish.abbreviationsOnly(izlaz, cfg)
+                if (cfg.polishTidy) TextPolish.afterModel(izlaz, cfg)
                 else TextPolish.applyBlocks(izlaz, cfg)
             }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.

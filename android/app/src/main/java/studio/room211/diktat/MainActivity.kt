@@ -160,9 +160,12 @@ class MainActivity : AppCompatActivity() {
         // Gustina zavisi od DVA prekidaca — glavnog i emotikona — pa se drzi
         // odvojeno; puni se nize, kad se sam izbor napravi.
         val gustinaBox = mutableListOf<View>()
+        // Isto i za "ispravi greske": zavisi od sredjivanja, ne od glavnog.
+        val correctBox = mutableListOf<View>()
         box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
             cfg.polish = it
             setBranchEnabled(alati, it)
+            setBranchEnabled(correctBox, it && cfg.polishTidy)
             setBranchEnabled(gustinaBox, it && cfg.polishEmoji)
         })
         box.addView(
@@ -177,15 +180,19 @@ class MainActivity : AppCompatActivity() {
                     "sačuvan i posle nadogradnje aplikacije.",
             )
         )
-        val tidy = indent(this, switch(this, "Sredi tekst (interpunkcija, kvačice)", cfg.polishTidy) {
-            cfg.polishTidy = it
-        })
-        alati.add(tidy)
-        box.addView(tidy)
+        // "Ispravi greske" je podelement SREDJIVANJA, ne glavnog prekidaca:
+        // bez sredjivanja nema sta da ispravlja, pa se sivi zajedno s njim.
         val correct = indent(this, switch(this, "…i ispravi očigledne greške", cfg.polishCorrect) {
             cfg.polishCorrect = it
         }).apply { setPadding(dp(32), paddingTop, paddingRight, paddingBottom) }
+        val tidy = indent(this, switch(this, "Sredi tekst (interpunkcija, kvačice)", cfg.polishTidy) {
+            cfg.polishTidy = it
+            setBranchEnabled(correctBox, it && cfg.polish)
+        })
+        alati.add(tidy)
+        box.addView(tidy)
         alati.add(correct)
+        correctBox.add(correct)
         box.addView(correct)
         box.addView(
             body(
@@ -265,6 +272,7 @@ class MainActivity : AppCompatActivity() {
         polishLine = indent(this, body(this, ""))
         box.addView(polishLine)
         setBranchEnabled(alati, cfg.polish)
+        setBranchEnabled(correctBox, cfg.polish && cfg.polishTidy)
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
         val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {

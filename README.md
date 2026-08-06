@@ -191,6 +191,10 @@ jednog na oko sto pedeset.
 
 Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
 
+Kad je *sredi tekst* uključeno, posle modela se primenjuju još samo `join_thousands`
+i `ascii_diacritics`. `lowercase` i `strip_punctuation` se preskaču: to je baš
+ono što je model dobio da uradi.
+
 ### Kvota i rezervni plan
 
 Google **ne nudi** način da se vidi koliko je zahteva preostalo — ni u API-ju ni

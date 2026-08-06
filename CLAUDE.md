@@ -286,9 +286,17 @@ Kašnjenje modela je pri tom skoro isto za sve (`flash-lite` 1.9–2.1s,
 kontejnera; ispred svakog ide 7 bajtova zaglavlja, inače je tok neupotrebljiv.
 Zato postoji `AacHeaderTest` — ta računica se ne menja bez testa.
 
-**Skraćenice se u formalnom režimu primenjuju POSLE modela.** Tekst mu ide
-nedirnut (tako bolje čita), pa bi inače potpuno izostale — korisnik to vidi kao
-„skraćenice su prestale da rade".
+**Završna podešavanja se u formalnom režimu primenjuju POSLE modela.** Tekst mu
+ide nedirnut (tako bolje čita), pa bi inače potpuno izostala — korisnik to vidi
+kao „skraćenice su prestale da rade". Posle njega idu **spoji hiljade,
+skraćenice i skidanje kvačica**; mala slova i brisanje interpunkcije **ne** —
+to je baš posao koji je model dobio, pa bi jedno gasilo drugo.
+
+**Svaki diktat ima svoju sesiju.** Nov diktat sme da počne dok se prethodni
+obrađuje, pa se tekst i zvuk drže **po sesiji**: u zajedničkoj kanti bi dva
+diktata završila u jednom pozivu i zalepila se spojena. Završetak se meri po
+sesiji (`_pending_by`), ne po tome da li mikrofon radi — čekanje na miran
+mikrofon je upravo ono što ih je spajalo.
 
 **Zvuk se modelu šalje u poznatom formatu.** `inline_data` prima `audio/wav` i
 `audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera
