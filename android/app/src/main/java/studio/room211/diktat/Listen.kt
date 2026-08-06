@@ -39,7 +39,12 @@ object Listen {
         "\n\nOvi pojmovi se često javljaju u ovim diktatima; ako čuješ nešto slično, " +
             "napiši ih tačno ovako: "
 
-    private const val UPUTSTVO = """Slušaš snimak govora na srpskom i vraćaš tačan prepis.
+    private const val VISE_DELOVA = """
+
+Snimci su uzastopni delovi jednog istog diktata, datim redom. Vrati ceo tekst
+spojen u jednu celinu, bez oznaka delova i bez praznih redova između njih."""
+
+    private const val UPUTSTVO = """Slušaš %s govora na srpskom i vraćaš tačan prepis.
 
 Drugi prepoznavač je čuo ovo: „%s"
 
@@ -82,28 +87,36 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
      * Vrati ispravljen prepis, ili baci izuzetak. Pozivalac na svaki otkaz
      * zadrzava prvi prepis — diktat ne sme da propadne zbog dodatne provere.
      */
-    private fun uputstvo(prepis: String, cfg: Config): String {
-        val osnova = UPUTSTVO.format(prepis)
+    private fun uputstvo(prepis: String, cfg: Config, delova: Int): String {
+        val sta = if (delova == 1) "snimak" else "$delova uzastopna snimka"
+        var osnova = UPUTSTVO.format(sta, prepis)
+        if (delova > 1) osnova += VISE_DELOVA
         val pojmovi = cfg.vocabulary.trim()
         return if (pojmovi.isEmpty()) osnova else osnova + POJMOVI_DEO + pojmovi
     }
 
-    fun check(pcm: ByteArray, prepis: String, cfg: Config): String {
-        val key = cfg.polishApiKey
-        if (key.isBlank() || pcm.isEmpty()) throw Polish.PolishException("Nema ključa za proveru.")
-
+    /** Jedan snimak kao `inline_data`, sazet ako enkoder radi. */
+    private fun deo(pcm: ByteArray, cfg: Config): JSONObject {
         // FLAC je 36-42% manji od PCM-a, a base64 svejedno doda trecinu — vredi.
         val flac = if (cfg.compressAudio) runCatching { FlacEncoder.encode(pcm, cfg.sampleRate) }
             .getOrNull() else null
         val zvuk = flac ?: wav(pcm, cfg.sampleRate)
-        val tip = if (flac != null) "audio/flac" else "audio/wav"
+        return JSONObject().put("inline_data", JSONObject()
+            .put("mime_type", if (flac != null) "audio/flac" else "audio/wav")
+            .put("data", Base64.encodeToString(zvuk, Base64.NO_WRAP)))
+    }
+
+    fun check(delovi: List<ByteArray>, prepis: String, cfg: Config): String {
+        val key = cfg.polishApiKey
+        if (key.isBlank() || delovi.isEmpty()) {
+            throw Polish.PolishException("Nema ključa za proveru.")
+        }
 
         val payload = JSONObject().apply {
-            put("contents", JSONArray().put(JSONObject().put("parts", JSONArray()
-                .put(JSONObject().put("text", uputstvo(prepis, cfg)))
-                .put(JSONObject().put("inline_data", JSONObject()
-                    .put("mime_type", tip)
-                    .put("data", Base64.encodeToString(zvuk, Base64.NO_WRAP)))))))
+            val parts = JSONArray()
+                .put(JSONObject().put("text", uputstvo(prepis, cfg, delovi.size)))
+            for (pcm in delovi) parts.put(deo(pcm, cfg))
+            put("contents", JSONArray().put(JSONObject().put("parts", parts)))
             put("generationConfig", JSONObject().put("temperature", 0.0))
         }.toString().toByteArray()
 
@@ -113,7 +126,7 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
             requestMethod = "POST"
             doOutput = true
             connectTimeout = 15_000
-            readTimeout = 90_000
+            readTimeout = 180_000
             setRequestProperty("Content-Type", "application/json")
             setFixedLengthStreamingMode(payload.size)
         }

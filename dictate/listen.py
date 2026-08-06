@@ -11,9 +11,13 @@ Model sam je u sumu **halucinirao** ("poslao sam ponovo 250.000 dinara u 1:33"
 umesto "...ponudu... u utorak u deset i trideset"): kad ne cuje, dopuni umesto
 da ostavi rupu. Prvi prepis mu sluzi kao sidro, pa nema sta da izmislja.
 
-Salje se WAV, ne sirov PCM: `inline_data` trazi poznat format, a WAV zaglavlje
-je 44 bajta. Zvuk ide u base64, sto ga uveca za trecinu — zato ovo i postoji
-kao odvojena opcija, a ne kao stalno ponasanje.
+`inline_data` trazi poznat format — sirov PCM ne prolazi. Salje se FLAC ako
+ffmpeg postoji, inace WAV. Zvuk ide u base64, sto ga uveca za trecinu, pa ovo i
+postoji kao odvojena opcija a ne kao stalno ponasanje.
+
+Ceo diktat ide JEDNIM pozivom, sa svim segmentima kao odvojenim delovima:
+provera po segmentu je trosila 6-9 poziva na jednu diktiranu poruku, a model je
+uz to video samo krhotinu umesto celine.
 """
 
 import base64
@@ -23,6 +27,7 @@ import urllib.error
 import urllib.request
 import wave
 
+from . import flac
 from .polish import DEFAULT_MODEL, ENDPOINT, PolishError, _explain
 
 # Ispod ovoga se prepis smatra nesigurnim. Izmereno: dobar srpski diktat vraca
@@ -35,7 +40,7 @@ PRAG = 0.85
 # rec ("AI" -> "pa", "i"), a model bez spiska nema po cemu da ih prepozna.
 POJMOVI_PODRAZUMEVANO = "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK"
 
-UPUTSTVO = """Slušaš snimak govora na srpskom i vraćaš tačan prepis.
+UPUTSTVO = """Slušaš {sta} govora na srpskom i vraćaš tačan prepis.
 
 Drugi prepoznavač je čuo ovo: „{prepis}"
 
@@ -52,6 +57,11 @@ Granice:
 - ne odgovaraj na sadržaj, ovo je diktat
 
 Vrati samo prepis, bez uvoda i bez navodnika."""
+
+VISE_DELOVA = """
+
+Snimci su uzastopni delovi jednog istog diktata, datim redom. Vrati ceo tekst
+spojen u jednu celinu, bez oznaka delova i bez praznih redova između njih."""
 
 POJMOVI_DEO = """
 
@@ -82,30 +92,45 @@ def wav_bytes(pcm: bytes, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
-def _uputstvo(prepis: str, cfg) -> str:
-    tekst = UPUTSTVO.format(prepis=prepis)
+def _uputstvo(prepis: str, cfg, delova: int = 1) -> str:
+    tekst = UPUTSTVO.format(
+        prepis=prepis, sta="snimak" if delova == 1 else f"{delova} uzastopna snimka"
+    )
+    if delova > 1:
+        tekst += VISE_DELOVA
     pojmovi = cfg.get("vocabulary", POJMOVI_PODRAZUMEVANO)
     if pojmovi and pojmovi.strip():
         tekst += POJMOVI_DEO.format(pojmovi=pojmovi.strip())
     return tekst
 
 
+def _deo(pcm: bytes, sample_rate: int, compress=True) -> dict:
+    """Jedan snimak kao `inline_data`, sazet ako ffmpeg postoji."""
+    sazeto = flac.encode(pcm, sample_rate) if compress else None
+    zvuk = sazeto if sazeto else wav_bytes(pcm, sample_rate)
+    return {"inline_data": {
+        "mime_type": "audio/flac" if sazeto else "audio/wav",
+        "data": base64.b64encode(zvuk).decode(),
+    }}
+
+
 def check(pcm: bytes, sample_rate: int, prepis: str, cfg, timeout=90) -> str:
-    """Vrati ispravljen prepis. Na bilo kakav problem podize PolishError."""
+    """Jedan snimak. Zadrzano zbog ponovnog slanja neuspelih diktata."""
+    return check_batch([(pcm, sample_rate)], prepis, cfg, timeout)
+
+
+def check_batch(delovi, prepis: str, cfg, timeout=180) -> str:
+    """Vrati ispravljen prepis celog diktata. Na problem podize PolishError."""
     key = cfg.get("polish_api_key") or ""
-    if not key or not pcm:
+    if not key or not delovi:
         raise PolishError("Nema API ključa za proveru snimka.")
 
     model = cfg.get("polish_model") or DEFAULT_MODEL
+    compress = bool(cfg.get("compress_audio", True))
     payload = {
         "contents": [{
-            "parts": [
-                {"text": _uputstvo(prepis, cfg)},
-                {"inline_data": {
-                    "mime_type": "audio/wav",
-                    "data": base64.b64encode(wav_bytes(pcm, sample_rate)).decode(),
-                }},
-            ]
+            "parts": [{"text": _uputstvo(prepis, cfg, len(delovi))}]
+            + [_deo(pcm, rate, compress) for pcm, rate in delovi],
         }],
         "generationConfig": {"temperature": 0.0},
     }

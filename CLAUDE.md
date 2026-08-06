@@ -238,6 +238,15 @@ sistemskim uputstvom i bez njega.
 **API ključ nikad ne ide u git.** macOS: `config.json` (ignorisan). Android:
 `SharedPreferences`. Ni u `config.example.json`, ni u poruci commita.
 
+**Provera snimka ide JEDNIM pozivom za ceo diktat.** Po segmentu je trošila 6–9
+poziva na jednu diktiranu poruku (neprekidni režim sa `segment_after_seconds: 0`
+seče na svakoj pauzi), a model je video krhotinu umesto celine. Zvuk se drži u
+memoriji do kraja diktata, pa postoji granica `audio_check_max_seconds` (120s):
+preko nje se više ne čuva — neprekidni režim ume da traje satima. Segmenti se
+pamte **po tiketu**, jer se prepoznaju paralelno pa bi redosled inače bio
+proizvoljan. Otkazan diktat mora da isprazni taj bafer, inače bi model u
+sledećoj proveri „čuo" prethodni diktat.
+
 **Model koji sluša snimak mora da dobije i prvi prepis.** Izmereno (greška po
 reči, tri rečenice, SNR 5 dB): Web Speech 0.30, Gemini sam 0.29, Gemini uz
 prepis **0.17**. Sam model u šumu **halucinira** — vratio je „poslao sam ponovo
@@ -259,6 +268,11 @@ pravilo je jednom dalo nepostojeće `repositorijum`, pa idu zajedno.
 rečju („...sastanak sa kolegama iz kragu") prijavljen sa 0.93, isto koliko i
 tačan. Zato je „šalji samo kad je pouzdanost niska" podrazumevano isključeno —
 štedi podatke, ali ne hvata greške. Ne gradi logiku koja veruje tom broju.
+
+**FLAC na Mac-u ide preko `ffmpeg`-a, ako ga ima.** Python nema ugrađen enkoder,
+a dodavati zavisnost zbog uštede nije vredno. Mereno: 132 KB → 84 KB (36% manje),
+isti prepis i ista pouzdanost. Bez `ffmpeg`-a se šalje PCM kao i pre — ušteda ne
+sme da obori diktat.
 
 **Zvuk se modelu šalje u poznatom formatu.** `inline_data` prima `audio/wav` i
 `audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera

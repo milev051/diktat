@@ -19,6 +19,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import flac
+
 ENDPOINT = "https://www.google.com/speech-api/v2/recognize"
 DEFAULT_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 
@@ -65,6 +67,7 @@ def recognize_full(
     timeout=30,
     profanity_filter=False,
     retries=1,
+    compress=True,
 ):
     """Kao `recognize`, ali vraca i pouzdanost — (tekst, 0.0-1.0).
 
@@ -76,7 +79,9 @@ def recognize_full(
 
     for attempt in range(retries + 1):
         try:
-            return _request(pcm, language, sample_rate, key, timeout, profanity_filter)
+            return _request(
+                pcm, language, sample_rate, key, timeout, profanity_filter, compress
+            )
         except WebSttError as exc:
             if attempt >= retries or not exc.retryable:
                 raise
@@ -85,18 +90,23 @@ def recognize_full(
     return "", 0.0
 
 
-def _request(pcm, language, sample_rate, key, timeout, profanity_filter):
+def _request(pcm, language, sample_rate, key, timeout, profanity_filter,
+             compress=True):
+    # FLAC je 36-42% manji, a prepis isti. Ako ffmpeg ne postoji ili zakaze,
+    # salje se sirov PCM — usteda ne sme da obori diktat.
+    telo, tip = pcm, f"audio/l16; rate={sample_rate}"
+    if compress:
+        sazeto = flac.encode(pcm, sample_rate)
+        if sazeto:
+            # Bez `rate=` i sa `audio/flac` endpoint vraca 400 — iskljucivo ovako.
+            telo, tip = sazeto, f"audio/x-flac; rate={sample_rate}"
     url = (
         f"{ENDPOINT}?client=chromium"
         f"&lang={urllib.parse.quote(language)}"
         f"&key={key or DEFAULT_KEY}"
         f"&pFilter={1 if profanity_filter else 0}"
     )
-    request = urllib.request.Request(
-        url,
-        data=pcm,
-        headers={"Content-Type": f"audio/l16; rate={sample_rate}"},
-    )
+    request = urllib.request.Request(url, data=telo, headers={"Content-Type": tip})
 
     try:
         raw = urllib.request.urlopen(request, timeout=timeout).read()

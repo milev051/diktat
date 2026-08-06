@@ -159,7 +159,10 @@ Polje **Pojmovi koje često izgovaram** ide modelu uz snimak: skraćenice i stra
 nazivi su najslabija tačka endpointa („AI" ume da postane „pa"). Izmereno na pet
 rečenica: greška po reči 0.197 → **0.080**, bez ijedne greške 1/5 → **4/5**.
 
-Zvuk ide kao FLAC u base64 — drugi put, pa se broji u potrošnju. Podstavka
+Ceo diktat ide **jednim pozivom** sa svim segmentima kao delovima — provera po
+segmentu je trošila 6–9 poziva na jednu poruku. Zato tekst tada stiže tek na
+kraju diktata, a ne deo po deo. Zvuk ide kao FLAC u base64 — drugi put, pa se
+broji u potrošnju. Podstavka
 *…samo kad je pouzdanost niska* to smanjuje, ali propušta greške: endpoint
 prijavi 0.93 i za rečenicu sa odsečenom rečju.
 

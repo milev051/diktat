@@ -53,6 +53,10 @@ class DictationService : Service() {
     private val buffered = HashMap<Int, String>()
     private val pending = java.util.concurrent.atomic.AtomicInteger(0)
     private val formalParts = mutableListOf<String>()
+    // Zvuk segmenata za grupnu proveru; kljuc je ticket, da redosled ostane
+    // hronoloski i kad se segmenti prepoznaju paralelno.
+    private val audioParts = sortedMapOf<Int, ByteArray>()
+    private var audioSeconds = 0.0
     @Volatile private var polishing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -114,6 +118,7 @@ class DictationService : Service() {
 
         val pcm = recorder?.stop() ?: ByteArray(0)
         recorder = null
+        keepAudio(0, pcm)
         thread { recognizeAndDeliver(pcm, last = true) }
     }
 
@@ -162,25 +167,46 @@ class DictationService : Service() {
             return
         }
         val myTicket = nextTicket++
+        keepAudio(myTicket, pcm)
         pending.incrementAndGet()
         thread { recognizeAndDeliver(pcm, last = last, ticket = myTicket) }
+    }
+
+    /**
+     * Sacuvaj zvuk segmenta za grupnu proveru na kraju diktata.
+     *
+     * Ceo diktat ide modelu jednim pozivom: provera po segmentu je trosila
+     * 6-9 poziva na jednu diktiranu poruku, a model je video krhotinu umesto
+     * celine. Granica postoji jer neprekidan rezim ume da traje satima.
+     */
+    private fun keepAudio(ticket: Int, pcm: ByteArray) {
+        if (pcm.isEmpty() || !Listen.enabled(cfg)) return
+        val sek = pcm.size / 2.0 / cfg.sampleRate
+        synchronized(audioParts) {
+            if (audioSeconds + sek > cfg.audioCheckMaxSeconds) return
+            audioParts[ticket] = pcm
+            audioSeconds += sek
+        }
+    }
+
+    private fun takeAudio(): List<ByteArray> = synchronized(audioParts) {
+        val delovi = audioParts.values.toList()
+        audioParts.clear()
+        audioSeconds = 0.0
+        delovi
     }
 
     private fun recognizeAndDeliver(pcm: ByteArray, last: Boolean, ticket: Int = 0) {
         var text = ""
         var problem: String? = null
         try {
-            var sirov = WebStt.recognize(pcm, cfg)
-            if (sirov.isNotBlank() && Listen.shouldCheck(cfg, WebStt.lastConfidence)) {
-                // Drugo misljenje o snimku; na svaki otkaz ostaje prvi prepis —
-                // dodatna provera ne sme da obori diktat.
-                sirov = runCatching { Listen.check(pcm, sirov, cfg).also { cfg.countPolish() } }
-                    .getOrDefault(sirov)
-            }
+            val sirov = WebStt.recognize(pcm, cfg)
             // Kad model sredjuje tekst, dobija ga nedirnutog: skracenice i
             // skidanje kvacica mu otezavaju citanje. Kad NE sredjuje (samo
             // skracuje ili dodaje emotikon), nasa pravila moraju da odrade svoje.
-            text = if (formal() && cfg.polishTidy) sirov.trim()
+            // Kad model sredjuje tekst ili slusa snimak, dobija ga nedirnutog;
+            // pravila se tada primenjuju na kraju, nad ispravljenim tekstom.
+            text = if (batch() || (formal() && cfg.polishTidy)) sirov.trim()
             else TextPolish.apply(sirov, cfg)
         } catch (exc: Exception) {
             problem = exc.message ?: "greška u prepoznavanju"
@@ -204,13 +230,13 @@ class DictationService : Service() {
             expected++
             pending.decrementAndGet()
             if (ready.isNotBlank()) {
-                if (formal()) synchronized(formalParts) { formalParts.add(ready.trim()) }
+                if (deferred()) synchronized(formalParts) { formalParts.add(ready.trim()) }
                 else insertNow(ready)
             }
         }
         if (last) {
             isRecording = false
-            if (formal() && pending.get() == 0) startPolish()
+            if (deferred() && pending.get() == 0) startPolish()
             else handler.post { finishSession() }
         }
     }
@@ -218,6 +244,12 @@ class DictationService : Service() {
     // Ukljucena obrada bez ijednog alata nema sta da posalje, pa se tekst upisuje
     // odmah kao i inace — bez toga bi diktat visio na praznom pozivu.
     private fun formal() = cfg.polish && Polish.available(cfg) && Polish.toolCount(cfg) > 0
+
+    /** Ceka li se kraj diktata zbog provere snimka. */
+    private fun batch() = Listen.enabled(cfg)
+
+    /** Ceka li se kraj diktata uopste — zbog modela ili zbog provere. */
+    private fun deferred() = formal() || batch()
 
     /** Ceo diktat ide modelu jednim pozivom, pa tek onda u polje. */
     private fun startPolish() {
@@ -227,6 +259,9 @@ class DictationService : Service() {
             t
         }
         if (tekst.isBlank()) {
+            // Otkazan ili prazan diktat: zvuk mora da ode, inace bi usao u
+            // sledecu proveru i model bi "cuo" prosli diktat.
+            takeAudio()
             handler.post { finishSession() }
             return
         }
@@ -234,8 +269,25 @@ class DictationService : Service() {
         // Korisnik mora da zna da je otislo modelu i da se ceka odgovor.
         handler.post { updatePill(elapsed(), busy = true) }
         thread {
+            var polazni = tekst
+            if (batch()) {
+                val delovi = takeAudio()
+                if (delovi.isNotEmpty()) {
+                    polazni = runCatching {
+                        Listen.check(delovi, tekst, cfg).also { cfg.countPolish() }
+                    }.getOrDefault(tekst)
+                }
+            }
+            if (!formal()) {
+                // Tekst je cekao proveru pa je jos sirov — pravila tek sada.
+                val konacan = TextPolish.applyBlocks(polazni, cfg)
+                polishing = false
+                insertNow(if (cfg.trailingSpace) "$konacan " else konacan)
+                handler.post { finishSession() }
+                return@thread
+            }
             val doteran = runCatching {
-                var izlaz = Polish.polish(tekst, cfg).also { cfg.countPolish() }
+                var izlaz = Polish.polish(polazni, cfg).also { cfg.countPolish() }
                 if (cfg.polishEmoji) {
                     // Istorija znakova ide u sledeci zahtev: model nema pamcenje
                     // izmedju poziva, pa bi inace svaki put posegnuo za istima.
@@ -249,7 +301,7 @@ class DictationService : Service() {
             }.getOrElse { exc ->
                 // Nedoteran tekst je bolji nego nikakav — model je dodatak.
                 handler.post { toast(exc.message ?: "doterivanje nije uspelo") }
-                tekst
+                polazni
             }
             polishing = false
             val konacan = if (cfg.trailingSpace) "$doteran " else doteran

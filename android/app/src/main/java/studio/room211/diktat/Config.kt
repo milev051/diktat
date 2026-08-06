@@ -137,6 +137,9 @@ class Config(context: Context) {
             ?: Listen.POJMOVI_PODRAZUMEVANO
         set(v) = prefs.edit().putString("vocabulary", v).apply()
 
+    /** Koliko zvuka najvise cuvamo za grupnu proveru na kraju diktata. */
+    val audioCheckMaxSeconds = 120
+
     /** Model slusa snimak i ispravlja prepis. */
     var audioCheck: Boolean
         get() = prefs.getBoolean("audio_check", false)

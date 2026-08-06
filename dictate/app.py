@@ -90,6 +90,11 @@ class DictateApp(rumps.App):
         self._history_dirty = True
         self._formal_lock = threading.Lock()
         self._formal_parts: list[str] = []
+        # Zvuk segmenata za grupnu proveru; kljuc je ticket, da redosled ostane
+        # hronoloski i kad se segmenti prepoznaju paralelno.
+        self._audio_lock = threading.Lock()
+        self._audio_parts: dict[int, bytes] = {}
+        self._audio_seconds = 0.0
         self._polishing = False
 
         self._build_menu()
@@ -551,27 +556,53 @@ class DictateApp(rumps.App):
         )
         if not text:
             return text
-        if listen.should_check(self.cfg, conf):
-            text = self._slusaj(pcm, text, conf)
-        if self._formal() and polish.tidy_on(self.cfg):
-            # Kad model sredjuje tekst, dobija ga kakav jeste: skracenice i
-            # skidanje kvacica bi mu otezali citanje, a interpunkciju ionako on
-            # postavlja. Kad NE sredjuje (samo skracuje ili dodaje emotikon),
-            # nasa pravila moraju da odrade svoje — inace bi izostala.
+        if self._batch() or (self._formal() and polish.tidy_on(self.cfg)):
+            # Kad model sredjuje tekst ili slusa snimak, dobija ga kakav jeste:
+            # skracenice i skidanje kvacica bi mu otezali citanje. Pravila se
+            # tada primenjuju na kraju, nad ispravljenim tekstom.
             return text
         return self._apply_rules(text)
 
-    def _slusaj(self, pcm: bytes, text: str, conf: float) -> str:
-        """Drugo misljenje o snimku; na svaki otkaz ostaje prvi prepis."""
+    def _keep_audio(self, ticket: int, pcm: bytes):
+        """Sacuvaj zvuk segmenta za grupnu proveru na kraju diktata.
+
+        Ceo diktat ide modelu jednim pozivom: provera po segmentu je trosila
+        6-9 poziva na jednu diktiranu poruku, a model je video krhotinu umesto
+        celine. Granica postoji jer neprekidan rezim ume da traje satima —
+        preko nje se zvuk vise ne cuva, a tekst ostaje onakav kakav je.
+        """
+        if not pcm or not listen.enabled(self.cfg):
+            return
+        granica = float(self.cfg.get("audio_check_max_seconds", 120))
+        with self._audio_lock:
+            if self._audio_seconds + self._seconds(pcm) > granica:
+                return
+            self._audio_parts[ticket] = pcm
+            self._audio_seconds += self._seconds(pcm)
+
+    def _take_audio(self):
+        """Zvuk celog diktata, hronoloski."""
+        with self._audio_lock:
+            delovi = [self._audio_parts[k] for k in sorted(self._audio_parts)]
+            self._audio_parts = {}
+            self._audio_seconds = 0.0
+        rate = self.cfg["sample_rate"]
+        return [(pcm, rate) for pcm in delovi]
+
+    def _slusaj(self, tekst: str) -> str:
+        """Drugo misljenje o celom diktatu; na otkaz ostaje prvi prepis."""
+        delovi = self._take_audio()
+        if not delovi:
+            return tekst
         try:
-            ispravljen = listen.check(pcm, self.cfg["sample_rate"], text, self.cfg)
+            ispravljen = listen.check_batch(delovi, tekst, self.cfg)
             self._count_polish()
-            if ispravljen != text:
-                print(f"[diktat] AI slusao (pouzdanost {conf:.2f}): {text!r} -> {ispravljen!r}")
+            if ispravljen != tekst:
+                print(f"[diktat] AI slušao {len(delovi)} segm.: {tekst!r} -> {ispravljen!r}")
             return ispravljen
         except Exception as exc:  # noqa: BLE001
             print(f"[diktat] provera snimka nije uspela: {exc}")
-            return text
+            return tekst
 
     def _apply_rules(self, text: str) -> str:
         """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
@@ -610,6 +641,7 @@ class DictateApp(rumps.App):
             if recorder.cancelled:
                 return ""
             self._settle_phase()
+            self._keep_audio(recorder.ticket, pcm)
             text = self._recognize_or_keep(pcm)
             if session is not None:
                 session.segment(session.next_index(), pcm, text, kind="ceo")
@@ -652,6 +684,7 @@ class DictateApp(rumps.App):
             return ""
         self._settle_phase()
         tail = b"".join(frames)
+        self._keep_audio(recorder.ticket, tail)
         text = self._recognize_or_keep(tail)
         if not text and self._seconds(tail) > 0.4:
             print(f"[diktat] rep od {self._seconds(tail):.1f}s nije prepoznat")
@@ -667,6 +700,7 @@ class DictateApp(rumps.App):
     def _ship_segment(self, pcm: bytes, session=None):
         """Posalji odsecen deo na prepoznavanje, a snimanje ide dalje."""
         ticket = self._next_ticket()
+        self._keep_audio(ticket, pcm)
         index = session.next_index() if session is not None else 0
 
         def work():
@@ -704,7 +738,7 @@ class DictateApp(rumps.App):
                 with self._count_lock:
                     if self._pending > 0:
                         self._pending -= 1
-                if ready and self._formal():
+                if ready and self._deferred():
                     # Ceka se ceo diktat: model treba da vidi pun kontekst.
                     with self._formal_lock:
                         self._formal_parts.append(ready.strip())
@@ -743,7 +777,7 @@ class DictateApp(rumps.App):
 
     def _maybe_polish(self):
         """Kad je ceo diktat prepoznat, posalji ga modelu pa tek onda zalepi."""
-        if not self._formal():
+        if not self._deferred():
             return
         with self._session_lock:
             if self._recorder is not None:
@@ -753,6 +787,9 @@ class DictateApp(rumps.App):
                 return                      # jos se neki segment prepoznaje
         with self._formal_lock:
             if not self._formal_parts:
+                # Otkazan ili prazan diktat: zvuk mora da ode, inace bi usao u
+                # sledecu proveru i model bi "cuo" prosli diktat.
+                self._take_audio()
                 return
             tekst = " ".join(p for p in self._formal_parts if p).strip()
             self._formal_parts = []
@@ -763,6 +800,26 @@ class DictateApp(rumps.App):
         threading.Thread(target=self._do_polish, args=(tekst,), daemon=True).start()
 
     def _do_polish(self, tekst: str):
+        if self._batch():
+            tekst = self._slusaj(tekst)
+        # Tekst je cekao kraj diktata pa je jos sirov: ako model ne doteruje,
+        # pravila moraju sada da odrade svoje.
+        doteran = self._doteraj(tekst) if self._formal() else self._rules_over_paragraphs(tekst)
+        self._polishing = False
+        if self.cfg.get("trailing_space", True):
+            doteran += " "
+        self._remember(doteran)
+        try:
+            insert.insert(
+                doteran,
+                method=self.cfg.get("insert_method", "paste"),
+                restore_clipboard=self.cfg.get("restore_clipboard", True),
+            )
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        self._settle_phase()
+
+    def _doteraj(self, tekst: str) -> str:
         try:
             doteran = polish.polish(tekst, self.cfg)
             self._count_polish()
@@ -777,23 +834,11 @@ class DictateApp(rumps.App):
                 # prepisuje recenice — skracivanje ih vraca pravopisno uredne.
                 # Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
                 doteran = self._rules_over_paragraphs(doteran)
+            return doteran
         except Exception as exc:  # noqa: BLE001
             # Nedoteran tekst je bolji nego nikakav — model je dodatak, ne uslov.
             print(f"[diktat] doterivanje nije uspelo: {exc}")
-            doteran = tekst
-        self._polishing = False
-        if self.cfg.get("trailing_space", True):
-            doteran += " "
-        self._remember(doteran)
-        try:
-            insert.insert(
-                doteran,
-                method=self.cfg.get("insert_method", "paste"),
-                restore_clipboard=self.cfg.get("restore_clipboard", True),
-            )
-        except Exception:  # noqa: BLE001
-            traceback.print_exc()
-        self._settle_phase()
+            return tekst
 
     # ----------------------------------------------------------- timer
 
@@ -1034,6 +1079,14 @@ class DictateApp(rumps.App):
         self.cfg["polish_level"] = nivo
         config.save(self.cfg)
         self._sync_menu_marks()
+
+    def _batch(self) -> bool:
+        """Ceka li se kraj diktata zbog provere snimka."""
+        return listen.enabled(self.cfg)
+
+    def _deferred(self) -> bool:
+        """Ceka li se kraj diktata uopste — zbog modela ili zbog provere."""
+        return self._formal() or self._batch()
 
     def _formal(self) -> bool:
         """Ceka li se ceo diktat zbog modela.
