@@ -91,7 +91,8 @@ grupu — inače tiho pokvari brojeve.
 | `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
 | Prekidač koji prikazuje `profanity_filter` kakav jeste | jedini u aplikaciji stoji isključen, deluje kao greška | prikaži obrnuto („Ne maskiraj…"), upis `!it` |
-| `node.text` kao „postojeći tekst" polja | prazno polje vraća svoj **hint**, pa se natpis („Ovde probaj diktat") upiše ispred izdiktiranog | proveri `isShowingHintText`, uz poređenje sa `hintText` |
+| `node.text` kao „postojeći tekst" polja | prazno polje vraća svoj **natpis** — „Message" u ćaskanju — pa se on upiše ispred izdiktiranog | tri signala: prazno / `isShowingHintText` / jednako `hintText`; kursor (`textSelection >= 0`) potvrđuje stvaran sadržaj |
+| …a kad nijedan signal ne presudi | pogrešna procena ili upiše natpis ispred, ili **obriše** korisnikov tekst | tada se `SET_TEXT` ne koristi uopšte — pada na `PASTE`, koji ne može da promaši |
 | Rep u običnom režimu isporučen sa tiketom 0 | raniji diktat u istom servisu je pomerio `expected`, pa nula zauvek čeka red — pilula ostaje sa ciframa | pusti ga kroz `ship()`, koji dodeljuje pravi tiket |
 | PASTE kao prvi način upisa na Androidu | Android 13+ prikaže sistemsko „kopirano" pri svakom `setPrimaryClip`, posle svakog diktata | `ACTION_SET_TEXT` prvi (ne dira clipboard), PASTE tek kao rezerva |
 | Zastavica „poslednji segment" obrađena po DOLASKU poruke | rep je kratak pa se prepozna pre dužeg segmenta ispred sebe — obrada ne krene, pilula ostane sa ciframa, tekst se nikad ne upiše | zastavica važi za segment koji **izlazi iz reda**, ne za onaj koji stigne |

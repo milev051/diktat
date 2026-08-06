@@ -75,7 +75,11 @@ class InsertService : AccessibilityService() {
         repeat(TRIES) {
             val node = findEditable()
             if (node != null) {
-                if (setText(node, text)) {
+                // Kad se ne zna da li je ono u polju sadrzaj ili natpis, SET_TEXT
+                // se ne koristi: pogresna procena ili upisuje natpis ispred, ili
+                // brise korisnikov tekst. PASTE u tom slucaju ne moze da promasi.
+                val (vrsta, postojece) = sadrzaj(node)
+                if (vrsta != Sadrzaj.NEJASNO && setText(node, postojece, text)) {
                     runCatching { @Suppress("DEPRECATION") node.recycle() }
                     return true
                 }
@@ -115,25 +119,34 @@ class InsertService : AccessibilityService() {
             node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
         }.getOrDefault(false)
 
+    /** Sta `node.text` zapravo znaci na ovom polju. */
+    private enum class Sadrzaj { PRAZNO, TEKST, NEJASNO }
+
     /**
-     * Postojeci tekst polja, ili prazno.
+     * `node.text` na PRAZNOM polju vraca njegov NATPIS — „Message" u caskanju,
+     * „Ovde probaj diktat" u nasoj probi — pa bi nadovezivanje upisalo taj
+     * natpis ispred izdiktiranog teksta.
      *
-     * `node.text` na PRAZNOM polju vraca njegov hint ("Ovde probaj diktat"), pa
-     * bi nadovezivanje upisalo taj natpis ispred izdiktiranog teksta. Zato se
-     * gleda `isShowingHintText`, uz poredjenje sa `hintText` kao rezervu za
-     * uredjaje koji tu zastavicu ne postavljaju.
+     * Nijedan pojedinacni signal nije dovoljan: `isShowingHintText` mnoge
+     * aplikacije ne postavljaju, `hintText` ume da bude prazan. Zato:
+     *   - prazan tekst ili prijavljen hint  -> PRAZNO
+     *   - postoji kursor (selekcija >= 0)   -> TEKST, sadrzaj je stvaran
+     *   - inace                             -> NEJASNO, i tu se NE nagadja
      */
-    private fun postojeci(node: AccessibilityNodeInfo): String {
-        val tekst = node.text?.toString() ?: return ""
-        if (node.isShowingHintText) return ""
+    private fun sadrzaj(node: AccessibilityNodeInfo): Pair<Sadrzaj, String> {
+        val tekst = node.text?.toString().orEmpty()
+        if (tekst.isEmpty() || node.isShowingHintText) return Sadrzaj.PRAZNO to ""
         val hint = runCatching { node.hintText?.toString() }.getOrNull()
-        if (!hint.isNullOrEmpty() && hint == tekst) return ""
-        return tekst
+        if (!hint.isNullOrEmpty() && hint == tekst) return Sadrzaj.PRAZNO to ""
+        if (node.textSelectionStart >= 0 || node.textSelectionEnd >= 0) {
+            return Sadrzaj.TEKST to tekst
+        }
+        return Sadrzaj.NEJASNO to tekst
     }
 
-    private fun setText(node: AccessibilityNodeInfo, text: String): Boolean =
+    private fun setText(node: AccessibilityNodeInfo, postojece: String, text: String): Boolean =
         runCatching {
-            val merged = postojeci(node) + text
+            val merged = postojece + text
             val args = Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, merged
