@@ -119,18 +119,10 @@ class DictateApp(rumps.App):
     # ------------------------------------------------------------------ UI
 
     def _build_menu(self):
-        self.item_status = rumps.MenuItem("Spremno")
-        self.item_status.set_callback(None)
-
         self.history_menu = rumps.MenuItem("Istorija")
-        self.item_pending = rumps.MenuItem(
-            "Ponovi neuspele", callback=self._retry_pending
-        )
-        self.item_debug = rumps.MenuItem(
-            "Snimaj za debug", callback=self._toggle_debug
-        )
+        # Osvezavanje je deo izbora mikrofona, ne zasebna stavka.
         self.item_refresh = rumps.MenuItem(
-            "Osveži audio uređaje", callback=self._refresh_audio
+            "Osveži listu", callback=self._refresh_audio
         )
         self.mic_menu = rumps.MenuItem("Mikrofon")
 
@@ -164,16 +156,7 @@ class DictateApp(rumps.App):
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
         )
-        self.item_thousands = rumps.MenuItem(
-            "Spoji hiljade (5.000 → 5000)",
-            callback=self._make_polish_toggle("join_thousands", True),
-        )
-        self.item_space = rumps.MenuItem(
-            "Razmak na kraju",
-            callback=self._make_polish_toggle("trailing_space", True),
-        )
-        for stavka in (self.item_ascii, self.item_thousands, self.item_space):
-            tekst_menu.add(stavka)
+        tekst_menu.add(self.item_ascii)
 
         # Sve sto model radi je na jednom mestu, ali u dva bloka: prepoznavanje
         # (sporo, salje zvuk) i obrada teksta (brzo, salje samo tekst).
@@ -195,20 +178,6 @@ class DictateApp(rumps.App):
             "Skrati i pojednostavi",
             callback=self._make_polish_toggle("polish_concise", False),
         )
-        # Emotikoni su izbor od pet stanja, ne prekidac — gustina se bira istim
-        # potezom kojim se ukljucuju.
-        self.emoji_menu = rumps.MenuItem("Emotikoni")
-        self.emoji_items = {}
-        for kljuc, naziv in (
-            (None, "Isključeno"),
-            ("paragraph", "Na kraju pasusa"),
-            ("sentence", "Na kraju rečenice"),
-            ("sentence3", "Dva-tri po rečenici"),
-            ("dense", "Na svakih par reči"),
-        ):
-            stavka = rumps.MenuItem(naziv, callback=self._make_emoji_setter(kljuc))
-            self.emoji_items[kljuc] = stavka
-            self.emoji_menu.add(stavka)
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
@@ -216,20 +185,13 @@ class DictateApp(rumps.App):
             "Jezik izlaza…", callback=self._set_output_language
         )
 
-        # Zaglavlja bez callback-a: sluze samo da se vidi sta cemu pripada.
-        zaglavlje_prepoznavanje = rumps.MenuItem("Prepoznavanje govora")
-        zaglavlje_obrada = rumps.MenuItem("Obrada teksta")
         for stavka in (
             self.item_polish,
             rumps.separator,
-            zaglavlje_prepoznavanje,
             self.item_listen,
-            rumps.separator,
-            zaglavlje_obrada,
             self.item_polish_correct,
             self.item_polish_para,
             self.item_polish_concise,
-            self.emoji_menu,
             self.item_language_out,
             rumps.separator,
             self.item_polish_count,
@@ -237,36 +199,16 @@ class DictateApp(rumps.App):
             ai_menu.add(stavka)
         for stavka in (self.item_listen, self.item_polish_correct,
                        self.item_polish_para, self.item_polish_concise,
-                       self.emoji_menu, self.item_language_out):
+                       self.item_language_out):
             stavka._menuitem.setIndentationLevel_(1)
 
-        lang_menu = rumps.MenuItem("Jezik")
-        self.lang_items = {}
-        for code, label in (
-            ("sr-RS", "Srpski"),
-            ("en-US", "Engleski"),
-            ("hr-HR", "Hrvatski"),
-        ):
-            item = rumps.MenuItem(label, callback=self._make_lang_setter(code))
-            self.lang_items[code] = item
-            lang_menu.add(item)
-
         self.menu = [
-            self.item_status,
-            None,
             self.history_menu,
-            self.item_pending,
             None,
             self.mic_menu,
-            self.item_refresh,
-            None,
             snimanje_menu,
             tekst_menu,
             ai_menu,
-            lang_menu,
-            None,
-            self.item_debug,
-            rumps.MenuItem("Otvori config.json", callback=self._open_config),
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
         ]
@@ -279,12 +221,10 @@ class DictateApp(rumps.App):
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_concise, self._make_polish_toggle("polish_concise", False)),
             (self.item_language_out, self._set_output_language),
-            *[(v, self._make_emoji_setter(k)) for k, v in self.emoji_items.items()],
         ]
 
         self._rebuild_mic_menu()
         self._rebuild_history_menu()
-        self._sync_pending()
         self._sync_menu_marks()
 
     def _rebuild_mic_menu(self):
@@ -324,8 +264,6 @@ class DictateApp(rumps.App):
         for kljuc, stavka in self.style_items.items():
             stavka.state = 1 if kljuc == stil else 0
         self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
-        self.item_thousands.state = 1 if self.cfg.get("join_thousands", True) else 0
-        self.item_space.state = 1 if self.cfg.get("trailing_space", True) else 0
 
         ima_kljuc = polish.available(self.cfg)
         radi = bool(self.cfg.get("polish", False)) and ima_kljuc
@@ -339,13 +277,6 @@ class DictateApp(rumps.App):
         )
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_concise.state = 1 if self.cfg.get("polish_concise", False) else 0
-
-        gustina = polish.emoji_rate(self.cfg) if self.cfg.get("polish_emoji", False) else None
-        for kljuc, stavka in self.emoji_items.items():
-            stavka.state = 1 if kljuc == gustina else 0
-        self.emoji_menu.title = "Emotikoni: " + (
-            self.emoji_items[gustina].title.lower() if gustina else "isključeno"
-        )
 
         # Alat se ne bira dok je glavni prekidac ugasen. Sivi se skidanjem
         # callback-a, ne sa setEnabled_: NSMenu sam ukljucuje stavke koje imaju
@@ -366,9 +297,6 @@ class DictateApp(rumps.App):
             else "Pravopisno sređeno — traži uključen AI"
         )
 
-        current = self.cfg.get("language", "sr-RS")
-        for code, item in self.lang_items.items():
-            item.state = 1 if code == current else 0
 
     # ------------------------------------------------------- preflight
 
@@ -568,9 +496,8 @@ class DictateApp(rumps.App):
         self._deliver(ticket, self._finish(text), recorder.session)
 
     def _finish(self, text: str) -> str:
-        if self.cfg.get("trailing_space", True):
-            text += " "
-        return text
+        # Razmak na kraju je uvek: bez njega se recenice slepe pri nadovezivanju.
+        return text + " "
 
     def _recognize_or_keep(self, pcm: bytes) -> str:
         """Ako prepoznavanje padne, snimak ide na disk pa moze da se ponovi."""
@@ -650,8 +577,7 @@ class DictateApp(rumps.App):
 
     def _apply_rules(self, text: str) -> str:
         """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
-        if self.cfg.get("join_thousands", True):
-            text = webstt.join_thousands(text)
+        text = webstt.join_thousands(text)
         # „Kako sam izgovorio" znaci mala slova i bez interpunkcije; „sirovo"
         # ostavlja ono sto Google vrati. „Pravopisno sredjeno" ovde nema sta da
         # radi — to je posao modela, pa tekst prolazi nedirnut.
@@ -672,8 +598,7 @@ class DictateApp(rumps.App):
         posao koji je model dobio, pa bi jedno gasilo drugo. Ostaje ono sto se
         sa njegovim oblikovanjem ne sudara.
         """
-        if self.cfg.get("join_thousands", True):
-            text = webstt.join_thousands(text)
+        text = webstt.join_thousands(text)
         if self.cfg.get("ascii_diacritics", False):
             text = webstt.to_ascii(text)
         return text
@@ -886,8 +811,7 @@ class DictateApp(rumps.App):
         with self._count_lock:
             self._polishing_count = max(0, self._polishing_count - 1)
             self._polishing = self._polishing_count > 0
-        if self.cfg.get("trailing_space", True):
-            doteran += " "
+        doteran += " "
         self._remember(doteran)
         try:
             insert.insert(
@@ -903,12 +827,6 @@ class DictateApp(rumps.App):
         try:
             doteran = polish.polish(tekst, self.cfg, vec_sredjeno=vec_sredjeno)
             self._count_polish()
-            if self.cfg.get("polish_emoji", False):
-                doteran = polish.bez_ponavljanja(doteran)
-                # Istorija znakova ide u sledeci zahtev: model nema pamcenje
-                # izmedju poziva, pa bi inace svaki put posegnuo za istima.
-                polish.zapamti_emoji(doteran, self.cfg)
-                config.save(self.cfg)
             if polish.tidy_on(self.cfg) or vec_sredjeno:
                 # Uz sredjivanje ostaju samo podesavanja koja se sa njim ne
                 # sudaraju — tekst je modelu isao nedirnut, pa bi inace izostala.
@@ -938,7 +856,6 @@ class DictateApp(rumps.App):
         if self._history_dirty:
             self._history_dirty = False
             self._rebuild_history_menu()
-            self._sync_pending()
 
         phase, message, dirty = self.state.snapshot()
 
@@ -955,7 +872,6 @@ class DictateApp(rumps.App):
             clock = self._clock_text()
             self._last_clock = clock   # ostaje i dok se posle obradjuje
             self._set_menubar(clock, self._title_color())
-            self.item_status.title = "Snimanje…"
             if self.cfg.get("show_overlay", True):
                 if not self.hud.visible:
                     self.hud.show(clock, mono=True)
@@ -973,22 +889,12 @@ class DictateApp(rumps.App):
         if phase == "polishing":
             # Plavo + "AI": korisnik mora da zna da je otislo modelu i da se ceka.
             self._set_menubar("AI", "polishing")
-            self.item_status.title = "Doterujem tekst…"
         elif phase == "thinking":
             # Cifre ostaju, samo pozute — obrada traje par sekundi i tako se
             # vidi da jos nesto radi, umesto da naslov skoci na ikonicu.
             self._set_menubar(self._last_clock or ICON["idle"], "busy")
         else:
             self._set_menubar(ICON.get(phase, ICON["idle"]))
-
-        if phase == "error":
-            self.item_status.title = f"Greška: {message[:60]}"
-        elif phase == "recording":
-            self.item_status.title = "Snimanje…"
-        elif phase == "thinking":
-            self.item_status.title = "Obrada…"
-        else:
-            self.item_status.title = "Spremno"
 
         if not self.cfg.get("show_overlay", True):
             return
@@ -1061,35 +967,6 @@ class DictateApp(rumps.App):
 
     # -------------------------------------------------- menu callbacks
 
-    def _retry_pending(self, _):
-        """Posalji ponovo sve sto ranije nije proslo, po redu snimanja."""
-        files = self._pending_store.list()
-        if not files:
-            return
-        self.item_status.title = f"Ponavljam {len(files)}…"
-        threading.Thread(target=self._do_retry, args=(files,), daemon=True).start()
-
-    def _do_retry(self, files):
-        sesija = self._nova_sesija()
-        for path in files:
-            try:
-                text = self._recognize(self._pending_store.load(path))
-            except Exception as exc:  # noqa: BLE001
-                self.state.set(phase="error", message=_short_error(exc))
-                return
-            self._pending_store.remove(path)
-            if text:
-                self._deliver(self._next_ticket(sesija), self._finish(text), sesija)
-        self._history_dirty = True
-        self._settle_phase()
-
-    def _sync_pending(self):
-        count = len(self._pending_store.list())
-        self.item_pending.title = (
-            f"Ponovi neuspele ({count})" if count else "Ponovi neuspele"
-        )
-        self.item_pending.set_callback(self._retry_pending if count else None)
-
     def _remember(self, text: str):
         """Zapamti ubacen tekst. Zove se iz radne niti, pa meni ne dira —
         samo podigne zastavicu koju _tick pokupi na glavnoj niti."""
@@ -1143,7 +1020,7 @@ class DictateApp(rumps.App):
 
     def _toggle_listen(self, _):
         if not polish.available(self.cfg):
-            self.item_status.title = "Upiši polish_api_key u config.json"
+            self.state.set(phase="error", message="Upiši polish_api_key u config.json")
             return
         self.cfg["audio_check"] = not bool(self.cfg.get("audio_check", False))
         config.save(self.cfg)
@@ -1151,12 +1028,12 @@ class DictateApp(rumps.App):
 
     def _toggle_polish(self, _):
         if not polish.available(self.cfg):
-            self.item_status.title = "Upiši polish_api_key u config.json"
+            self.state.set(phase="error", message="Upiši polish_api_key u config.json")
             return
         self.cfg["polish"] = not bool(self.cfg.get("polish", False))
         config.save(self.cfg)
         if self.cfg["polish"] and not polish.tools(self.cfg):
-            self.item_status.title = "Izaberi bar jedan alat ispod"
+            self.state.set(phase="error", message="Izaberi bar jedan alat")
         self._sync_menu_marks()
 
     def _toggle_polish_level(self, _):
@@ -1185,16 +1062,6 @@ class DictateApp(rumps.App):
             and bool(polish.tools(self.cfg))
         )
 
-    def _make_emoji_setter(self, rate):
-        """None gasi emotikone; ostalo ih pali i postavlja gustinu."""
-        def setter(_):
-            self.cfg["polish_emoji"] = rate is not None
-            if rate is not None:
-                self.cfg["polish_emoji_rate"] = rate
-            config.save(self.cfg)
-            self._sync_menu_marks()
-        return setter
-
     def _set_output_language(self, _):
         """Slobodan opis, ne spisak: „pola makedonski pola srpski" je isto vazeci."""
         odgovor = rumps.Window(
@@ -1218,7 +1085,7 @@ class DictateApp(rumps.App):
             if stil == "written" and not (
                 self.cfg.get("polish") and polish.available(self.cfg)
             ):
-                self.item_status.title = "Uključi AI da bi sređivao tekst"
+                self.state.set(phase="error", message="Uključi AI da bi sređivao tekst")
             self._sync_menu_marks()
         return setter
 
@@ -1247,19 +1114,11 @@ class DictateApp(rumps.App):
         config.save(self.cfg)
         self._sync_menu_marks()
 
-    def _make_lang_setter(self, code):
-        def setter(_):
-            self.cfg["language"] = code
-            config.save(self.cfg)
-            self._sync_menu_marks()
-
-        return setter
-
     def _refresh_audio(self, _):
         audio.refresh_devices()
         self._rebuild_mic_menu()
         self.state.set(phase="idle", message="")
-        self.item_status.title = f"Mikrofon: {audio.current_input_name()[:40]}"
+        print(f"[diktat] mikrofon: {audio.current_input_name()}")
 
     def _apply_debug(self, on):
         self._dump = (
@@ -1269,20 +1128,6 @@ class DictateApp(rumps.App):
             if on
             else None
         )
-        self.item_debug.state = 1 if on else 0
-
-    def _toggle_debug(self, _):
-        on = not bool(self.cfg.get("debug", False))
-        self.cfg["debug"] = on
-        config.save(self.cfg)
-        self._apply_debug(on)
-        if on:
-            AppKit.NSWorkspace.sharedWorkspace().openFile_(str(self._dump.dir))
-
-    def _open_config(self, _):
-        if not config.CONFIG_PATH.exists():
-            config.save(self.cfg)
-        AppKit.NSWorkspace.sharedWorkspace().openFile_(str(config.CONFIG_PATH))
 
     def _quit(self, _):
         try:

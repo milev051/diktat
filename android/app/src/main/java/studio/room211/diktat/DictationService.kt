@@ -324,12 +324,6 @@ class DictationService : Service() {
             val doteran = runCatching {
                 var izlaz = Polish.polish(polazni, cfg, sredjeno)
                 if (izlaz !== polazni) cfg.countPolish()
-                if (cfg.polishEmoji) {
-                    // Istorija znakova ide u sledeci zahtev: model nema pamcenje
-                    // izmedju poziva, pa bi inace svaki put posegnuo za istima.
-                    izlaz = Polish.bezPonavljanja(izlaz)
-                    Polish.zapamtiEmoji(izlaz, cfg)
-                }
                 // Kad sredjivanje nije trazeno, model ga svejedno uradi cim
                 // prepisuje recenice — skracivanje ih vraca pravopisno uredne.
                 // Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.

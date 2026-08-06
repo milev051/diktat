@@ -33,10 +33,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cfg: Config
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
-    private lateinit var pendingLine: TextView
     private lateinit var polishLine: TextView
     private lateinit var stilLine: TextView
     private lateinit var probaLine: TextView
+    private var ispravkaRed = mutableListOf<View>()
     private lateinit var previewOut: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,9 +77,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(aiPrepoznavanje())
         root.addView(aiObrada())
         root.addView(tekst())
-        root.addView(jezik())
         root.addView(potrosnja())
-        root.addView(neuspeli())
         root.addView(proba())
 
         val scroll = ScrollView(this).apply {
@@ -107,7 +105,6 @@ class MainActivity : AppCompatActivity() {
             "Pristupačnost nije uključena — tekst će završiti u clipboard-u."
         }
         showTraffic()
-        showPending()
         polishLine.text = "Poziva modelu danas: ${cfg.polishCountToday}"
     }
 
@@ -203,14 +200,12 @@ class MainActivity : AppCompatActivity() {
     private fun aiObrada(): ViewGroup {
         val (card, box) = card(this, "AI — obrada teksta")
         val alati = mutableListOf<View>()
-        val gustinaBox = mutableListOf<View>()
         val correctBox = mutableListOf<View>()
 
         box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
             cfg.polish = it
             setBranchEnabled(alati, it)
-            setBranchEnabled(correctBox, it && cfg.polishTidy)
-            setBranchEnabled(gustinaBox, it && cfg.polishEmoji)
+            setBranchEnabled(correctBox, it)
         })
         box.addView(
             body(
@@ -221,17 +216,19 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
+        // Ispravljanje ima smisla samo uz stil „Sređeno". Ranije je stajalo sivo
+        // i zbunjivalo — sada se prosto ne vidi dok nije na redu.
         val correct = indent(this, switch(this, "Ispravi očigledne greške", cfg.polishCorrect) {
             cfg.polishCorrect = it
         })
+        val correctOpis = indent(this, body(this, "Sređuje reči koje se gramatički ne " +
+            "slažu — \u201Esa kolega\u201C \u2192 \u201Esa kolegom\u201C."))
         alati.add(correct)
         correctBox.add(correct)
+        correctBox.add(correctOpis)
         box.addView(correct)
-        box.addView(
-            indent(this, body(this, "Sređuje reči koje se gramatički ne slažu — " +
-                "\u201Esa kolega\u201C \u2192 \u201Esa kolegom\u201C. Radi uz stil " +
-                "\u201ESređeno\u201C."))
-        )
+        box.addView(correctOpis)
+        ispravkaRed = correctBox
 
         val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
@@ -248,25 +245,6 @@ class MainActivity : AppCompatActivity() {
             indent(this, body(this, "Izbacuje poštapalice i ponavljanja, duge rečenice " +
                 "deli na kraće. Činjenice, brojevi i imena ostaju."))
         )
-
-        val gustina = choice(
-            this,
-            listOf(
-                "paragraph" to "Pasus",
-                "sentence" to "Rečenica",
-                "sentence3" to "2–3",
-                "dense" to "Gusto",
-            ),
-            cfg.polishEmojiRate,
-        ) { cfg.polishEmojiRate = it }
-        val emotikoni = indent(this, switch(this, "Emotikoni", cfg.polishEmoji) {
-            cfg.polishEmoji = it
-            setBranchEnabled(gustinaBox, it && cfg.polish)
-        })
-        alati.add(emotikoni)
-        box.addView(emotikoni)
-        gustinaBox.add(gustina)
-        box.addView(indent(this, gustina))
 
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
@@ -291,9 +269,15 @@ class MainActivity : AppCompatActivity() {
         box.addView(model)
 
         setBranchEnabled(alati, cfg.polish)
-        setBranchEnabled(correctBox, cfg.polish && cfg.polishTidy)
-        setBranchEnabled(gustinaBox, cfg.polish && cfg.polishEmoji)
+        setBranchEnabled(correctBox, cfg.polish)
+        prikaziIspravku()
         return card
+    }
+
+    /** „Ispravi greške" se vidi samo uz stil „Sređeno". */
+    private fun prikaziIspravku() {
+        val vidljivo = if (cfg.polishTidy) View.VISIBLE else View.GONE
+        ispravkaRed.forEach { it.visibility = vidljivo }
     }
 
     private fun tekst(): ViewGroup {
@@ -319,7 +303,7 @@ class MainActivity : AppCompatActivity() {
                     "raw" to "Sirovo",
                 ),
                 cfg.textStyle,
-            ) { cfg.textStyle = it; stilLine.text = stilOpis(it) }
+            ) { cfg.textStyle = it; stilLine.text = stilOpis(it); prikaziIspravku() }
         )
         stilLine = body(this, stilOpis(cfg.textStyle))
         box.addView(stilLine)
@@ -327,10 +311,6 @@ class MainActivity : AppCompatActivity() {
         box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
             cfg.asciiDiacritics = it
         })
-        box.addView(switch(this, "Spoji hiljade (5.000 → 5000)", cfg.joinThousands) {
-            cfg.joinThousands = it
-        })
-        box.addView(switch(this, "Razmak na kraju", cfg.trailingSpace) { cfg.trailingSpace = it })
         // Prekidac je obrnut od podesavanja: ukljucen znaci pFilter=0, sto je i
         // podrazumevano. Da pise "maskiraj", jedini bi stajao iskljucen.
         box.addView(switch(this, "Ne maskiraj psovke zvezdicama", !cfg.profanityFilter) {
@@ -378,24 +358,6 @@ class MainActivity : AppCompatActivity() {
         else -> "Mala slova i bez interpunkcije; brojevi i satnica ostaju celi."
     }
 
-    private fun jezik(): ViewGroup {
-        val (card, box) = card(this, "Jezik")
-        val (layout, _) = field(this, "Kod jezika", cfg.language) {
-            cfg.language = it.trim().ifBlank { "sr-RS" }
-        }
-        box.addView(layout)
-        box.addView(body(this, "sr-RS, en-US, hr-HR…"))
-        return card
-    }
-
-    private fun neuspeli(): ViewGroup {
-        val (card, box) = card(this, "Neuspeli diktati")
-        pendingLine = body(this, "")
-        box.addView(pendingLine)
-        box.addView(button(this, "Pošalji ponovo") { retryPending() })
-        return card
-    }
-
     private fun potrosnja(): ViewGroup {
         val (card, box) = card(this, "Potrošnja podataka")
         trafficLine = body(this, "")
@@ -435,42 +397,6 @@ class MainActivity : AppCompatActivity() {
                     human((sent + received) / count),
                 )
         }
-    }
-
-    private fun showPending() {
-        val n = PendingStore(this).count()
-        pendingLine.text = if (n == 0) {
-            "Nema neuspelih snimaka."
-        } else {
-            "$n snimak(a) nije prepoznato — pošalji ponovo da se ne izgube."
-        }
-    }
-
-    private fun retryPending() {
-        val store = PendingStore(this)
-        val files = store.list()
-        if (files.isEmpty()) return
-        pendingLine.text = "Šaljem ${files.size}…"
-        Thread {
-            var ubaceno = 0
-            for (file in files) {
-                val text = runCatching {
-                    TextPolish.apply(WebStt.recognize(store.load(file), cfg), cfg)
-                }.getOrNull() ?: break
-                store.remove(file)
-                if (text.isNotBlank() && InsertService.insert(text, cfg.restoreClipboard)) {
-                    ubaceno++
-                }
-            }
-            runOnUiThread {
-                showPending()
-                Toast.makeText(
-                    this,
-                    if (ubaceno > 0) "Ubačeno: $ubaceno" else "Tekst je u clipboard-u",
-                    Toast.LENGTH_LONG,
-                ).show()
-            }
-        }.start()
     }
 
     private fun human(bytes: Long): String = when {

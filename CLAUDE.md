@@ -187,22 +187,6 @@ slovima i interpunkcijom. Uputstvo to ne rešava pouzdano, pa presuđuju pravila
 u kodu. Pravila se tada primenjuju **po pasusu**, jer `strip_punctuation`
 skuplja razmake i pojeo bi prazne redove.
 
-**Model nema pamćenje između poziva.** Da se emotikoni ne bi ponavljali, čuva
-se poslednjih 15 znakova (`polish_emoji_recent`) i šalje mu se kao spisak koji
-treba izbeći; ponovljeni unutar istog teksta se brišu u kodu. Brisanje je
-bezbedno — tekst se ne dira, samo znak nestane.
-
-**Traženje raznolikosti navede model da broji.** Izmereno: uz spisak već
-korišćenih znakova počne da numeriše reči (`juce¹ sam² bio³`) da bi sam sebi
-vodio račun, pa provera vernosti obori ceo izlaz. Zato uputstvo izričito kaže
-„nijednu reč, broj ni oznaku" — posle toga 4/4 verno.
-
-**Emotikon ume da izmami dopisanu REČ.** Izmereno: nad „…gledao film … bio je
-jako dobar" model doda reč `film` umesto znaka — dovršavanje rečenice mu je
-očekivanije od emotikona. Strožija granica ugasi i sam emotikon; pomaže
-formulacija „prepiši od reči do reči…" (3/3), ali samo kad nijedan drugi alat
-ne menja reči. Zato postoje dve verzije uputstva i provera vernosti u kodu.
-
 **Formalni režim zove model JEDNOM, na kraju diktata.** Po segmentu bi model
 video krhotine i izmišljao krajeve rečenica, a poziva bi za deset minuta bilo
 oko sto pedeset umesto jednog. U tom režimu tekst ide modelu **nedirnut** —
@@ -329,6 +313,13 @@ Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz
 ~10s na 20s diktata; drugo šalje samo tekst i vraća se za sekundu. Držati ih
 zajedno je krilo tu razliku. Obična podešavanja (`Tekst`) idu **posle** AI-ja i
 imaju poslednju reč — to mora da piše u samoj kartici, ne samo u dokumentaciji.
+
+**Ono što se ne koristi — izlazi.** Uklonjeni su emotikoni (cela logika, uz
+testove), izbor ulaznog jezika, ponavljanje neuspelih diktata iz menija, debug
+prekidač, otvaranje `config.json` i stavka sa statusom: menu-bar ikonica već
+pokazuje stanje. „Spoji hiljade" i „razmak na kraju" su uvek uključeni, pa nisu
+podešavanja nego ponašanje. Podešavanje koje stoji **sivo** je gore od
+nepostojećeg: „ispravi greške" se sada ne vidi dok stil nije „Sređeno".
 
 **Meni je grupisan po pitanju na koje odgovaraš**, ne po tome kad je šta
 nastalo: Snimanje (kako), Tekst (kako izgleda), AI (šta model radi). Pre toga je

@@ -57,9 +57,8 @@ class Config(context: Context) {
         set(v) = prefs.edit().putBoolean("compress_audio", v).apply()
 
     /** "5.000" -> "5000"; zarez kao decimalni ostaje. */
-    var joinThousands: Boolean
-        get() = prefs.getBoolean("join_thousands", true)
-        set(v) = prefs.edit().putBoolean("join_thousands", v).apply()
+    /** Uvek ukljuceno: „5.000" -> „5000"; zarez ostaje decimalni. */
+    val joinThousands = true
 
     var abbreviations: Boolean
         get() = prefs.getBoolean("abbreviations", true)
@@ -101,9 +100,8 @@ class Config(context: Context) {
         get() = prefs.getBoolean("restore_clipboard", true)
         set(v) = prefs.edit().putBoolean("restore_clipboard", v).apply()
 
-    var trailingSpace: Boolean
-        get() = prefs.getBoolean("trailing_space", true)
-        set(v) = prefs.edit().putBoolean("trailing_space", v).apply()
+    /** Uvek ukljuceno: bez razmaka se recenice slepe pri nadovezivanju. */
+    val trailingSpace = true
 
     // --- Formalni rezim ---
     // Kljuc ostaje pri nadogradnji aplikacije: SharedPreferences prezivljava
@@ -150,11 +148,6 @@ class Config(context: Context) {
     val polishTidy: Boolean
         get() = textStyle == "written"
 
-    /** Emotikoni u tekstu. */
-    var polishEmoji: Boolean
-        get() = prefs.getBoolean("polish_emoji", false)
-        set(v) = prefs.edit().putBoolean("polish_emoji", v).apply()
-
     /**
      * Slobodan opis jezika na kome tekst treba da izadje; prazno = bez prevoda.
      * Spisak jezika ne bi bio dovoljan — korisnik ume da trazi i "pola
@@ -177,17 +170,6 @@ class Config(context: Context) {
     var audioCheck: Boolean
         get() = prefs.getBoolean("audio_check", false)
         set(v) = prefs.edit().putBoolean("audio_check", v).apply()
-
-    /** Poslednjih 15 upotrebljenih emotikona, da se ne ponavljaju. */
-    var polishEmojiRecent: List<String>
-        get() = (prefs.getString("polish_emoji_recent", "") ?: "")
-            .split(" ").filter { it.isNotBlank() }
-        set(v) = prefs.edit().putString("polish_emoji_recent", v.joinToString(" ")).apply()
-
-    /** Gustina emotikona: paragraph | sentence | dense. */
-    var polishEmojiRate: String
-        get() = prefs.getString("polish_emoji_rate", "paragraph") ?: "paragraph"
-        set(v) = prefs.edit().putString("polish_emoji_rate", v).apply()
 
     /** Skrati i pojednostavi, bez gubitka sadrzaja. */
     var polishConcise: Boolean

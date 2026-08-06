@@ -39,73 +39,6 @@ object Polish {
     private const val PASUSI =
         "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. " +
             "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
-    // Gustina emotikona; kljucevi su vrednosti `polishEmojiRate`.
-    private val EMOTIKONI = mapOf(
-        "paragraph" to ("na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 " +
-            "ili 📌) koji odgovara njegovom tonu; ako je ceo tekst jedan pasus, emoji " +
-            "ide na sam kraj"),
-        "sentence" to ("na kraj svake rečenice dodaj tačno jedan emoji znak koji odgovara " +
-            "onome što ta rečenica kaže"),
-        "sentence3" to ("na kraj svake rečenice dodaj dva do tri emoji znaka koji odgovaraju " +
-            "onome što ta rečenica kaže — svi različiti, jedan do drugog"),
-        "dense" to ("posle svake dve do tri reči ubaci po jedan emoji znak koji odgovara " +
-            "upravo rečenom — ne posle svake reči, nego na svake dve-tri"),
-    )
-    // "ni broj ni oznaku" nije visak: izmereno je da model, kad mu se trazi
-    // raznolikost, pocne da numerise reci (juce¹ sam² bio³) da bi sam sebi brojao.
-    private const val EMOTIKONI_KRAJ =
-        " Dodaješ isključivo emoji znakove — nijednu reč, broj ni oznaku."
-    // Koliko znakova se pamti; isti se ne sme vratiti dok se toliko drugih ne potrosi.
-    private const val EMOJI_PAMTI = 15
-    private const val EMOTIKONI_RAZNOLIKOST =
-        "Nijedan emoji ne ponavljaj u istom tekstu — svaki mora da bude drugačiji. " +
-            "Izbegavaj i ove, upravo su korišćeni: "
-
-    // Jedan emoji ume da bude sastavljen od vise kodnih tacaka (ZWJ, ton koze,
-    // selektor prikaza), pa se hvata kao celina — inace bi "👨‍💼" bio dva znaka.
-    // Opseg se pise kao \x{...}, ne kao par surogata: Java regex radi nad KODNIM
-    // TACKAMA, pa "[\uD83C-\uDBFF][\uDC00-\uDFFF]" ne uhvati nista — 👨 je za
-    // njega jedna tacka U+1F468, a ne dva znaka.
-    private val EMOJI = Regex(
-        """[\x{1F000}-\x{1FAFF}\x{2190}-\x{2BFF}\x{2600}-\x{27BF}]""" +
-            """[\x{FE00}-\x{FE0F}\x{1F3FB}-\x{1F3FF}]?""" +
-            """(?:\x{200D}[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}]""" +
-            """[\x{FE00}-\x{FE0F}\x{1F3FB}-\x{1F3FF}]?)*"""
-    )
-
-    fun emojiList(text: String) = EMOJI.findAll(text).map { it.value }.toList()
-
-    /**
-     * Izbaci emotikon koji se u istom tekstu vec pojavio.
-     *
-     * Uputstvo dovede model blizu — ali u gustom rezimu zna da ponovi jedan
-     * znak. Brisanje viska je bezbedno: tekst se ne dira, samo znak nestane.
-     */
-    fun bezPonavljanja(text: String): String {
-        val videni = mutableSetOf<String>()
-        val out = EMOJI.replace(text) { m -> if (videni.add(m.value)) m.value else "" }
-        return Regex("""[^\S\n]{2,}""").replace(out, " ")
-            .let { Regex("""[^\S\n]+\n""").replace(it, "\n") }
-            .trim()
-    }
-
-    /** Dopuni istoriju poslednjih EMOJI_PAMTI znakova, bez ponavljanja. */
-    fun zapamtiEmoji(text: String, cfg: Config) {
-        val istorija = cfg.polishEmojiRecent.toMutableList()
-        for (znak in emojiList(text)) {
-            istorija.remove(znak)
-            istorija.add(znak)
-        }
-        cfg.polishEmojiRecent = istorija.takeLast(EMOJI_PAMTI)
-    }
-
-    // Kad nijedan drugi alat ne sme da menja reci, emotikon se trazi ovako.
-    // Izmereno: nad tekstom koji se zavrsava sa "gledao film ... bio je jako
-    // dobar" obicna formulacija navede model da dopise REC "film" pre znaka —
-    // dovrsavanje recenice mu je ocekivanije od emotikona. "Prepisi od reci do
-    // reci" to ukloni (3/3), dok je strozija granica gasila i sam emotikon.
-    private const val EMOTIKONI_VERNO = "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i "
-
     // Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
     // pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
     private const val PREVOD =
@@ -140,7 +73,7 @@ object Polish {
      * sredjivanje bio drugi poziv za posao koji je vec obavljen.
      */
     fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
-        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs, cfg.polishEmoji,
+        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs,
         cfg.polishConcise, cfg.outputLanguage.isNotBlank(),
     ).count { it }
 
@@ -195,20 +128,6 @@ object Polish {
             granice.add(NE_SKRACUJ)
         }
         if (prevod.isNotEmpty()) zadaci.add(PREVOD.format(prevod))
-        if (cfg.polishEmoji) {
-            val gustina = EMOTIKONI[cfg.polishEmojiRate] ?: EMOTIKONI.getValue("paragraph")
-            var zadatak = (
-                if (smeDaMenja(cfg, vecSredjeno)) gustina.replaceFirstChar { it.uppercase() }
-                else EMOTIKONI_VERNO + gustina
-                ) + "." + EMOTIKONI_KRAJ
-            val vec = cfg.polishEmojiRecent
-            zadatak += if (vec.isNotEmpty()) {
-                " " + EMOTIKONI_RAZNOLIKOST + vec.joinToString(" ")
-            } else {
-                " Nijedan emoji ne ponavljaj u istom tekstu."
-            }
-            zadaci.add(zadatak)
-        }
 
         val posao = if (zadaci.size == 1) {
             "Tvoj posao:\n" + zadaci[0]

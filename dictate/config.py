@@ -17,7 +17,6 @@ DEFAULTS = {
     #   "raw"     — kako Google vrati, bez diranja
     "text_style": "spoken",
     "capitalize_first": False,    # veliko pocetno slovo (samo uz "raw")
-    "join_thousands": True,       # "5.000" -> "5000"; zarez ostaje decimalni
     "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
 
     # Na dugom diktatu seci na pauzi i slati delove dok korisnik jos prica.
@@ -40,7 +39,6 @@ DEFAULTS = {
     # --- Izlaz ---
     "insert_method": "paste",     # "paste" | "type" | "clipboard_only"
     "restore_clipboard": True,
-    "trailing_space": True,
     "history_size": 10,           # koliko poslednjih tekstova cuvati za kopiranje
     "show_overlay": False,        # pilula sa vremenom preko ekrana
     "overlay_position": "top-right",
@@ -52,9 +50,6 @@ DEFAULTS = {
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
     "polish_level": "correct",    # "format" = samo oblikuj | "correct" = i ispravi ocigledne greske
     "polish_paragraphs": True,    # podeli na pasuse, prazan red izmedju
-    "polish_emoji": False,        # emotikoni u tekstu
-    "polish_emoji_rate": "paragraph",  # paragraph | sentence | dense
-    "polish_emoji_recent": [],    # poslednjih 15 znakova, da se ne ponavljaju
     "audio_check": False,         # model slusa snimak i ispravlja prepis
     "compress_audio": True,       # FLAC preko ffmpeg-a ako ga ima; inace PCM/WAV
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
@@ -109,7 +104,9 @@ def _migrate(cfg: dict) -> dict:
     for mrtvo in ("engine", "credentials_json", "project_id", "location",
                   "model", "punctuation", "lowercase", "strip_punctuation",
                   "polish_tidy", "auto_segment", "max_seconds",
-                  "audio_check_low_only", "audio_check_threshold"):
+                  "audio_check_low_only", "audio_check_threshold",
+                  "polish_emoji", "polish_emoji_rate", "polish_emoji_recent",
+                  "join_thousands", "trailing_space"):
         cfg.pop(mrtvo, None)
     return cfg
 

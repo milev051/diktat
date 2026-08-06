@@ -128,7 +128,6 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
 | …i ispravi očigledne greške | uključeno | `sa kolega` → `sa kolegom`; radi samo uz sređivanje |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Skrati i pojednostavi | isključeno | izbaci poštapalice, duge rečenice na kraće |
-| Emotikoni | isključeno | gustina se bira ispod: *Pasus* / *Rečenica* / *2–3* / *Gusto*; znakovi se ne ponavljaju |
 | Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
@@ -203,10 +202,8 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | | podrazumevano | |
 |---|---|---|
 | Stil teksta | *Izgovoreno* | *Izgovoreno* = mala slova bez interpunkcije, *Sređeno* = AI sređuje, *Sirovo* = kako Google vrati |
-| Razmak na kraju | uključeno | da se rečenice nadovezuju |
 | Ne maskiraj psovke | uključeno | `pFilter=0`; isključeno daje `sranje` → `s*****` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
-| Spoji hiljade | uključeno | `5.000` → `5000`; `verzija 2.0` ostaje cela |
 | Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
 
 Pravilo je `fraza=skraćenica`, jedno po redu. Ako skraćenica počinje sa `<`,

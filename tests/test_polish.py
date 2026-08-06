@@ -8,7 +8,7 @@ from dictate import polish
 def cfg(**kw):
     osnovno = {
         "polish_api_key": "x", "text_style": "written", "polish_level": "correct",
-        "polish_paragraphs": True, "polish_concise": False, "polish_emoji": False,
+        "polish_paragraphs": True, "polish_concise": False, "output_language": "",
     }
     osnovno.update(kw)
     return osnovno
@@ -29,62 +29,22 @@ class Uputstvo(unittest.TestCase):
         self.assertIn(polish.NE_SKRACUJ, polish._uputstvo(cfg()))
         self.assertNotIn(polish.NE_SKRACUJ, polish._uputstvo(cfg(polish_concise=True)))
 
-    def test_emotikon_trazi_verno_prepisivanje_kad_niko_ne_menja_reci(self):
-        u = polish._uputstvo(cfg(text_style="spoken", polish_emoji=True))
-        self.assertIn(polish.EMOTIKONI_VERNO, u)
-
-    def test_emotikon_bez_verno_kad_sazimanje_ionako_menja_reci(self):
-        u = polish._uputstvo(cfg(polish_emoji=True, polish_concise=True))
-        self.assertNotIn(polish.EMOTIKONI_VERNO, u)
-
-    def test_gustina_emotikona(self):
-        # Prvo slovo zadatka se pise veliko, pa se poredi ostatak.
-        for rate in ("paragraph", "sentence", "sentence3", "dense"):
-            u = polish._uputstvo(cfg(polish_emoji=True, polish_emoji_rate=rate))
-            self.assertIn(polish.EMOTIKONI[rate][1:], u)
-
-    def test_nepoznata_gustina_pada_na_pasus(self):
-        self.assertEqual(polish.emoji_rate({"polish_emoji_rate": "izmisljeno"}), "paragraph")
-
-    def test_vec_korisceni_znakovi_idu_u_uputstvo(self):
-        u = polish._uputstvo(cfg(polish_emoji=True, polish_emoji_recent=["🤝", "🎬"]))
-        self.assertIn("🤝 🎬", u)
-
     def test_bez_alata_nema_poziva(self):
         prazan = cfg(text_style="spoken", polish_paragraphs=False)
         self.assertEqual(polish.tools(prazan), [])
         self.assertEqual(polish.polish("tekst", prazan), "tekst")
 
 
-class Emotikoni(unittest.TestCase):
-    def test_ponovljeni_se_brise_a_prvi_ostaje(self):
-        self.assertEqual(polish.bez_ponavljanja("a 🤝 b 🏢 c 🤝 d"), "a 🤝 b 🏢 c d")
-
-    def test_pasusi_prezivljavaju_brisanje(self):
-        self.assertEqual(polish.bez_ponavljanja("prvi 🤝\n\ndrugi 🤝 kraj"), "prvi 🤝\n\ndrugi kraj")
-
-    def test_zwj_sekvenca_je_jedan_znak(self):
-        self.assertEqual(polish.emoji_list("kolega 👨‍💼"), ["👨‍💼"])
-
-    def test_istorija_pamti_najvise_petnaest(self):
-        c = {}
-        polish.zapamti_emoji(" ".join(chr(0x1F600 + i) for i in range(20)), c)
-        self.assertEqual(len(c["polish_emoji_recent"]), polish.EMOJI_PAMTI)
-
-    def test_ponovljen_znak_ide_na_kraj_istorije(self):
-        c = {"polish_emoji_recent": ["🤝", "🎬"]}
-        polish.zapamti_emoji("tekst 🤝", c)
-        self.assertEqual(c["polish_emoji_recent"], ["🎬", "🤝"])
 
 
 class ProveraVernosti(unittest.TestCase):
     def test_izmisljena_rec_obara_izlaz(self):
-        c = cfg(text_style="spoken", polish_emoji=True)
-        self.assertEqual(polish._proveri("bio je dobar", "bio je dobar film 🎬", c), "bio je dobar")
+        c = cfg(text_style="spoken")
+        self.assertEqual(polish._proveri("bio je dobar", "bio je dobar film", c), "bio je dobar")
 
-    def test_emotikon_i_interpunkcija_ne_smetaju(self):
-        c = cfg(text_style="spoken", polish_emoji=True)
-        self.assertEqual(polish._proveri("bio je dobar", "bio je dobar 🎬", c), "bio je dobar 🎬")
+    def test_interpunkcija_ne_smeta(self):
+        c = cfg(text_style="spoken")
+        self.assertEqual(polish._proveri("bio je dobar", "Bio je dobar.", c), "Bio je dobar.")
 
     def test_sazimanje_sme_da_menja_reci(self):
         c = cfg(polish_concise=True)
@@ -112,9 +72,9 @@ class PosleSlusanja(unittest.TestCase):
         self.assertIn(polish.PASUSI, u)
 
     def test_ostali_alati_ostaju(self):
-        c = cfg(polish_concise=True, polish_emoji=True)
+        c = cfg(polish_concise=True, output_language="engleski")
         self.assertEqual(
-            sorted(polish.tools(c, vec_sredjeno=True)), ["concise", "emoji", "paragraphs"]
+            sorted(polish.tools(c, vec_sredjeno=True)), ["concise", "paragraphs", "translate"]
         )
 
 

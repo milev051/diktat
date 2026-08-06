@@ -5,9 +5,9 @@ punim kontekstom. Po segmentu bi model video krhotine i izmisljao krajeve
 recenica, a i broj poziva bi skocio sa jednog na stotinak po diktatu.
 
 Alati su nezavisni: sredjivanje (interpunkcija, velika slova, kvacice) je samo
-JEDAN od njih. Moze se traziti skracivanje ili emotikon a da model tekst inace
-ne dira — zato se uputstvo sklapa iz delova umesto da postoji fiksan prompt po
-rezimu. Kad nijedan alat nije izabran, poziva nema.
+JEDAN od njih. Moze se traziti samo skracivanje ili samo prevod a da model tekst
+inace ne dira — zato se uputstvo sklapa iz delova umesto da postoji fiksan
+prompt po rezimu. Kad nijedan alat nije izabran, poziva nema.
 """
 
 import json
@@ -41,41 +41,6 @@ PASUSI = (
     "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. "
     "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
 )
-# Gustina emotikona. Kljucevi su vrednosti `polish_emoji_rate`.
-EMOTIKONI = {
-    "paragraph": (
-        "na kraj svakog pasusa dodaj tačno jedan emoji znak (na primer 🙂 ili "
-        "📌) koji odgovara njegovom tonu; ako je ceo tekst jedan pasus, emoji "
-        "ide na sam kraj"
-    ),
-    "sentence": (
-        "na kraj svake rečenice dodaj tačno jedan emoji znak koji odgovara "
-        "onome što ta rečenica kaže"
-    ),
-    "sentence3": (
-        "na kraj svake rečenice dodaj dva do tri emoji znaka koji odgovaraju "
-        "onome što ta rečenica kaže — svi različiti, jedan do drugog"
-    ),
-    "dense": (
-        "posle svake dve do tri reči ubaci po jedan emoji znak koji odgovara "
-        "upravo rečenom — ne posle svake reči, nego na svake dve-tri"
-    ),
-}
-# "ni broj ni oznaku" nije visak: izmereno je da model, kad mu se trazi
-# raznolikost, pocne da numerise reci (juce¹ sam² bio³) da bi sam sebi brojao.
-EMOTIKONI_KRAJ = " Dodaješ isključivo emoji znakove — nijednu reč, broj ni oznaku."
-# Koliko znakova se pamti; isti se ne sme vratiti dok se toliko drugih ne potrosi.
-EMOJI_PAMTI = 15
-EMOTIKONI_RAZNOLIKOST = (
-    "Nijedan emoji ne ponavljaj u istom tekstu — svaki mora da bude drugačiji. "
-    "Izbegavaj i ove, upravo su korišćeni: {vec}"
-)
-# Kad nijedan drugi alat ne sme da menja reci, ispred zadatka ide ovaj uvod.
-# Izmereno: nad tekstom koji se zavrsava sa "gledao film ... bio je jako dobar"
-# obicna formulacija navede model da dopise REC "film" pre znaka — dovrsavanje
-# recenice mu je ocekivanije od emotikona. "Prepisi od reci do reci" to ukloni
-# (3/3), dok je strozija granica gasila i sam emotikon.
-EMOTIKONI_VERNO = "Prepiši tekst od reči do reči, ne menjajući nijednu reč, i "
 # Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
 # pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
 PREVOD = (
@@ -126,59 +91,10 @@ def tidy_on(cfg) -> bool:
     return config.style(cfg) == "written"
 
 
-# Jedan emoji ume da bude sastavljen od vise kodnih tacaka (ZWJ, ton koze,
-# selektor prikaza), pa se hvata kao celina — inace bi "👨‍💼" bio dva znaka.
-_EMOJI = re.compile(
-    "[\U0001F000-\U0001FAFF\u2190-\u2BFF\u2600-\u27BF\u2B00-\u2BFF]"
-    "[\uFE00-\uFE0F\U0001F3FB-\U0001F3FF]?"
-    "(?:\u200D[\U0001F000-\U0001FAFF\u2600-\u27BF][\uFE00-\uFE0F\U0001F3FB-\U0001F3FF]?)*"
-)
-
-
-def emoji_list(text: str) -> list[str]:
-    """Emotikoni iz teksta, redom kojim se pojavljuju."""
-    return _EMOJI.findall(text)
-
-
-def bez_ponavljanja(text: str) -> str:
-    """Izbaci emotikon koji se u istom tekstu vec pojavio.
-
-    Uputstvo dovede model blizu — ali u gustom rezimu zna da ponovi jedan znak.
-    Brisanje viska je bezbedno: tekst se ne dira, samo znak nestane.
-    """
-    videni = set()
-
-    def zameni(m):
-        znak = m.group(0)
-        if znak in videni:
-            return ""
-        videni.add(znak)
-        return znak
-
-    out = _EMOJI.sub(zameni, text)
-    out = re.sub(r"[^\S\n]{2,}", " ", out)      # dvostruki razmaci iza brisanja
-    return re.sub(r"[^\S\n]+\n", "\n", out).strip()
-
-
-def zapamti_emoji(text: str, cfg) -> None:
-    """Dopuni istoriju poslednjih EMOJI_PAMTI znakova, bez ponavljanja."""
-    istorija = list(cfg.get("polish_emoji_recent") or [])
-    for znak in emoji_list(text):
-        if znak in istorija:
-            istorija.remove(znak)
-        istorija.append(znak)
-    cfg["polish_emoji_recent"] = istorija[-EMOJI_PAMTI:]
-
 
 def output_language(cfg) -> str:
     """Opis jezika na kome tekst treba da izadje; prazno = bez prevoda."""
     return (cfg.get("output_language") or "").strip()
-
-
-def emoji_rate(cfg) -> str:
-    """paragraph | sentence | dense — koliko cesto emotikon."""
-    rate = cfg.get("polish_emoji_rate", "paragraph")
-    return rate if rate in EMOTIKONI else "paragraph"
 
 
 def tools(cfg, vec_sredjeno=False) -> list[str]:
@@ -193,8 +109,6 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
         izabrani.append("tidy")
     if cfg.get("polish_paragraphs", True):
         izabrani.append("paragraphs")
-    if cfg.get("polish_emoji", False):
-        izabrani.append("emoji")
     if cfg.get("polish_concise", False):
         izabrani.append("concise")
     if output_language(cfg):
@@ -276,7 +190,7 @@ _NEREC = re.compile(r"[^\w\s]|[\U00002190-\U0001FAFF]")
 
 
 def _reci(text: str) -> list[str]:
-    """Reci bez interpunkcije, emotikona, kvacica i velikih slova — za poredjenje."""
+    """Reci bez interpunkcije, kvacica i velikih slova — za poredjenje."""
     return webstt.to_ascii(_NEREC.sub(" ", text)).lower().split()
 
 
@@ -295,11 +209,10 @@ def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
 def _proveri(ulaz: str, izlaz: str, cfg) -> str:
     """Kad model NE sme da menja reci, proveri da ih zaista nije menjao.
 
-    Izmereno: uz samo emotikon nad tekstom „...gledao film ... bio je jako
-    dobar" model dopise REC „film" pre znaka — dovrsavanje recenice mu je
-    ocekivanije od emotikona, a bez interpunkcije nema sta da ga zaustavi.
-    Nijedno pooštravanje uputstva to nije uklonilo: strozija granica je ugasila
-    i sam emotikon. Zato se veri proverava ovde, a nevernost pada na nas tekst.
+    Model ume da dopise rec i kad mu je zabranjeno — izmereno na tekstu koji se
+    zavrsava sa „...gledao film ... bio je jako dobar", gde je dodao rec „film"
+    jer mu je dovrsavanje recenice ocekivanije. Pooštravanje uputstva to nije
+    uklonilo, pa se vernost proverava ovde: nevernost pada na nas tekst.
     """
     if _sme_da_menja(cfg) or _reci(ulaz) == _reci(izlaz):
         return izlaz
@@ -344,18 +257,6 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         granice.append(NE_SKRACUJ)
     if "translate" in izabrani:
         zadaci.append(PREVOD.format(jezik=output_language(cfg)))
-    if "emoji" in izabrani:
-        gustina = EMOTIKONI.get(emoji_rate(cfg), EMOTIKONI["paragraph"])
-        zadatak = (
-            gustina[0].upper() + gustina[1:] if _sme_da_menja(cfg)
-            else EMOTIKONI_VERNO + gustina
-        ) + "." + EMOTIKONI_KRAJ
-        vec = cfg.get("polish_emoji_recent") or []
-        if vec:
-            zadatak += " " + EMOTIKONI_RAZNOLIKOST.format(vec=" ".join(vec))
-        else:
-            zadatak += " Nijedan emoji ne ponavljaj u istom tekstu."
-        zadaci.append(zadatak)
 
     if len(zadaci) == 1:
         posao = "Tvoj posao:\n" + zadaci[0]

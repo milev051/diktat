@@ -88,6 +88,7 @@ Dva nezavisna podešavanja:
 | Stavka | |
 |---|---|
 | **Istorija** | poslednjih `history_size` tekstova; klik kopira u clipboard |
+| **Snimanje / Tekst / AI** | podmeniji; sve ostalo je u `config.json` |
 | **Mikrofon** | izbor ulaza, ili sistemski podrazumevani |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
@@ -107,7 +108,6 @@ Dva nezavisna podešavanja:
 | `compress_audio` | `true` | FLAC ka endpointu, 36% manje; bez `ffmpeg`-a ide PCM |
 | `text_style` | `spoken` | `spoken` = mala slova bez interpunkcije, `written` = AI sređuje, `raw` = kako Google vrati |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
-| `join_thousands` | `true` | `5.000` → `5000`; zarez ostaje decimalni |
 | `capitalize_first` | `false` | veliko početno slovo (radi samo uz `lowercase: false`) |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | samo uz `auto_segment` |
@@ -124,7 +124,6 @@ Dva nezavisna podešavanja:
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `paste` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
-| `trailing_space` | `true` | razmak na kraju, da se rečenice nadovezuju |
 | `history_size` | `10` | koliko poslednjih tekstova čuvati za kopiranje |
 | `show_overlay` | `false` | pilula sa vremenom preko ekrana |
 | `overlay_position` | `top-right` | `top-right` ili `bottom` |
@@ -151,13 +150,7 @@ interpunkciju i kvačice **ne dira**:
 | …i ispravi očigledne greške | uključeno | gramatička neslaganja; radi samo uz sređivanje |
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | …skrati i pojednostavi | isključeno | izbaci poštapalice, razbij duge rečenice; činjenice ostaju |
-| …emotikoni | isključeno | gustina: na kraju pasusa / rečenice / dva-tri po rečenici / na svake dve-tri reči |
 | Jezik izlaza | prazno | slobodan opis: `makedonski`, `engleski formalno`, `pola makedonski pola srpski` |
-
-Emotikoni se **ne ponavljaju**: poslednjih 15 znakova se pamti i šalje modelu
-kao spisak koji treba izbeći, a ako se neki ipak ponovi unutar istog teksta,
-višak se briše. Model nema pamćenje između poziva, pa bi inače svaki put
-posezao za istima.
 
 Ako nijedan alat nije izabran, poziva nema — tekst se lepi kao i inače.
 
@@ -180,9 +173,6 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `polish_concise` | `false` | skrati i pojednostavi |
 | `output_language` | `""` | jezik izlaza, slobodan opis; prazno = bez prevoda |
-| `polish_emoji` | `false` | emotikoni u tekstu |
-| `polish_emoji_rate` | `paragraph` | `paragraph` \| `sentence` \| `sentence3` \| `dense` |
-| `polish_emoji_recent` | `[]` | poslednjih 15 znakova; upisuje ih aplikacija |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i
