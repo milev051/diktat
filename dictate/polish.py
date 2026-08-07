@@ -41,6 +41,14 @@ PASUSI = (
     "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. "
     "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
 )
+# Nalik ASD-STE100 (Simplified Technical English): kratke izjavne recenice,
+# jedna misao po tacki, bez ukrasa. Za srpski se prenosi duh, ne sam standard.
+TACKE = (
+    "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, "
+    "u svom redu, i sadrži JEDNU misao — kratku izjavnu rečenicu. Izbaci "
+    "poštapalice, ponavljanja i uvijanje; piši jednostavnim rečima. Sve "
+    "činjenice, brojevi, imena i zaključci moraju da ostanu."
+)
 # Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
 # pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
 PREVOD = (
@@ -102,7 +110,10 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
     izabrani = []
     if tidy_on(cfg) and not vec_sredjeno:
         izabrani.append("tidy")
-    if cfg.get("polish_paragraphs", True):
+    if cfg.get("polish_bullets", False):
+        izabrani.append("bullets")
+    elif cfg.get("polish_paragraphs", True):
+        # Tacke i pasusi su dva odgovora na isto pitanje; tacke pobedjuju.
         izabrani.append("paragraphs")
     if output_language(cfg):
         izabrani.append("translate")
@@ -190,7 +201,8 @@ def _reci(text: str) -> list[str]:
 def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     """Menja li ijedan izabrani alat same reci."""
     return (
-        bool(output_language(cfg))          # prevod po prirodi menja svaku rec
+        bool(cfg.get("polish_bullets", False))   # tacke prepisuju recenice
+        or bool(output_language(cfg))       # prevod po prirodi menja svaku rec
         or "tidy" in tools(cfg, vec_sredjeno)
     )
 
@@ -233,12 +245,15 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         granice.append(NE_SREDJUJ)
         granice.append(NE_ISPRAVLJAJ)
 
-    if "paragraphs" in izabrani:
+    if "bullets" in izabrani:
+        zadaci.append(TACKE)
+    elif "paragraphs" in izabrani:
         zadaci.append(PASUSI)
     else:
         granice.append(NE_PASUSI)
-    if "translate" not in izabrani:
-        # Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
+    if "translate" not in izabrani and "bullets" not in izabrani:
+        # Uz prevod i uz tacke je "ne preformulisi" besmisleno — prepisivanje
+        # recenica je ceo posao.
         granice.append(NE_SKRACUJ)
     if "translate" in izabrani:
         zadaci.append(PREVOD.format(jezik=output_language(cfg)))

@@ -168,6 +168,11 @@ class Config(context: Context) {
         get() = prefs.getBoolean("audio_check", false)
         set(v) = prefs.edit().putBoolean("audio_check", v).apply()
 
+    /** Preuredi u spisak tacaka (nalik ASD-STE100); iskljucuje pasuse. */
+    var polishBullets: Boolean
+        get() = prefs.getBoolean("polish_bullets", false)
+        set(v) = prefs.edit().putBoolean("polish_bullets", v).apply()
+
     /** Podeli doteran tekst na pasuse, prazan red izmedju. */
     var polishParagraphs: Boolean
         get() = prefs.getBoolean("polish_paragraphs", true)

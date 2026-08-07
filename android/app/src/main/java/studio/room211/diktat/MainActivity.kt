@@ -230,6 +230,17 @@ class MainActivity : AppCompatActivity() {
         alati.add(pasusi)
         box.addView(pasusi)
 
+        val tacke = indent(this, switch(this, "Sažmi u tačke", cfg.polishBullets) {
+            cfg.polishBullets = it
+        })
+        alati.add(tacke)
+        box.addView(tacke)
+        box.addView(
+            indent(this, body(this, "Preuređuje izgovoreno u spisak: jedna misao po " +
+                "tački, kratke izjavne rečenice, bez poštapalica. Činjenice i brojevi " +
+                "ostaju. Isključuje podelu na pasuse."))
+        )
+
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
         }

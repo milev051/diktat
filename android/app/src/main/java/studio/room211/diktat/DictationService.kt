@@ -381,7 +381,9 @@ class DictationService : Service() {
                 polazni
             }
             polishing = false
-            val konacan = if (cfg.trailingSpace) "$doteran " else doteran
+            // Uz tacke ide nov red umesto razmaka: sledeci diktat tako pocinje
+            // svoju tacku umesto da se nastavi na prethodnu.
+            val konacan = if (cfg.polishBullets) doteran.trimEnd() + "\n" else "$doteran "
             insertNow(konacan)
             handler.post { finishSession() }
         }

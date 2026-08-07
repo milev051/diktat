@@ -111,3 +111,29 @@ class Prevod(unittest.TestCase):
     def test_provera_vernosti_ne_obara_prevod(self):
         c = cfg(text_style="spoken", output_language="makedonski")
         self.assertEqual(polish._proveri("bio sam tamo", "бев таму", c), "бев таму")
+
+
+class Tacke(unittest.TestCase):
+    """Sazimanje u spisak tacaka, nalik ASD-STE100."""
+
+    def test_tacke_iskljucuju_pasuse(self):
+        c = cfg(polish_bullets=True, polish_paragraphs=True)
+        self.assertIn("bullets", polish.tools(c))
+        self.assertNotIn("paragraphs", polish.tools(c))
+        u = polish._uputstvo(c)
+        self.assertIn(polish.TACKE, u)
+        self.assertNotIn(polish.PASUSI, u)
+
+    def test_bez_zabrane_preformulisanja(self):
+        # Prepisivanje recenica je ceo posao ovog alata.
+        self.assertNotIn(polish.NE_SKRACUJ, polish._uputstvo(cfg(polish_bullets=True)))
+
+    def test_provera_vernosti_ne_obara_tacke(self):
+        c = cfg(text_style="spoken", polish_bullets=True)
+        self.assertEqual(
+            polish._proveri("pa ovaj bio sam tamo", "- Bio sam tamo.", c), "- Bio sam tamo."
+        )
+
+    def test_sam_alat_dovoljan_za_poziv(self):
+        c = cfg(text_style="spoken", polish_paragraphs=False, polish_bullets=True)
+        self.assertEqual(polish.tools(c), ["bullets"])

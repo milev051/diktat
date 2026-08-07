@@ -39,6 +39,14 @@ object Polish {
     private const val PASUSI =
         "Podeli tekst na pasuse po smislu, sa jednim praznim redom između pasusa. " +
             "Nemoj praviti pasus od svake rečenice — grupiši ono što ide zajedno."
+    // Nalik ASD-STE100 (Simplified Technical English): kratke izjavne recenice,
+    // jedna misao po tacki, bez ukrasa. Za srpski se prenosi duh, ne sam standard.
+    private const val TACKE =
+        "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, " +
+            "u svom redu, i sadrži JEDNU misao — kratku izjavnu rečenicu. Izbaci " +
+            "poštapalice, ponavljanja i uvijanje; piši jednostavnim rečima. Sve " +
+            "činjenice, brojevi, imena i zaključci moraju da ostanu."
+
     // Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
     // pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
     private const val PREVOD =
@@ -68,13 +76,14 @@ object Polish {
      * sredjivanje bio drugi poziv za posao koji je vec obavljen.
      */
     fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
-        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs,
+        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs || cfg.polishBullets,
         cfg.outputLanguage.isNotBlank(),
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
     private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
-        cfg.outputLanguage.isNotBlank() ||         // prevod menja svaku rec
+        cfg.polishBullets ||                       // tacke prepisuju recenice
+            cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
             (cfg.polishTidy && !vecSredjeno)
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
@@ -115,10 +124,14 @@ object Polish {
             granice.add(NE_SREDJUJ)
             granice.add(NE_ISPRAVLJAJ)
         }
-        if (cfg.polishParagraphs) zadaci.add(PASUSI) else granice.add(NE_PASUSI)
+        // Tacke i pasusi su dva odgovora na isto pitanje; tacke pobedjuju.
+        if (cfg.polishBullets) zadaci.add(TACKE)
+        else if (cfg.polishParagraphs) zadaci.add(PASUSI)
+        else granice.add(NE_PASUSI)
         val prevod = cfg.outputLanguage.trim()
-        // Uz prevod je "ne preformulisi" besmisleno — druge reci su ceo posao.
-        if (prevod.isEmpty()) granice.add(NE_SKRACUJ)
+        // Uz prevod i uz tacke je "ne preformulisi" besmisleno — prepisivanje
+        // recenica je ceo posao.
+        if (prevod.isEmpty() && !cfg.polishBullets) granice.add(NE_SKRACUJ)
         if (prevod.isNotEmpty()) zadaci.add(PREVOD.format(prevod))
 
         val posao = if (zadaci.size == 1) {

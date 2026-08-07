@@ -338,6 +338,12 @@ mesta za istu stvar zbunjuju.
 (Android) izvode stil iz starih ključeva pri prvom čitanju. Isto važi za svako
 buduće spajanje podešavanja — korisnik ne sme da izgubi ono što je namestio.
 
+**„Sažmi u tačke" i „podeli na pasuse" se isključuju.** Oba odgovaraju na isto
+pitanje — kako je tekst prelomljen — pa tačke pobeđuju kad su izabrane. Alat
+prepisuje rečenice, zato mora u `_sme_da_menja` i isključuje granicu „ne
+preformuliši"; uz njega tekst završava **novim redom** umesto razmakom, da
+sledeći diktat počne svoju tačku.
+
 **Jezik izlaza je slobodan opis, ne spisak.** Korisnik ume da traži „pola
 makedonski pola srpski" — spisak jezika to ne pokriva, a model razume iz opisa.
 Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz

@@ -49,7 +49,9 @@ DEFAULTS = {
     "polish_api_key": "",         # Google AI Studio kljuc; ostaje pri nadogradnji
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
-    "polish_paragraphs": True,    # podeli na pasuse, prazan red izmedju
+    "polish_paragraphs": True,
+    # Preuredi u spisak tacaka (nalik ASD-STE100); iskljucuje pasuse.
+    "polish_bullets": False,    # podeli na pasuse, prazan red izmedju
     "audio_check": False,         # model slusa snimak i ispravlja prepis
     "compress_audio": True,       # FLAC preko ffmpeg-a ako ga ima; inace PCM/WAV
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
