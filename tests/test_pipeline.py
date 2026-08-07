@@ -236,3 +236,37 @@ class SpisakTacaka(unittest.TestCase):
         # „crno-beli" ostaje celo, a crtica koja stoji sama nestaje.
         app = napravi(text_style="spoken")
         self.assertEqual(app._rules_over_paragraphs("crno-beli film - lep"), "crno-beli film lep")
+
+
+class BojaNaslova(unittest.TestCase):
+    """U naslovu su uvek cifre; stanje se čita iz boje."""
+
+    def napravi_sat(self, **kw):
+        import time
+        app = napravi(**kw)
+        app._polishing = False
+        app._pending = 0
+        app._record_started_at = time.monotonic()
+        return app
+
+    def test_model_ima_prednost(self):
+        app = self.napravi_sat()
+        app._polishing = True
+        app._pending = 3
+        self.assertEqual(app._title_color(), "polishing")
+
+    def test_prepoznavanje_je_narandzasto(self):
+        app = self.napravi_sat()
+        app._pending = 1
+        self.assertEqual(app._title_color(), "busy")
+
+    def test_neprekidno_nema_crvenu_granicu(self):
+        # Bez granice od 30s crveno upozorenje nema šta da najavi.
+        app = self.napravi_sat(continuous=True)
+        app._record_started_at = 0.0
+        self.assertIsNone(app._title_color())
+
+    def test_blizu_granice_je_crveno(self):
+        app = self.napravi_sat(continuous=False)
+        app._record_started_at = 0.0      # kao da traje jako dugo
+        self.assertEqual(app._title_color(), "recording")

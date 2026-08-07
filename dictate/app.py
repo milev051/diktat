@@ -909,9 +909,11 @@ class DictateApp(rumps.App):
         elif phase != "error":
             self._error_shown_at = None
 
-        # Dok snima, u menu baru stoji proteklo vreme umesto ikonice. Ova grana
-        # mora da tece i kad se stanje formalno ne menja, jer sat ide sam.
-        if phase == "recording" and self._recorder is not None:
+        # Dok mikrofon radi, sat ide — bez obzira na to sta pise u `state`.
+        # Prethodni diktat sme da se obradjuje paralelno, a njegova faza je
+        # ranije preuzimala prikaz: naslov bi stao na "AI", brojanje bi se
+        # zamrzlo i delovalo bi da aplikacija ne registruje govor.
+        if self._recorder is not None:
             clock = self._clock_text()
             self._last_clock = clock   # ostaje i dok se posle obradjuje
             self._set_menubar(clock, self._title_color())
@@ -929,12 +931,11 @@ class DictateApp(rumps.App):
         if not dirty:
             return
 
+        # U naslovu su UVEK cifre; stanje se vidi po boji. Tekst umesto brojeva
+        # je gutao sat, pa se nije videlo koliko traje ni koliko je ostalo.
         if phase == "polishing":
-            # Plavo + "AI": korisnik mora da zna da je otislo modelu i da se ceka.
-            self._set_menubar("AI", "polishing")
+            self._set_menubar(self._last_clock or ICON["idle"], "polishing")
         elif phase == "thinking":
-            # Cifre ostaju, samo pozute — obrada traje par sekundi i tako se
-            # vidi da jos nesto radi, umesto da naslov skoci na ikonicu.
             self._set_menubar(self._last_clock or ICON["idle"], "busy")
         else:
             self._set_menubar(ICON.get(phase, ICON["idle"]))
@@ -967,10 +968,14 @@ class DictateApp(rumps.App):
         return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
 
     def _title_color(self):
+        """Boja kaze sta se trenutno desava; cifre uvek stoje.
+
+        Plava (model) ima prednost nad narandzastom (prepoznavanje), a obe nad
+        crvenom (blizu granice) — jer je cekanje na tudji odgovor vaznije od
+        toga koliko dugo traje ovaj snimak.
+        """
         if self._polishing:
             return "polishing"
-        """Zuta ima prednost: ako se prethodni tekst jos obradjuje, to je
-        vaznije od toga koliko dugo traje novo snimanje."""
         with self._count_lock:
             if self._pending > 0:
                 return "busy"
