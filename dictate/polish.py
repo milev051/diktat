@@ -93,7 +93,7 @@ class PolishError(Exception):
 
 
 def available(cfg) -> bool:
-    return bool(cfg.get("polish_api_key"))
+    return bool(str(cfg.get("polish_api_key") or "").strip())
 
 
 def tidy_on(cfg) -> bool:
@@ -140,7 +140,7 @@ def polish(text: str, cfg, timeout=60, vec_sredjeno=False) -> str:
         return text
     if not tools(cfg, vec_sredjeno):
         return text                 # nema alata — nema ni poziva
-    key = cfg.get("polish_api_key") or ""
+    key = str(cfg.get("polish_api_key") or "").strip()
     if not key:
         raise PolishError("Nema API ključa za doterivanje.")
 

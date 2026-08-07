@@ -19,6 +19,7 @@ TRANSCRIPT_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
 CHAT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3"
 DEFAULT_MERGE_MODEL = "openai/gpt-oss-120b"
+USER_AGENT = "Diktat/1.0"
 
 
 class GroqError(Exception):
@@ -26,7 +27,9 @@ class GroqError(Exception):
 
 
 def enabled(cfg) -> bool:
-    return bool(cfg.get("groq_enabled", False)) and bool(cfg.get("groq_api_key"))
+    return bool(cfg.get("groq_enabled", False)) and bool(
+        str(cfg.get("groq_api_key") or "").strip()
+    )
 
 
 def wav_bytes(pcm: bytes, sample_rate: int) -> bytes:
@@ -101,7 +104,11 @@ def transcribe(delovi, cfg, timeout=90) -> str:
     request = urllib.request.Request(
         TRANSCRIPT_ENDPOINT,
         data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": content_type},
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": content_type,
+            "User-Agent": USER_AGENT,
+        },
     )
     payload = _request_json(request, timeout)
     text = (payload.get("text") or "").strip()
@@ -168,6 +175,7 @@ def merge(google_text: str, whisper_text: str, cfg, timeout=90, trace=None) -> s
         headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
         },
     )
     response = _request_json(request, timeout)

@@ -80,6 +80,7 @@ object Groq {
             readTimeout = 120_000
             setRequestProperty("Authorization", "Bearer ${cfg.groqApiKey}")
             setRequestProperty("Content-Type", contentType)
+            setRequestProperty("User-Agent", "Diktat/1.0")
             setFixedLengthStreamingMode(body.size)
         }
         try {
@@ -136,6 +137,7 @@ $izgled$pojmovi"""
             readTimeout = 120_000
             setRequestProperty("Authorization", "Bearer ${cfg.groqApiKey}")
             setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("User-Agent", "Diktat/1.0")
             setFixedLengthStreamingMode(payload.size)
         }
         try {

@@ -15,6 +15,10 @@ def cfg(**kw):
 
 
 class Uputstvo(unittest.TestCase):
+    def test_prazan_ili_razmak_kljuc_ne_ukljucuje_ai(self):
+        self.assertFalse(polish.available({"polish_api_key": ""}))
+        self.assertFalse(polish.available({"polish_api_key": "   "}))
+
     def test_bez_sredjivanja_zabranjuje_interpunkciju(self):
         # Bez ove granice model sredi tekst svejedno — to je izmereno.
         u = polish._uputstvo(cfg(text_style="spoken", output_language="engleski"))

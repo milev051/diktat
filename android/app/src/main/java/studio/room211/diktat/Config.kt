@@ -7,6 +7,29 @@ class Config(context: Context) {
 
     private val prefs = context.getSharedPreferences("diktat", Context.MODE_PRIVATE)
 
+    companion object {
+        // Ugrađeni ključevi važe za novu instalaciju i za ovu verziju aplikacije.
+        // Menjaju se ovde kada se pravi novi globalni build.
+        private const val DEFAULT_POLISH_API_KEY =
+            ""
+        private const val DEFAULT_GROQ_API_KEY =
+            ""
+        private const val BUNDLED_KEYS_VERSION = "2026-08-07-2"
+    }
+
+    init {
+        // Postojeća instalacija može imati stari ključ u SharedPreferences-u.
+        // Jednom ga zamenjujemo ključem iz ovog build-a, da nadogradnja zaista
+        // koristi ugrađenu konfiguraciju.
+        if (prefs.getString("bundled_keys_version", "") != BUNDLED_KEYS_VERSION) {
+            prefs.edit()
+                .putString("polish_api_key", DEFAULT_POLISH_API_KEY)
+                .putString("groq_api_key", DEFAULT_GROQ_API_KEY)
+                .putString("bundled_keys_version", BUNDLED_KEYS_VERSION)
+                .apply()
+        }
+    }
+
     var language: String
         get() = prefs.getString("language", "sr-RS")!!
         set(v) = prefs.edit().putString("language", v).apply()
@@ -101,7 +124,7 @@ class Config(context: Context) {
     // Kljuc ostaje pri nadogradnji aplikacije: SharedPreferences prezivljava
     // instalaciju preko postojece, dok je paket i potpis isti.
     var polishApiKey: String
-        get() = prefs.getString("polish_api_key", "")!!
+        get() = prefs.getString("polish_api_key", DEFAULT_POLISH_API_KEY)!!
         set(v) = prefs.edit().putString("polish_api_key", v.trim()).apply()
 
     /** true = i ispravi ocigledne gramaticke greske, ne samo oblikuj. */
@@ -173,7 +196,7 @@ class Config(context: Context) {
         set(v) = prefs.edit().putBoolean("groq_enabled", v).apply()
 
     var groqApiKey: String
-        get() = prefs.getString("groq_api_key", "")!!
+        get() = prefs.getString("groq_api_key", DEFAULT_GROQ_API_KEY)!!
         set(v) = prefs.edit().putString("groq_api_key", v.trim()).apply()
 
     /** Model slusa snimak i ispravlja prepis. */

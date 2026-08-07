@@ -77,7 +77,9 @@ ih tačno ovako: {pojmovi}"""
 
 
 def enabled(cfg) -> bool:
-    return bool(cfg.get("audio_check", False)) and bool(cfg.get("polish_api_key"))
+    return bool(cfg.get("audio_check", False)) and bool(
+        str(cfg.get("polish_api_key") or "").strip()
+    )
 
 
 def should_check(cfg, confidence: float = 0.0) -> bool:
@@ -144,7 +146,7 @@ def check(pcm: bytes, sample_rate: int, prepis: str, cfg, timeout=90) -> str:
 
 def check_batch(delovi, prepis: str, cfg, timeout=180) -> str:
     """Vrati ispravljen prepis celog diktata. Na problem podize PolishError."""
-    key = cfg.get("polish_api_key") or ""
+    key = str(cfg.get("polish_api_key") or "").strip()
     if not key or not delovi:
         raise PolishError("Nema API ključa za proveru snimka.")
 

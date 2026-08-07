@@ -632,13 +632,23 @@ class DictateApp(rumps.App):
         delovi = self._take_audio(session)
         if not delovi:
             return tekst, False
+        groq_prolaz = groq.enabled(self.cfg)
         trag = {
-            "provider": "Gemini audio check",
+            "provider": (
+                "Groq Whisper + GPT-OSS" if groq_prolaz else "Gemini audio check"
+            ),
             "google_text": tekst,
-            "metadata": f"audio: {len(delovi)} segment(a); Gemini model: {self.cfg.get('polish_model') or polish.DEFAULT_MODEL}",
+            "metadata": (
+                f"audio: {len(delovi)} segment(a); Whisper model: "
+                f"{groq.DEFAULT_TRANSCRIPTION_MODEL}; GPT-OSS model: "
+                f"{groq.DEFAULT_MERGE_MODEL}"
+                if groq_prolaz
+                else f"audio: {len(delovi)} segment(a); Gemini model: "
+                f"{self.cfg.get('polish_model') or polish.DEFAULT_MODEL}"
+            ),
         }
         try:
-            if groq.enabled(self.cfg):
+            if groq_prolaz:
                 # Groq dobija prednost kada je uključen: u suprotnom bi isti
                 # audio nepotrebno išao i Gemini-ju i Groq-u.
                 ispravljen = groq.check_batch(delovi, tekst, self.cfg, trace=trag)

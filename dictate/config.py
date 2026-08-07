@@ -6,6 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.json"
 
+# Ugrađeni ključevi su podrazumevani samo da nova instalacija odmah radi.
+# Lokalni config.json i dalje može da ih zameni drugim ključem.
+DEFAULT_POLISH_API_KEY = ""
+DEFAULT_GROQ_API_KEY = ""
+
 DEFAULTS = {
     # --- Prepoznavanje ---
     "language": "sr-RS",
@@ -45,7 +50,7 @@ DEFAULTS = {
     "overlay_position": "top-right",
 
     # --- Formalni rezim (doterivanje jezickim modelom) ---
-    "polish_api_key": "",         # Google AI Studio kljuc; ostaje pri nadogradnji
+    "polish_api_key": DEFAULT_POLISH_API_KEY,  # Google AI Studio kljuc
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
     "polish_paragraphs": True,
@@ -58,7 +63,7 @@ DEFAULTS = {
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
     # --- Groq (Whisper + GPT-OSS drugo misljenje) ---
     "groq_enabled": False,
-    "groq_api_key": "",
+    "groq_api_key": DEFAULT_GROQ_API_KEY,
     "groq_reasoning_effort": "medium",
     "groq_max_completion_tokens": 2048,
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
