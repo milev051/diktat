@@ -129,18 +129,27 @@ Google prepis:
 Groq Whisper prepis:
 {whisper_text}
 
-Uporedi oba prepisa i vrati jednu konačnu verziju. Ispravi reč samo kada se
-iz zvuka i drugog prepisa vidi da je Google pogrešio ili nešto propustio.
-Ako se ne slažu, biraj ono što ima uporište u drugom prepisu; ne izmišljaj,
-ne dodaj objašnjenje, ne sažimaj, ne prevodi i ne odgovaraj na sadržaj.
+U ovom koraku ne dobijaš audio i ne možeš ponovo da ga slušaš. Dobijaš samo
+dva nezavisna teksta. Google prepis koristi kao sidro, a Whisper kao drugo
+mišljenje: spoji ih tako da ispraviš očigledne greške i dodaš samo reči koje
+Whisper verovatno nije izmislio kao šum ili ponavljanje. Ako se ne slažu i nisi
+siguran, zadrži Google verziju. Ne dodaj objašnjenje, ne sažimaj, ne prevodi
+i ne odgovaraj na sadržaj.
 Vrati samo konačan tekst, bez uvoda i navodnika.{style}{terms}"""
 
 
-def merge(google_text: str, whisper_text: str, cfg, timeout=90) -> str:
+def merge(google_text: str, whisper_text: str, cfg, timeout=90, trace=None) -> str:
     key = (cfg.get("groq_api_key") or "").strip()
     if not key:
         raise GroqError("Nema Groq API ključa.")
     prompt = _merge_prompt(google_text, whisper_text, cfg)
+    if trace is not None:
+        trace.update({
+            "provider": "Groq Whisper + GPT-OSS",
+            "google_text": google_text,
+            "whisper_text": whisper_text,
+            "prompt": prompt,
+        })
     payload = {
         "model": DEFAULT_MERGE_MODEL,
         "messages": [
@@ -176,10 +185,17 @@ def merge(google_text: str, whisper_text: str, cfg, timeout=90) -> str:
     return text
 
 
-def check_batch(delovi, google_text: str, cfg, timeout=180) -> str:
+def check_batch(delovi, google_text: str, cfg, timeout=180, trace=None) -> str:
     """Whisper + poređenje sa Google prepisom u dva poziva."""
     whisper_text = transcribe(delovi, cfg, timeout=min(timeout, 120))
-    return merge(google_text, whisper_text, cfg, timeout=timeout)
+    if trace is not None:
+        trace["whisper_text"] = whisper_text
+        seconds = sum(len(part) / 2 / rate for part, rate in delovi)
+        trace["metadata"] = (
+            f"audio: {len(delovi)} segment(a), {seconds:.1f}s; "
+            f"Whisper: {DEFAULT_TRANSCRIPTION_MODEL}; GPT: {DEFAULT_MERGE_MODEL}"
+        )
+    return merge(google_text, whisper_text, cfg, timeout=timeout, trace=trace)
 
 
 def _http_message(code: int, detail: str = "") -> str:

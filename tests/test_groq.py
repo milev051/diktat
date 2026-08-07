@@ -22,6 +22,7 @@ class GroqTest(unittest.TestCase):
         self.assertIn("whisper tekst", prompt)
         self.assertIn("AI, API", prompt)
         self.assertIn("pravopisno pravilno", prompt)
+        self.assertIn("ne dobijaš audio", prompt)
 
     def test_podrazumevano_ne_ukljucuje_groq(self):
         self.assertFalse(groq.enabled({"groq_enabled": False, "groq_api_key": "x"}))

@@ -91,6 +91,29 @@ class Session:
             + "-" * 70
         )
 
+    def ai(self, provider: str, google_text: str, prompt: str = "",
+           whisper_text: str = "", merged_text: str = "", error: str = "",
+           metadata: str = ""):
+        """Zapiši ceo AI prolaz, bez API ključeva ili sirovog HTTP payload-a."""
+        lines = [
+            f"\n[AI PROLAZ] {provider}",
+            f"     {metadata}" if metadata else "",
+            f"     Google prepis: {google_text!r}",
+        ]
+        if whisper_text:
+            lines.append(f"     Whisper prepis: {whisper_text!r}")
+        if prompt:
+            lines.extend(["     Prompt:", prompt])
+        if merged_text:
+            lines.append(f"     Rezultat modela: {merged_text!r}")
+        if error:
+            lines.append(f"     GREŠKA: {error}")
+        self._log("\n".join(lines))
+
+    def final(self, text: str):
+        """Zapiši tačno ono što aplikacija na kraju pokušava da ubaci."""
+        self._log(f"\n[FINALNI OUTPUT] {text!r}\n" + "-" * 70)
+
 
 class DebugDump:
     def __init__(self, directory, sample_rate=16000):
@@ -100,3 +123,8 @@ class DebugDump:
 
     def session(self) -> Session:
         return Session(self.dir, self.rate)
+
+    def latest_log(self):
+        """Vrati poslednji tekstualni log ili folder ako još nema diktata."""
+        logs = list(self.dir.glob("*.txt"))
+        return max(logs, key=lambda path: path.stat().st_mtime) if logs else self.dir

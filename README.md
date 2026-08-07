@@ -94,7 +94,7 @@ Dva nezavisna podešavanja:
 | **Režim** | drži taster / prekidač |
 | **AI obrada teksta** | glavni prekidač; alati su uvučeni ispod njega i sivi dok je isključen |
 | **Jezik** | srpski, engleski, hrvatski |
-| **Snimaj za debug** | vidi „Ako se ne prepozna sve" |
+| **Detaljan log obrade** | uključi/isključi snimanje toka; zatim **Otvori poslednji log…** |
 
 ---
 
@@ -289,7 +289,8 @@ Ne traže ni mikrofon ni mrežu ni ključ. Android ima svojih 24: `cd android &&
 
 ## Ako se ne prepozna sve što si rekao
 
-Uključi **Snimaj za debug** iz menija. Svaki diktat se tada snima u `~/Diktat-debug`:
+Uključi **Detaljan log obrade** iz menija. Zatim se pojavljuje
+**Otvori poslednji log…**. Svaki diktat se čuva u `~/Diktat-debug`:
 
 ```
 2026-08-04_15-31-07.txt        izveštaj
@@ -312,6 +313,23 @@ Izveštaj sam presuđuje gde se gubi:
 - **Pokrivaju ga, ali ima praznih** → servis nije prepoznao taj deo; pusti taj
   `.wav` i čuj šta je unutra.
 - **Nema ga ni u `full.wav`** → gubi se u snimanju, ne u prepoznavanju.
+
+Kada je Groq uključen, isti `.txt` sadrži i:
+
+```text
+[AI PROLAZ] Groq Whisper + GPT-OSS
+     Google prepis: '...'
+     Whisper prepis: '...'
+     Prompt:
+     ...
+     Rezultat modela: '...'
+
+[FINALNI OUTPUT] '...'
+```
+
+Ne upisuju se API ključevi ni sirovi HTTP zahtevi. Ako je uključen i postojeći
+Gemini tekstualni prolaz, i njegov prompt i rezultat se zapisuju kao poseban
+`[AI PROLAZ]`.
 
 Ne zaboravi da isključiš — snima svaki diktat na disk.
 

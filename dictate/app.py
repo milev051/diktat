@@ -10,6 +10,7 @@ AppKit se dira iskljucivo iz glavne niti; radne niti samo upisuju u `State`.
 
 import queue
 import re
+import subprocess
 import threading
 import time
 import traceback
@@ -105,6 +106,7 @@ class DictateApp(rumps.App):
         self._ticket = 0         # redni broj segmenta za ubacivanje
         self._insert_q: queue.Queue = queue.Queue()
         self._dump = None
+        self._debug_sessions = {}
         self._pending_store = pending.PendingStore(
             self.cfg.get("pending_dir", "~/Diktat-neuspeli"),
             self.cfg["sample_rate"],
@@ -191,6 +193,12 @@ class DictateApp(rumps.App):
         self.item_groq_key = rumps.MenuItem(
             "Groq API ključ…", callback=self._set_groq_key
         )
+        self.item_debug = rumps.MenuItem(
+            "Detaljan log obrade", callback=self._toggle_debug
+        )
+        self.item_debug_open = rumps.MenuItem(
+            "Otvori poslednji log…", callback=self._open_debug_log
+        )
         self.item_polish_para = rumps.MenuItem(
             "Podeli na pasuse",
             callback=self._make_polish_toggle("polish_paragraphs", True),
@@ -214,6 +222,8 @@ class DictateApp(rumps.App):
             self.item_listen,
             self.item_groq,
             self.item_groq_key,
+            self.item_debug,
+            self.item_debug_open,
             self.item_tidy,
             self.item_polish_bullets,
             self.item_polish_para,
@@ -328,6 +338,10 @@ class DictateApp(rumps.App):
         self.item_groq_key.title = (
             "Groq API ključ: podešen" if self.cfg.get("groq_api_key")
             else "Groq API ključ…"
+        )
+        self.item_debug.state = 1 if self.cfg.get("debug", False) else 0
+        self.item_debug_open.set_callback(
+            self._open_debug_log if self.cfg.get("debug", False) else None
         )
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_bullets.state = 1 if self.cfg.get("polish_bullets", False) else 0
@@ -542,7 +556,12 @@ class DictateApp(rumps.App):
             self._settle_phase("(nista)")
             return
 
-        self._deliver(ticket, self._finish(text), recorder.session)
+        text = self._finish(text)
+        if not self._deferred():
+            debug_session = self._debug_sessions.pop(recorder.session, None)
+            if debug_session is not None:
+                debug_session.final(text)
+        self._deliver(ticket, text, recorder.session)
 
     def _finish(self, text: str) -> str:
         # Razmak na kraju je uvek: bez njega se recenice slepe pri nadovezivanju.
@@ -613,21 +632,48 @@ class DictateApp(rumps.App):
         delovi = self._take_audio(session)
         if not delovi:
             return tekst, False
+        trag = {
+            "provider": "Gemini audio check",
+            "google_text": tekst,
+            "metadata": f"audio: {len(delovi)} segment(a); Gemini model: {self.cfg.get('polish_model') or polish.DEFAULT_MODEL}",
+        }
         try:
             if groq.enabled(self.cfg):
                 # Groq dobija prednost kada je uključen: u suprotnom bi isti
                 # audio nepotrebno išao i Gemini-ju i Groq-u.
-                ispravljen = groq.check_batch(delovi, tekst, self.cfg)
+                ispravljen = groq.check_batch(delovi, tekst, self.cfg, trace=trag)
                 self._count_polish(2)  # Whisper + GPT-OSS
             else:
                 ispravljen = listen.check_batch(delovi, tekst, self.cfg)
                 self._count_polish()
+                trag["prompt"] = listen._uputstvo(tekst, self.cfg, len(delovi))
+            trag["merged_text"] = ispravljen
+            self._write_ai_debug(session, trag)
             if ispravljen != tekst:
                 print(f"[diktat] AI slušao {len(delovi)} segm.: {tekst!r} -> {ispravljen!r}")
             return ispravljen, True
         except Exception as exc:  # noqa: BLE001
+            trag["error"] = str(exc)
+            self._write_ai_debug(session, trag)
             print(f"[diktat] provera snimka nije uspela: {exc}")
             return tekst, False
+
+    def _write_ai_debug(self, session: int, trag: dict):
+        """Upiši rezultate provajdera u log sesije ako je detaljan log uključen."""
+        if not self._dump:
+            return
+        debug_session = self._debug_sessions.get(session)
+        if debug_session is None:
+            return
+        debug_session.ai(
+            trag.get("provider", "AI"),
+            trag.get("google_text", ""),
+            prompt=trag.get("prompt", ""),
+            whisper_text=trag.get("whisper_text", ""),
+            merged_text=trag.get("merged_text", ""),
+            error=trag.get("error", ""),
+            metadata=trag.get("metadata", ""),
+        )
 
     def _apply_rules(self, text: str) -> str:
         """Nasa pravila nad jednim komadom teksta, bez prelamanja redova."""
@@ -680,6 +726,8 @@ class DictateApp(rumps.App):
         dok ti jos pricas — tako nema cekanja na kraju."""
         if not self._segmenting():
             session = self._dump.session() if self._dump else None
+            if session is not None:
+                self._debug_sessions[recorder.session] = session
             pcm = b"".join(self._tracked(recorder))
             if recorder.cancelled:
                 return ""
@@ -699,6 +747,8 @@ class DictateApp(rumps.App):
         rate = self.cfg["sample_rate"]
 
         session = self._dump.session() if self._dump else None
+        if session is not None:
+            self._debug_sessions[recorder.session] = session
         everything: list[bytes] = []
         frames: list[bytes] = []
         seconds = 0.0
@@ -865,7 +915,7 @@ class DictateApp(rumps.App):
         # Tekst je cekao kraj diktata pa je jos sirov: ako model ne doteruje,
         # pravila moraju sada da odrade svoje.
         doteran = (
-            self._doteraj(tekst, sredjeno) if self._formal()
+            self._doteraj(tekst, sredjeno, sesija) if self._formal()
             else self._rules_over_paragraphs(tekst)
         )
         with self._count_lock:
@@ -874,6 +924,9 @@ class DictateApp(rumps.App):
         # Uz tacke ide nov red umesto razmaka: sledeci diktat tako pocinje svoju
         # tacku umesto da se nastavi na prethodnu.
         doteran = doteran.rstrip() + "\n" if self.cfg.get("polish_bullets", False) else doteran + " "
+        debug_session = self._debug_sessions.pop(sesija, None)
+        if debug_session is not None:
+            debug_session.final(doteran)
         self._remember(doteran)
         try:
             insert.insert(
@@ -885,7 +938,8 @@ class DictateApp(rumps.App):
             traceback.print_exc()
         self._settle_phase()
 
-    def _doteraj(self, tekst: str, vec_sredjeno=False) -> str:
+    def _doteraj(self, tekst: str, vec_sredjeno=False, session=None) -> str:
+        prompt = polish._uputstvo(self.cfg, vec_sredjeno) if self._dump else ""
         try:
             doteran = polish.polish(tekst, self.cfg, vec_sredjeno=vec_sredjeno)
             self._count_polish()
@@ -898,9 +952,21 @@ class DictateApp(rumps.App):
                 # prepisuje recenice — skracivanje ih vraca pravopisno uredne.
                 # Uputstvo to ne resava pouzdano, pa presudjuju nasa pravila.
                 doteran = self._rules_over_paragraphs(doteran)
+            self._write_ai_debug(session, {
+                "provider": "Gemini tekstualna obrada",
+                "google_text": tekst,
+                "prompt": prompt,
+                "merged_text": doteran,
+            })
             return doteran
         except Exception as exc:  # noqa: BLE001
             # Nedoteran tekst je bolji nego nikakav — model je dodatak, ne uslov.
+            self._write_ai_debug(session, {
+                "provider": "Gemini tekstualna obrada",
+                "google_text": tekst,
+                "prompt": prompt,
+                "error": str(exc),
+            })
             print(f"[diktat] doterivanje nije uspelo: {exc}")
             return tekst
 
@@ -1196,6 +1262,19 @@ class DictateApp(rumps.App):
             if on
             else None
         )
+
+    def _toggle_debug(self, _):
+        self.cfg["debug"] = not bool(self.cfg.get("debug", False))
+        config.save(self.cfg)
+        self._apply_debug(self.cfg["debug"])
+        self._sync_menu_marks()
+        self._keep_menu_open()
+
+    def _open_debug_log(self, _):
+        if not self._dump:
+            return
+        # `open` otvara poslednji .txt ako postoji, a folder ako još nema loga.
+        subprocess.Popen(["open", str(self._dump.latest_log())])
 
     def _quit(self, _):
         try:
