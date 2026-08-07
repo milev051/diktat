@@ -320,7 +320,8 @@ class DictationService : Service() {
 
     // Ukljucena obrada bez ijednog alata nema sta da posalje, pa se tekst upisuje
     // odmah kao i inace — bez toga bi diktat visio na praznom pozivu.
-    private fun formal() = cfg.polish && Polish.available(cfg) && Polish.toolCount(cfg) > 0
+    // Nema glavnog prekidaca: izabran alat sam po sebi znaci da se AI koristi.
+    private fun formal() = Polish.available(cfg) && Polish.toolCount(cfg) > 0
 
     /** Ceka li se kraj diktata zbog provere snimka. */
     private fun batch() = Listen.enabled(cfg)

@@ -115,7 +115,7 @@ ih ima i šalje ih ponovo. Drži se poslednjih 5.
 
 ## AI obrada teksta
 
-Kartica *AI obrada teksta*: prekidač plus polje za **API ključ** (Google AI
+Kartica *AI* (bez glavnog prekidača — izabran alat znači da se AI koristi): prekidač plus polje za **API ključ** (Google AI
 Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu. Dok se čeka, pilula
 pokazuje plavo **AI**.
 

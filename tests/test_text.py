@@ -132,3 +132,25 @@ class Skracenice(unittest.TestCase):
     def test_neispravan_izraz_ne_obara_diktat(self):
         p = self.pravila("~(nezatvorena=x\nne znam=nzm")
         self.assertEqual(self.primeni("ne znam", p), "nzm")
+
+
+class UkinutGlavniPrekidac(unittest.TestCase):
+    """Ko je imao AI ugašen ne sme da ga dobije preko noći."""
+
+    def prevedi(self, staro):
+        from dictate import config
+        return config._migrate(dict(staro))
+
+    def test_ugasen_ai_gasi_i_alate(self):
+        out = self.prevedi({"polish": False, "polish_paragraphs": True,
+                            "polish_bullets": True, "text_style": "written"})
+        self.assertFalse(out["polish_paragraphs"])
+        self.assertFalse(out["polish_bullets"])
+        self.assertEqual(out["text_style"], "spoken")
+
+    def test_ukljucen_ai_ostavlja_alate(self):
+        out = self.prevedi({"polish": True, "polish_paragraphs": True})
+        self.assertTrue(out["polish_paragraphs"])
+
+    def test_kljuc_vise_ne_postoji(self):
+        self.assertNotIn("polish", self.prevedi({"polish": True}))

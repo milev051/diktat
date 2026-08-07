@@ -107,7 +107,7 @@ def _uputstvo(prepis: str, cfg, delova: int = 1) -> str:
     if delova > 1:
         tekst += VISE_DELOVA
     from . import config
-    if config.style(cfg) == "written" and cfg.get("polish", False):
+    if config.style(cfg) == "written":
         tekst += SREDI_DEO
     pojmovi = cfg.get("vocabulary", POJMOVI_PODRAZUMEVANO)
     if pojmovi and pojmovi.strip():

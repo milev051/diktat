@@ -97,7 +97,7 @@ Vrati samo prepis, bez uvoda i bez navodnika."""
         val sta = if (delova == 1) "snimak" else "$delova uzastopna snimka"
         var osnova = UPUTSTVO.format(sta, prepis)
         if (delova > 1) osnova += VISE_DELOVA
-        if (cfg.polish && cfg.polishTidy) osnova += SREDI_DEO
+        if (cfg.polishTidy) osnova += SREDI_DEO
         val pojmovi = cfg.vocabulary.trim()
         return if (pojmovi.isEmpty()) osnova else osnova + POJMOVI_DEO + pojmovi
     }

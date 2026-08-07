@@ -45,7 +45,6 @@ DEFAULTS = {
     "overlay_position": "top-right",
 
     # --- Formalni rezim (doterivanje jezickim modelom) ---
-    "polish": False,              # ukljucuje se iz menija, samo uz kljuc
     "polish_api_key": "",         # Google AI Studio kljuc; ostaje pri nadogradnji
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
@@ -107,6 +106,17 @@ def _migrate(cfg: dict) -> dict:
     if cfg.get("insert_method") == "paste" and not cfg.get("_insert_migrated"):
         cfg["insert_method"] = "auto"
         cfg["_insert_migrated"] = True
+
+    # Glavni prekidac je uklonjen — izabran alat sam znaci "ukljuceno". Ko ga je
+    # imao ugasenog, alate treba i ugasiti, da mu se AI ne upali sam od sebe.
+    if "polish" in cfg:
+        if not cfg.pop("polish"):
+            cfg["polish_paragraphs"] = False
+            cfg["polish_bullets"] = False
+            cfg["polish_dedupe"] = False
+            cfg["output_language"] = ""
+            if cfg.get("text_style") == "written":
+                cfg["text_style"] = "spoken"
 
     # "raw" je uklonjen: niko ga nije koristio, a bio je treci ishod za isto pitanje.
     if cfg.get("text_style") == "raw":

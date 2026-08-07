@@ -180,25 +180,20 @@ class MainActivity : AppCompatActivity() {
         // Sve sto model radi je na jednom mestu, kao i u meniju na Mac-u. Razlika
         // u trajanju se ne gubi: stoji uz sam prekidac koji je uzrokuje.
         val (card, box) = card(this, "AI")
-        val alati = mutableListOf<View>()
-
-        box.addView(switch(this, "Uključi AI obradu", cfg.polish) {
-            cfg.polish = it
-            setBranchEnabled(alati, it)
-        })
         box.addView(
             body(
                 this,
-                "Ceo diktat se sačeka pa jednim pozivom ode modelu; dok se čeka, " +
-                    "pokazivač pokazuje AI. Radi samo uz API ključ (Google AI " +
-                    "Studio), koji ostaje sačuvan i posle nadogradnje.",
+                "Izabran alat sam po sebi znači da se AI koristi — nema posebnog " +
+                    "prekidača. Ceo diktat se sačeka pa jednim pozivom ode modelu; " +
+                    "dok se čeka, pokazivač pokazuje AI.\n\n" +
+                    "Radi samo uz API ključ (Google AI Studio), koji ostaje sačuvan " +
+                    "i posle nadogradnje.",
             )
         )
 
         val slusa = indent(this, switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
             cfg.audioCheck = it
         })
-        alati.add(slusa)
         box.addView(slusa)
         box.addView(
             indent(this, body(this, "Model dobija i sam zvuk, pa ispravlja ono što je " +
@@ -211,7 +206,6 @@ class MainActivity : AppCompatActivity() {
 
         val sredi = indent(this, switch(this, "Sredi tekst (tačke i velika slova)",
             cfg.polishTidy) { cfg.textStyle = if (it) "written" else "spoken" })
-        alati.add(sredi)
         box.addView(sredi)
         box.addView(
             indent(this, body(this, "Dodaje tačke i velika slova, i usput sređuje reči " +
@@ -222,13 +216,11 @@ class MainActivity : AppCompatActivity() {
         val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
         })
-        alati.add(pasusi)
         box.addView(pasusi)
 
         val tacke = indent(this, switch(this, "Sažmi u tačke", cfg.polishBullets) {
             cfg.polishBullets = it
         })
-        alati.add(tacke)
         box.addView(tacke)
         box.addView(
             indent(this, body(this, "Preuređuje izgovoreno u spisak: jedna misao po " +
@@ -239,7 +231,6 @@ class MainActivity : AppCompatActivity() {
         val ponavljanja = indent(this, switch(this, "Izbaci ponavljanja", cfg.polishDedupe) {
             cfg.polishDedupe = it
         })
-        alati.add(ponavljanja)
         box.addView(ponavljanja)
         box.addView(
             indent(this, body(this, "Kad se ista reč ili fraza izgovori dvaput zaredom " +
@@ -250,7 +241,6 @@ class MainActivity : AppCompatActivity() {
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
         }
-        alati.add(jezik)
         box.addView(indent(this, jezik))
         box.addView(
             indent(this, body(this, "Slobodan opis, ne spisak: \u201Emakedonski\u201C, " +
@@ -277,7 +267,6 @@ class MainActivity : AppCompatActivity() {
                 "modelu uz snimak, odvojeni zarezom.")
         )
 
-        setBranchEnabled(alati, cfg.polish)
         return card
     }
 

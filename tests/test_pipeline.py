@@ -14,7 +14,7 @@ def napravi(**kw):
     app = app_mod.DictateApp.__new__(app_mod.DictateApp)
     app.cfg = {
         "sample_rate": 16000, "audio_check": True, "polish_api_key": "x",
-        "audio_check_max_seconds": 120, "polish": False,
+        "audio_check_max_seconds": 120, "polish_paragraphs": False,
         "text_style": "spoken", "join_thousands": True,
     }
     app.cfg.update(kw)
@@ -114,13 +114,18 @@ class KadaSeCekaKraj(unittest.TestCase):
         self.assertTrue(app._batch())
         self.assertTrue(app._deferred())
 
-    def test_bez_provere_i_bez_modela_tekst_ide_odmah(self):
+    def test_bez_provere_i_bez_alata_tekst_ide_odmah(self):
         app = napravi(audio_check=False)
         self.assertFalse(app._deferred())
 
-    def test_ai_obrada_sama_takodje_odlaze(self):
-        app = napravi(audio_check=False, polish=True, text_style="written")
+    def test_izabran_alat_sam_po_sebi_pali_ai(self):
+        # Glavnog prekidaca nema: izabran alat znaci da se AI koristi.
+        app = napravi(audio_check=False, polish_paragraphs=True)
         self.assertTrue(app._deferred())
+
+    def test_bez_kljuca_nema_ai_ja_ma_sta_bilo_izabrano(self):
+        app = napravi(audio_check=False, polish_paragraphs=True, polish_api_key="")
+        self.assertFalse(app._deferred())
 
 
 class PravilaNadPasusima(unittest.TestCase):

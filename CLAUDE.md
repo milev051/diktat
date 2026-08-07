@@ -192,11 +192,11 @@ se, nova se pokupe tiho.
 
 ---
 
-**Glavni prekidač AI obrade se ne ukida.** Bez njega bi gašenje obrade značilo
-gašenje svakog alata pojedinačno — i gubitak izbora. Alati su zato podelementi:
-uvučeni i zasivljeni dok je glavni isključen. Na macOS-u se sivi **skidanjem
-callback-a**, ne sa `setEnabled_`: NSMenu sam uključuje stavke koje imaju akciju,
-pa bi `setEnabled_` bio pregažen pri sledećem otvaranju menija.
+**Glavnog prekidača AI obrade više nema.** Izabran alat sam po sebi znači da se
+AI koristi; prekidač je bio korak koji ništa nije odlučivao, a umeo je da stoji
+isključen dok su alati izabrani. Bez ključa nema ničega — to je jedini uslov.
+Zatečeno `polish: false` pri prvom čitanju **gasi i alate**, da se AI nikom ne
+upali sam od sebe.
 
 **Alati AI obrade su nezavisni; uputstvo se sklapa od izabranih.** Sređivanje
 (interpunkcija, velika slova, kvačice) je samo jedan od njih. Kad ono nije

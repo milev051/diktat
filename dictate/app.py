@@ -179,10 +179,9 @@ class DictateApp(rumps.App):
 
         # Sve sto model radi je na jednom mestu, ali u dva bloka: prepoznavanje
         # (sporo, salje zvuk) i obrada teksta (brzo, salje samo tekst).
+        # Nema glavnog prekidaca: izabran alat sam po sebi znaci da se AI
+        # koristi. Prekidac je bio jos jedan korak koji nista nije odlucivao.
         ai_menu = rumps.MenuItem("AI")
-        self.item_polish = rumps.MenuItem(
-            "Uključi AI obradu", callback=self._toggle_polish
-        )
         self.item_listen = rumps.MenuItem(
             "Sluša snimak (preciznije prepoznavanje)", callback=self._toggle_listen
         )
@@ -206,8 +205,6 @@ class DictateApp(rumps.App):
         )
 
         for stavka in (
-            self.item_polish,
-            rumps.separator,
             self.item_listen,
             self.item_tidy,
             self.item_polish_para,
@@ -316,12 +313,8 @@ class DictateApp(rumps.App):
         self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
         self.item_abbrev.state = 1 if self.cfg.get("abbreviations", True) else 0
 
-        ima_kljuc = polish.available(self.cfg)
-        radi = bool(self.cfg.get("polish", False)) and ima_kljuc
-        self.item_polish.state = 1 if self.cfg.get("polish", False) else 0
-        self.item_polish.title = (
-            "Uključi AI obradu" if ima_kljuc else "Nema API ključa (config.json)"
-        )
+        # Alati rade cim postoji kljuc; izabran alat je sam po sebi "ukljuceno".
+        radi = polish.available(self.cfg)
         self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_bullets.state = 1 if self.cfg.get("polish_bullets", False) else 0
@@ -334,7 +327,10 @@ class DictateApp(rumps.App):
             stavka.set_callback(cb if radi else None)
         jezik = polish.output_language(self.cfg)
         self.item_language_out.title = f"Jezik izlaza: {jezik}" if jezik else "Jezik izlaza…"
-        self.item_polish_count.title = f"Poziva modelu danas: {self._polish_today()}"
+        self.item_polish_count.title = (
+            f"Poziva modelu danas: {self._polish_today()}" if radi
+            else "Nema API ključa (config.json)"
+        )
 
 
 
@@ -1075,16 +1071,6 @@ class DictateApp(rumps.App):
         self._sync_menu_marks()
         self._keep_menu_open()
 
-    def _toggle_polish(self, _):
-        if not polish.available(self.cfg):
-            self.state.set(phase="error", message="Upiši polish_api_key u config.json")
-            return
-        self.cfg["polish"] = not bool(self.cfg.get("polish", False))
-        config.save(self.cfg)
-        if self.cfg["polish"] and not polish.tools(self.cfg):
-            self.state.set(phase="error", message="Izaberi bar jedan alat")
-        self._sync_menu_marks()
-        self._keep_menu_open()
 
     def _batch(self) -> bool:
         """Ceka li se kraj diktata zbog provere snimka."""
@@ -1097,14 +1083,10 @@ class DictateApp(rumps.App):
     def _formal(self) -> bool:
         """Ceka li se ceo diktat zbog modela.
 
-        Ukljucena obrada bez ijednog izabranog alata nema sta da posalje, pa se
-        tekst lepi odmah kao i inace — bez toga bi diktat visio na praznom pozivu.
+        Bez ijednog izabranog alata nema sta da se posalje, pa se tekst lepi
+        odmah — inace bi diktat visio na praznom pozivu.
         """
-        return (
-            bool(self.cfg.get("polish", False))
-            and polish.available(self.cfg)
-            and bool(polish.tools(self.cfg))
-        )
+        return polish.available(self.cfg) and bool(polish.tools(self.cfg))
 
     def _toggle_tidy(self, _):
         """Sredjivanje radi model, pa bez ukljucenog AI-ja nema ko da ga izvrsi."""

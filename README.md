@@ -135,7 +135,8 @@ Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
 
 ## AI obrada teksta
 
-Meni → **AI obrada teksta**. Ceo diktat se sačeka, pa se **jednim pozivom**
+Meni → **AI**. Nema posebnog prekidača: izabran alat sam po sebi znači da se AI
+koristi. Ceo diktat se sačeka, pa se **jednim pozivom**
 pošalje jezičkom modelu. Dok se čeka odgovor, u menu baru stoji plavo **AI**.
 
 Traži ključ sa Google AI Studio u `polish_api_key`. Bez ključa stavka piše da
@@ -165,7 +166,6 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 
 | ključ | podrazumevano | |
 |---|---|---|
-| `polish` | `false` | uključuje se iz menija |
 | `polish_api_key` | `""` | bez njega režim ne radi |
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |

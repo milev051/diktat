@@ -106,10 +106,6 @@ class Config(context: Context) {
     // --- Formalni rezim ---
     // Kljuc ostaje pri nadogradnji aplikacije: SharedPreferences prezivljava
     // instalaciju preko postojece, dok je paket i potpis isti.
-    var polish: Boolean
-        get() = prefs.getBoolean("polish", false)
-        set(v) = prefs.edit().putBoolean("polish", v).apply()
-
     var polishApiKey: String
         get() = prefs.getString("polish_api_key", "")!!
         set(v) = prefs.edit().putString("polish_api_key", v.trim()).apply()
@@ -126,6 +122,20 @@ class Config(context: Context) {
      */
     var textStyle: String
         get() {
+            // Glavni prekidac je uklonjen — izabran alat sam znaci "ukljuceno".
+            // Ko ga je imao ugasenog, alate treba i ugasiti pri prvom citanju.
+            if (prefs.contains("polish") && !prefs.getBoolean("polish", false)) {
+                prefs.edit()
+                    .putBoolean("polish_paragraphs", false)
+                    .putBoolean("polish_bullets", false)
+                    .putBoolean("polish_dedupe", false)
+                    .putString("output_language", "")
+                    .putString("text_style", "spoken")
+                    .remove("polish")
+                    .apply()
+                return "spoken"
+            }
+            prefs.edit().remove("polish").apply()
             // "raw" je uklonjen: niko ga nije koristio, a bio je treci ishod za
             // isto pitanje. Ko ga je imao, dobija podrazumevano ponasanje.
             prefs.getString("text_style", null)?.let { return if (it == "raw") "spoken" else it }
