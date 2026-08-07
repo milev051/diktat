@@ -163,3 +163,10 @@ class Ponavljanja(unittest.TestCase):
     def test_tacke_traze_vrstu_iskaza(self):
         u = polish._uputstvo(cfg(polish_bullets=True))
         self.assertIn("pitanje ostaje pitanje", u)
+
+    def test_tacke_imaju_konkretnu_granicu_duzine(self):
+        # Meko „podeli kad je jasnije" je davalo tacke od 20 reci; izmereno je
+        # da tek izricita granica i spisak veznika stvarno dele izjavu.
+        u = polish._uputstvo(cfg(polish_bullets=True))
+        self.assertIn("dvanaest reči", u)
+        self.assertIn("veznikom", u)

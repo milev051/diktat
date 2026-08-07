@@ -45,8 +45,10 @@ PASUSI = (
 # jedna misao po tacki, bez ukrasa. Za srpski se prenosi duh, ne sam standard.
 TACKE = (
     "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, u "
-    "svom redu, i nosi JEDNU misao — kratku i sažetu. Dugačku ili razgranatu "
-    "izjavu podeli na više tačaka kad se tako jasnije čita.\n"
+    "svom redu, i nosi TAČNO JEDNU tvrdnju.\n"
+    "Deli bez milosti: ako bi tačka prešla dvanaest reči, ili ako spaja dve "
+    "tvrdnje veznikom (i, pa, a, ali, jer, zato što, kada, ako), razdvoji je na "
+    "dve tačke. Bolje više kratkih nego jedna duga.\n"
     "Zadrži vrstu iskaza: pitanje ostaje pitanje i završava upitnikom, potvrda "
     "ostaje potvrda, sumnja ostaje sumnja.\n"
     "Izbaci poštapalice i uvijanje, piši jednostavnim rečima. Sve činjenice, "

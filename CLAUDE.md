@@ -344,6 +344,12 @@ prepisuje rečenice, zato mora u `_sme_da_menja` i isključuje granicu „ne
 preformuliši"; uz njega tekst završava **novim redom** umesto razmakom, da
 sledeći diktat počne svoju tačku.
 
+**„Podeli kad je jasnije" model ne posluša.** Izmereno na istom tekstu: meko
+uputstvo daje 4–5 tačaka sa najdužom od 20–21 reči; izričita granica
+(„dvanaest reči") uz spisak veznika daje 8 tačaka sa najdužom od 10–11. Kratak
+diktat se pri tom ne cepa — jedna rečenica ostaje jedna tačka. Kad model treba
+nešto da deli ili broji, mora da dobije **broj**, ne opis.
+
 **Svaki alat koji skida ili prepisuje reči mora u `_sme_da_menja`.** Tačke,
 prevod i izbacivanje ponavljanja tu spadaju — inače provera vernosti obori ceo
 izlaz jer se reči razlikuju od ulaza. Isti alati isključuju granicu „ne
