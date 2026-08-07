@@ -183,16 +183,13 @@ class DictateApp(rumps.App):
         # koristi. Prekidac je bio jos jedan korak koji nista nije odlucivao.
         ai_menu = rumps.MenuItem("AI")
         self.item_listen = rumps.MenuItem(
-            "Sluša snimak (preciznije prepoznavanje)", callback=self._toggle_listen
+            "Google/Gemini sluša snimak", callback=self._toggle_listen
         )
         self.item_groq = rumps.MenuItem(
-            "Groq: Whisper + GPT-OSS (drugo mišljenje)", callback=self._toggle_groq
+            "Groq preciznost (Whisper + GPT-OSS)", callback=self._toggle_groq
         )
         self.item_groq_key = rumps.MenuItem(
             "Groq API ključ…", callback=self._set_groq_key
-        )
-        self.item_groq_models = rumps.MenuItem(
-            "Groq modeli…", callback=self._set_groq_models
         )
         self.item_polish_para = rumps.MenuItem(
             "Podeli na pasuse",
@@ -217,10 +214,9 @@ class DictateApp(rumps.App):
             self.item_listen,
             self.item_groq,
             self.item_groq_key,
-            self.item_groq_models,
             self.item_tidy,
-            self.item_polish_para,
             self.item_polish_bullets,
+            self.item_polish_para,
             self.item_polish_dedupe,
             self.item_language_out,
             rumps.separator,
@@ -1122,28 +1118,6 @@ class DictateApp(rumps.App):
         self.cfg["groq_api_key"] = odgovor.text.strip()
         config.save(self.cfg)
         self._sync_menu_marks()
-
-    def _set_groq_models(self, _):
-        odgovor = rumps.Window(
-            message="Prvi red = Whisper model; drugi red = model za poređenje.",
-            title="Groq modeli",
-            default_text=(
-                f"{self.cfg.get('groq_transcription_model', groq.DEFAULT_TRANSCRIPTION_MODEL)}\n"
-                f"{self.cfg.get('groq_merge_model', groq.DEFAULT_MERGE_MODEL)}"
-            ),
-            ok="Sačuvaj",
-            cancel="Otkaži",
-            dimensions=(420, 70),
-        ).run()
-        if not odgovor.clicked:
-            return
-        redovi = [red.strip() for red in odgovor.text.splitlines() if red.strip()]
-        if redovi:
-            self.cfg["groq_transcription_model"] = redovi[0]
-        if len(redovi) > 1:
-            self.cfg["groq_merge_model"] = redovi[1]
-        config.save(self.cfg)
-
 
     def _batch(self) -> bool:
         """Ceka li se kraj diktata zbog provere snimka."""

@@ -66,7 +66,7 @@ object Groq {
         val pcm = ByteArrayOutputStream().also { out -> delovi.forEach(out::write) }.toByteArray()
         val (body, contentType) = multipart(
             mapOf(
-                "model" to cfg.groqTranscriptionModel,
+                "model" to DEFAULT_TRANSCRIPTION_MODEL,
                 "language" to cfg.language.substringBefore("-"),
                 "temperature" to "0",
                 "response_format" to "json",
@@ -118,7 +118,7 @@ $izgled$pojmovi"""
 
     fun merge(google: String, whisper: String, cfg: Config): String {
         val payload = JSONObject().apply {
-            put("model", cfg.groqMergeModel)
+            put("model", DEFAULT_MERGE_MODEL)
             put("messages", JSONArray()
                 .put(JSONObject().put("role", "system")
                     .put("content", "Vraćaš samo konačan prepis diktata."))

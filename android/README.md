@@ -125,8 +125,14 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
 | alat | podrazumevano | šta radi |
 |---|---|---|
 | Sredi tekst | isključeno | tačke i velika slova; usput i gramatička neslaganja |
+| Sažmi u tačke | isključeno | preuredi tekst u spisak tačaka |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
+
+**Google/Gemini sluša snimak** i **Groq preciznost** su nezavisne opcije. Ako je
+prva isključena, a Groq uključen, Google uradi osnovni prepis, Groq Whisper
+presluša isti audio, a GPT-OSS uporedi oba teksta. Groq modeli su ugrađeni u
+aplikaciju i ne podešavaju se na ekranu.
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
 kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.

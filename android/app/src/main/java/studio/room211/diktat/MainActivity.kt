@@ -172,40 +172,36 @@ class MainActivity : AppCompatActivity() {
                 "(Google AI Studio ili Groq), koji ostaje sačuvan i posle nadogradnje.")
         )
 
-        box.addView(switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
+        box.addView(switch(this, "Google/Gemini sluša snimak", cfg.audioCheck) {
             cfg.audioCheck = it
         })
+        box.addView(
+            body(this, "Ovo je dodatna Google/Gemini provera. Ako je isključeno, " +
+                "Google radi samo osnovni prepis; Groq i dalje radi ako je uključen.")
+        )
 
-        box.addView(switch(this, "Groq: Whisper + GPT-OSS (drugo mišljenje)", cfg.groqEnabled) {
+        box.addView(switch(this, "Groq preciznost (Whisper + GPT-OSS)", cfg.groqEnabled) {
             cfg.groqEnabled = it
         })
         box.addView(
-            body(this, "Google prepis i Groq Whisper prepis se porede u GPT-OSS modelu; " +
-                "ako Groq nije dostupan, ostaje Google tekst.")
+            body(this, "Ovo radi nezavisno od opcije iznad: audio se šalje Groq Whisper-u, " +
+                "a GPT-OSS poredi Google i Whisper prepis. Ako Groq nije dostupan, " +
+                "ostaje Google tekst. Modeli su ugrađeni u aplikaciju.")
         )
         val (groqKey, _) = field(this, "Groq API ključ", cfg.groqApiKey) {
             cfg.groqApiKey = it
         }
         box.addView(groqKey)
-        val (whisperModel, _) = field(
-            this, "Groq Whisper model", cfg.groqTranscriptionModel,
-        ) { cfg.groqTranscriptionModel = it }
-        box.addView(whisperModel)
-        val (mergeModel, _) = field(
-            this, "Groq model za poređenje", cfg.groqMergeModel,
-        ) { cfg.groqMergeModel = it }
-        box.addView(mergeModel)
-
         box.addView(switch(this, "Sredi tekst (tačke i velika slova)", cfg.polishTidy) {
             cfg.textStyle = if (it) "written" else "spoken"
         })
 
-        box.addView(switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
-            cfg.polishParagraphs = it
-        })
-
         box.addView(switch(this, "Sažmi u tačke", cfg.polishBullets) {
             cfg.polishBullets = it
+        })
+
+        box.addView(switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
+            cfg.polishParagraphs = it
         })
 
         box.addView(switch(this, "Izbaci ponavljanja", cfg.polishDedupe) {

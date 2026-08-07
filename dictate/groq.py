@@ -88,7 +88,7 @@ def transcribe(delovi, cfg, timeout=90) -> str:
     pcm = b"".join(part for part, _ in delovi)
     body, content_type = _multipart(
         {
-            "model": cfg.get("groq_transcription_model") or DEFAULT_TRANSCRIPTION_MODEL,
+            "model": DEFAULT_TRANSCRIPTION_MODEL,
             "language": (cfg.get("language") or "sr-RS").split("-")[0],
             "temperature": "0",
             "response_format": "json",
@@ -140,10 +140,9 @@ def merge(google_text: str, whisper_text: str, cfg, timeout=90) -> str:
     key = (cfg.get("groq_api_key") or "").strip()
     if not key:
         raise GroqError("Nema Groq API ključa.")
-    model = cfg.get("groq_merge_model") or DEFAULT_MERGE_MODEL
     prompt = _merge_prompt(google_text, whisper_text, cfg)
     payload = {
-        "model": model,
+        "model": DEFAULT_MERGE_MODEL,
         "messages": [
             {"role": "system", "content": "Vraćaš samo konačan prepis diktata."},
             {"role": "user", "content": prompt},

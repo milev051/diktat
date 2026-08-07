@@ -130,8 +130,6 @@ Dva nezavisna podešavanja:
 | `overlay_position` | `top-right` | `top-right` ili `bottom` |
 | `groq_enabled` | `false` | Groq Whisper + GPT-OSS drugo mišljenje |
 | `groq_api_key` | `""` | Groq ključ; ne čuvati ga u repozitorijumu |
-| `groq_transcription_model` | `whisper-large-v3` | Whisper model za audio |
-| `groq_merge_model` | `openai/gpt-oss-120b` | model koji poredi Google i Whisper tekst |
 
 Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
 
@@ -267,10 +265,12 @@ Skraćenice i strani nazivi su najslabija tačka endpointa — zato postoji
 
 ### Groq: Whisper + GPT-OSS
 
-Na macOS-u se podešava iz menija **AI → Groq: Whisper + GPT-OSS**, a na Androidu
-u kartici **AI**. Groq Whisper dobija kompletan audio jednog diktata, zatim
+Na macOS-u se podešava iz menija **AI → Groq preciznost**, a na Androidu
+u kartici **AI**. Opcija **Google/Gemini sluša snimak** je zasebna; može biti
+isključena dok Groq ostaje uključen. Groq Whisper tada i dalje dobija kompletan
+audio jednog diktata, zatim
 `openai/gpt-oss-120b` dobija Google i Whisper prepis i vraća samo konačan tekst.
-Ako Groq poziv ne uspe, aplikacija zadržava Google prepis. Podrazumevani modeli
+Ako Groq poziv ne uspe, aplikacija zadržava Google prepis. Ugrađeni modeli
 su `whisper-large-v3` i `openai/gpt-oss-120b`; Groq dokumentacija navodi da je
 Whisper dostupan na transkripcijskom endpointu, a GPT-OSS na chat endpointu.
 

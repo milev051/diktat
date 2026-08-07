@@ -59,8 +59,6 @@ DEFAULTS = {
     # --- Groq (Whisper + GPT-OSS drugo misljenje) ---
     "groq_enabled": False,
     "groq_api_key": "",
-    "groq_transcription_model": "whisper-large-v3",
-    "groq_merge_model": "openai/gpt-oss-120b",
     "groq_reasoning_effort": "medium",
     "groq_max_completion_tokens": 2048,
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.

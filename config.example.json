@@ -28,8 +28,6 @@
   "overlay_position": "top-right",
   "groq_enabled": false,
   "groq_api_key": "",
-  "groq_transcription_model": "whisper-large-v3",
-  "groq_merge_model": "openai/gpt-oss-120b",
   "groq_reasoning_effort": "medium",
   "groq_max_completion_tokens": 2048,
   "debug": false,
