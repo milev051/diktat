@@ -210,3 +210,24 @@ class ZavrsniRazmak(unittest.TestCase):
 
     def test_sam_razmak_ostaje_jedini_komad(self):
         self.assertEqual(self.komadi(" "), [" "])
+
+
+class SpisakTacaka(unittest.TestCase):
+    """Naša pravila su spisak spajala u jedan red i jela crtice."""
+
+    def test_svaka_tacka_ostaje_u_svom_redu(self):
+        app = napravi(text_style="spoken")
+        spisak = "- Da li postoji mogućnost?\n- Ta opcija se selektuje.\n- Tekst je bez oznaka."
+        out = app._rules_over_paragraphs(spisak)
+        self.assertEqual(len(out.splitlines()), 3)
+        self.assertTrue(all(r.startswith("- ") for r in out.splitlines()))
+
+    def test_prazan_red_izmedju_pasusa_prezivljava(self):
+        app = napravi(text_style="spoken")
+        out = app._rules_over_paragraphs("prvi pasus.\n\ndrugi pasus.")
+        self.assertEqual(out, "prvi pasus\n\ndrugi pasus")
+
+    def test_crtica_usred_reda_i_dalje_odlazi(self):
+        # „crno-beli" ostaje celo, a crtica koja stoji sama nestaje.
+        app = napravi(text_style="spoken")
+        self.assertEqual(app._rules_over_paragraphs("crno-beli film - lep"), "crno-beli film lep")

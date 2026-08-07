@@ -344,6 +344,12 @@ prepisuje rečenice, zato mora u `_sme_da_menja` i isključuje granicu „ne
 preformuliši"; uz njega tekst završava **novim redom** umesto razmakom, da
 sledeći diktat počne svoju tačku.
 
+**Naša pravila ne smeju da spajaju redove.** `strip_punctuation` skuplja
+razmake, pa je spisak tačaka završavao u jednom redu — a crtica, koja se tada
+nađe između dva razmaka, i sama nestane. Pravila idu **red po red**
+(`text.split("\n")`), ne po pasusima. Ovo se vidi samo uz stil „izgovoreno":
+uz „sređeno" se pravila ne primenjuju, pa je greška dugo bila nevidljiva.
+
 **„Podeli kad je jasnije" model ne posluša.** Izmereno na istom tekstu: meko
 uputstvo daje 4–5 tačaka sa najdužom od 20–21 reči; izričita granica
 („dvanaest reči") uz spisak veznika daje 8 tačaka sa najdužom od 10–11. Kratak

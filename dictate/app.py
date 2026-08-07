@@ -167,6 +167,11 @@ class DictateApp(rumps.App):
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
         )
+        # Skracenice nisu AI posao, ali jesu izgled teksta — stoje uz ostale.
+        self.item_abbrev = rumps.MenuItem(
+            "Skraćuj česte fraze (ne znam → nzm)",
+            callback=self._make_polish_toggle("abbreviations", True),
+        )
 
         # Sve sto model radi je na jednom mestu, ali u dva bloka: prepoznavanje
         # (sporo, salje zvuk) i obrada teksta (brzo, salje samo tekst).
@@ -202,6 +207,7 @@ class DictateApp(rumps.App):
             self.item_listen,
             self.item_tidy,
             self.item_ascii,
+            self.item_abbrev,
             self.item_polish_para,
             self.item_polish_bullets,
             self.item_polish_dedupe,
@@ -210,7 +216,7 @@ class DictateApp(rumps.App):
             self.item_polish_count,
         ):
             ai_menu.add(stavka)
-        for stavka in (self.item_listen, self.item_tidy, self.item_ascii,
+        for stavka in (self.item_listen, self.item_tidy, self.item_ascii, self.item_abbrev,
                        self.item_polish_para, self.item_polish_bullets,
                        self.item_polish_dedupe, self.item_language_out):
             stavka._menuitem.setIndentationLevel_(1)
@@ -305,6 +311,7 @@ class DictateApp(rumps.App):
         stil = config.style(self.cfg)
         self.item_tidy.state = 1 if stil == "written" else 0
         self.item_ascii.state = 1 if self.cfg.get("ascii_diacritics", False) else 0
+        self.item_abbrev.state = 1 if self.cfg.get("abbreviations", True) else 0
 
         ima_kljuc = polish.available(self.cfg)
         radi = bool(self.cfg.get("polish", False)) and ima_kljuc
@@ -643,16 +650,13 @@ class DictateApp(rumps.App):
         return abbrev.apply(text, pravila)
 
     def _rules_over_paragraphs(self, text: str) -> str:
-        """Ista pravila, ali podela na pasuse prezivljava.
+        """Ista pravila, ali PRELOM REDOVA prezivljava.
 
         `strip_punctuation` skuplja sve razmake u jedan, pa bi nad celim tekstom
-        pojeo prazne redove koje je model namerno stavio.
+        spojio i pasuse i tacke spiska u jedan red — a crtica, koja se tada
+        nadje izmedju dva razmaka, i sama nestane. Zato red po red.
         """
-        return "\n\n".join(
-            self._apply_rules(deo.strip())
-            for deo in re.split(r"\n\s*\n", text)
-            if deo.strip()
-        )
+        return "\n".join(self._apply_rules(red) for red in text.split("\n"))
 
     def _transcribe(self, recorder):
         """Na dugom diktatu sece snimak na pauzama i salje delove na obradu

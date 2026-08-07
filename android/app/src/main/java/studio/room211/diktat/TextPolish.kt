@@ -52,15 +52,14 @@ object TextPolish {
     }
 
     /**
-     * Ista pravila, ali podela na pasuse prezivljava.
+     * Ista pravila, ali PRELOM REDOVA prezivljava.
      *
      * `stripPunctuation` skuplja sve razmake u jedan, pa bi nad celim tekstom
-     * pojeo prazne redove koje je model namerno stavio.
+     * spojio i pasuse i tacke spiska u jedan red — a crtica, koja se tada nadje
+     * izmedju dva razmaka, i sama nestane. Zato red po red.
      */
     fun applyBlocks(raw: String, cfg: Config): String =
-        raw.split(Regex("""\n\s*\n"""))
-            .filter { it.isNotBlank() }
-            .joinToString("\n\n") { apply(it, cfg, trailing = false).trim() }
+        raw.split("\n").joinToString("\n") { apply(it, cfg, trailing = false) }
 
     /**
      * Zavrsna obrada nad tekstom koji je model vec sredio.
