@@ -168,6 +168,11 @@ class Config(context: Context) {
         get() = prefs.getBoolean("audio_check", false)
         set(v) = prefs.edit().putBoolean("audio_check", v).apply()
 
+    /** Izbaci slucajno udvojene reci i fraze (govorna ispravka). */
+    var polishDedupe: Boolean
+        get() = prefs.getBoolean("polish_dedupe", false)
+        set(v) = prefs.edit().putBoolean("polish_dedupe", v).apply()
+
     /** Preuredi u spisak tacaka (nalik ASD-STE100); iskljucuje pasuse. */
     var polishBullets: Boolean
         get() = prefs.getBoolean("polish_bullets", false)

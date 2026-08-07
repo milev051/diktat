@@ -185,6 +185,10 @@ class DictateApp(rumps.App):
             "Sažmi u tačke",
             callback=self._make_polish_toggle("polish_bullets", False),
         )
+        self.item_polish_dedupe = rumps.MenuItem(
+            "Izbaci ponavljanja",
+            callback=self._make_polish_toggle("polish_dedupe", False),
+        )
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
@@ -200,6 +204,7 @@ class DictateApp(rumps.App):
             self.item_ascii,
             self.item_polish_para,
             self.item_polish_bullets,
+            self.item_polish_dedupe,
             self.item_language_out,
             rumps.separator,
             self.item_polish_count,
@@ -207,7 +212,7 @@ class DictateApp(rumps.App):
             ai_menu.add(stavka)
         for stavka in (self.item_listen, self.item_tidy, self.item_ascii,
                        self.item_polish_para, self.item_polish_bullets,
-                       self.item_language_out):
+                       self.item_polish_dedupe, self.item_language_out):
             stavka._menuitem.setIndentationLevel_(1)
 
         self.menu = [
@@ -227,6 +232,7 @@ class DictateApp(rumps.App):
             (self.item_tidy, self._toggle_tidy),
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_bullets, self._make_polish_toggle("polish_bullets", False)),
+            (self.item_polish_dedupe, self._make_polish_toggle("polish_dedupe", False)),
             (self.item_language_out, self._set_output_language),
         ]
 
@@ -309,6 +315,7 @@ class DictateApp(rumps.App):
         self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_bullets.state = 1 if self.cfg.get("polish_bullets", False) else 0
+        self.item_polish_dedupe.state = 1 if self.cfg.get("polish_dedupe", False) else 0
 
         # Alat se ne bira dok je glavni prekidac ugasen. Sivi se skidanjem
         # callback-a, ne sa setEnabled_: NSMenu sam ukljucuje stavke koje imaju

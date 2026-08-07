@@ -241,6 +241,17 @@ class MainActivity : AppCompatActivity() {
                 "ostaju. Isključuje podelu na pasuse."))
         )
 
+        val ponavljanja = indent(this, switch(this, "Izbaci ponavljanja", cfg.polishDedupe) {
+            cfg.polishDedupe = it
+        })
+        alati.add(ponavljanja)
+        box.addView(ponavljanja)
+        box.addView(
+            indent(this, body(this, "Kad se ista reč ili fraza izgovori dvaput zaredom " +
+                "— jer se čovek ispravlja — ostaje jednom. Namerno ponavljanje " +
+                "(\u201Evrlo, vrlo dugo\u201C) se ne dira."))
+        )
+
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
         }

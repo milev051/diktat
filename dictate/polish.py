@@ -44,10 +44,20 @@ PASUSI = (
 # Nalik ASD-STE100 (Simplified Technical English): kratke izjavne recenice,
 # jedna misao po tacki, bez ukrasa. Za srpski se prenosi duh, ne sam standard.
 TACKE = (
-    "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, "
-    "u svom redu, i sadrži JEDNU misao — kratku izjavnu rečenicu. Izbaci "
-    "poštapalice, ponavljanja i uvijanje; piši jednostavnim rečima. Sve "
-    "činjenice, brojevi, imena i zaključci moraju da ostanu."
+    "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, u "
+    "svom redu, i nosi JEDNU misao — kratku i sažetu. Dugačku ili razgranatu "
+    "izjavu podeli na više tačaka kad se tako jasnije čita.\n"
+    "Zadrži vrstu iskaza: pitanje ostaje pitanje i završava upitnikom, potvrda "
+    "ostaje potvrda, sumnja ostaje sumnja.\n"
+    "Izbaci poštapalice i uvijanje, piši jednostavnim rečima. Sve činjenice, "
+    "brojevi, imena i zaključci moraju da ostanu."
+)
+# Zaseban alat, jer se trazi i bez tacaka: govor ume da udvoji frazu kad se
+# covek ispravlja, a prepoznavanje to prenese doslovno.
+PONAVLJANJA = (
+    "Izbaci slučajna ponavljanja: kad je ista reč ili fraza izgovorena dvaput "
+    "zaredom, ostavi je jednom. Ponavljanje koje nosi značenje "
+    "(\u201Evrlo, vrlo dugo\u201C) ostavi kako jeste."
 )
 # Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
 # pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
@@ -110,6 +120,8 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
     izabrani = []
     if tidy_on(cfg) and not vec_sredjeno:
         izabrani.append("tidy")
+    if cfg.get("polish_dedupe", False):
+        izabrani.append("dedupe")
     if cfg.get("polish_bullets", False):
         izabrani.append("bullets")
     elif cfg.get("polish_paragraphs", True):
@@ -202,6 +214,7 @@ def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     """Menja li ijedan izabrani alat same reci."""
     return (
         bool(cfg.get("polish_bullets", False))   # tacke prepisuju recenice
+        or bool(cfg.get("polish_dedupe", False))  # brisanje ponavljanja skida reci
         or bool(output_language(cfg))       # prevod po prirodi menja svaku rec
         or "tidy" in tools(cfg, vec_sredjeno)
     )
@@ -245,13 +258,15 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         granice.append(NE_SREDJUJ)
         granice.append(NE_ISPRAVLJAJ)
 
+    if "dedupe" in izabrani:
+        zadaci.append(PONAVLJANJA)
     if "bullets" in izabrani:
         zadaci.append(TACKE)
     elif "paragraphs" in izabrani:
         zadaci.append(PASUSI)
     else:
         granice.append(NE_PASUSI)
-    if "translate" not in izabrani and "bullets" not in izabrani:
+    if not {"translate", "bullets", "dedupe"} & set(izabrani):
         # Uz prevod i uz tacke je "ne preformulisi" besmisleno — prepisivanje
         # recenica je ceo posao.
         granice.append(NE_SKRACUJ)

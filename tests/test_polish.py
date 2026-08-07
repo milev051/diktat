@@ -137,3 +137,29 @@ class Tacke(unittest.TestCase):
     def test_sam_alat_dovoljan_za_poziv(self):
         c = cfg(text_style="spoken", polish_paragraphs=False, polish_bullets=True)
         self.assertEqual(polish.tools(c), ["bullets"])
+
+
+class Ponavljanja(unittest.TestCase):
+    """Govorna ispravka udvoji frazu; prepoznavanje je prenese doslovno."""
+
+    def test_alat_ulazi_u_uputstvo(self):
+        self.assertIn(polish.PONAVLJANJA, polish._uputstvo(cfg(polish_dedupe=True)))
+
+    def test_radi_i_bez_tacaka(self):
+        c = cfg(text_style="spoken", polish_paragraphs=False, polish_dedupe=True)
+        self.assertEqual(polish.tools(c), ["dedupe"])
+
+    def test_bez_zabrane_preformulisanja(self):
+        # Brisanje ponavljanja skida reci — zabrana bi sama sebi protivrecila.
+        self.assertNotIn(polish.NE_SKRACUJ, polish._uputstvo(cfg(polish_dedupe=True)))
+
+    def test_provera_vernosti_ne_obara_izlaz(self):
+        c = cfg(text_style="spoken", polish_dedupe=True)
+        self.assertEqual(
+            polish._proveri("i onda i onda sam otisao", "i onda sam otisao", c),
+            "i onda sam otisao",
+        )
+
+    def test_tacke_traze_vrstu_iskaza(self):
+        u = polish._uputstvo(cfg(polish_bullets=True))
+        self.assertIn("pitanje ostaje pitanje", u)

@@ -344,6 +344,11 @@ prepisuje rečenice, zato mora u `_sme_da_menja` i isključuje granicu „ne
 preformuliši"; uz njega tekst završava **novim redom** umesto razmakom, da
 sledeći diktat počne svoju tačku.
 
+**Svaki alat koji skida ili prepisuje reči mora u `_sme_da_menja`.** Tačke,
+prevod i izbacivanje ponavljanja tu spadaju — inače provera vernosti obori ceo
+izlaz jer se reči razlikuju od ulaza. Isti alati isključuju granicu „ne
+preformuliši", koja bi im protivrečila.
+
 **Jezik izlaza je slobodan opis, ne spisak.** Korisnik ume da traži „pola
 makedonski pola srpski" — spisak jezika to ne pokriva, a model razume iz opisa.
 Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz

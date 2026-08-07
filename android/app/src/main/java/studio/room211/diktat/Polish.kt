@@ -42,10 +42,20 @@ object Polish {
     // Nalik ASD-STE100 (Simplified Technical English): kratke izjavne recenice,
     // jedna misao po tacki, bez ukrasa. Za srpski se prenosi duh, ne sam standard.
     private const val TACKE =
-        "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, " +
-            "u svom redu, i sadrži JEDNU misao — kratku izjavnu rečenicu. Izbaci " +
-            "poštapalice, ponavljanja i uvijanje; piši jednostavnim rečima. Sve " +
-            "činjenice, brojevi, imena i zaključci moraju da ostanu."
+        "Preuredi tekst u spisak tačaka. Svaka tačka počinje crticom i razmakom, u " +
+            "svom redu, i nosi JEDNU misao — kratku i sažetu. Dugačku ili razgranatu " +
+            "izjavu podeli na više tačaka kad se tako jasnije čita.\n" +
+            "Zadrži vrstu iskaza: pitanje ostaje pitanje i završava upitnikom, potvrda " +
+            "ostaje potvrda, sumnja ostaje sumnja.\n" +
+            "Izbaci poštapalice i uvijanje, piši jednostavnim rečima. Sve činjenice, " +
+            "brojevi, imena i zaključci moraju da ostanu."
+
+    // Zaseban alat, jer se trazi i bez tacaka: govor ume da udvoji frazu kad se
+    // covek ispravlja, a prepoznavanje to prenese doslovno.
+    private const val PONAVLJANJA =
+        "Izbaci slučajna ponavljanja: kad je ista reč ili fraza izgovorena dvaput " +
+            "zaredom, ostavi je jednom. Ponavljanje koje nosi značenje " +
+            "(\u201Evrlo, vrlo dugo\u201C) ostavi kako jeste."
 
     // Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
     // pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
@@ -77,12 +87,13 @@ object Polish {
      */
     fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
         cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs || cfg.polishBullets,
-        cfg.outputLanguage.isNotBlank(),
+        cfg.polishDedupe, cfg.outputLanguage.isNotBlank(),
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
     private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
         cfg.polishBullets ||                       // tacke prepisuju recenice
+            cfg.polishDedupe ||                    // brisanje ponavljanja skida reci
             cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
             (cfg.polishTidy && !vecSredjeno)
 
@@ -124,6 +135,7 @@ object Polish {
             granice.add(NE_SREDJUJ)
             granice.add(NE_ISPRAVLJAJ)
         }
+        if (cfg.polishDedupe) zadaci.add(PONAVLJANJA)
         // Tacke i pasusi su dva odgovora na isto pitanje; tacke pobedjuju.
         if (cfg.polishBullets) zadaci.add(TACKE)
         else if (cfg.polishParagraphs) zadaci.add(PASUSI)
@@ -131,7 +143,9 @@ object Polish {
         val prevod = cfg.outputLanguage.trim()
         // Uz prevod i uz tacke je "ne preformulisi" besmisleno — prepisivanje
         // recenica je ceo posao.
-        if (prevod.isEmpty() && !cfg.polishBullets) granice.add(NE_SKRACUJ)
+        if (prevod.isEmpty() && !cfg.polishBullets && !cfg.polishDedupe) {
+            granice.add(NE_SKRACUJ)
+        }
         if (prevod.isNotEmpty()) zadaci.add(PREVOD.format(prevod))
 
         val posao = if (zadaci.size == 1) {

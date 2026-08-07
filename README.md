@@ -170,6 +170,7 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
 | `polish_bullets` | `false` | sažmi u spisak tačaka; isključuje pasuse |
+| `polish_dedupe` | `false` | izbaci slučajno udvojene reči i fraze |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
 | `output_language` | `""` | jezik izlaza, slobodan opis; prazno = bez prevoda |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
