@@ -466,21 +466,25 @@ class DictationService : Service() {
             .onFailure { toast("Nema dozvolu za prikaz preko drugih aplikacija") }
     }
 
+    /**
+     * U piluli su UVEK cifre; stanje se cita iz boje.
+     *
+     * Tekst „AI" je ranije gutao sat, pa se nije videlo ni koliko traje ni
+     * koliko je ostalo — a bas to je jedini podatak koji pilula nosi.
+     */
     private fun updatePill(seconds: Int, busy: Boolean) {
         val view = pill ?: return
         val limit = if (cfg.continuous) cfg.continuousMaxSeconds else cfg.maxSeconds
-        if (polishing) {
-            view.text = "AI"
-            (view.background as GradientDrawable).setColor(Color.parseColor("#1565C0"))
-            return
-        }
         view.text = if (seconds >= 60) {
             "%d:%02d".format(seconds / 60, seconds % 60)
         } else {
             "%02d".format(minOf(seconds, limit))
         }
+        // Model ima prednost nad prepoznavanjem, a oboje nad granicom snimanja:
+        // cekanje na tudji odgovor je vaznije od toga koliko traje ovaj snimak.
         val color = when {
-            busy -> "#E08A00"                                   // obrada
+            polishing -> "#1565C0"                              // ceka model
+            busy -> "#E08A00"                                   // prepoznaje
             // U neprekidnom rezimu nema granice od 30s, pa crveno upozorenje
             // nema sta da najavi.
             !cfg.continuous && seconds >= cfg.redAfterSeconds -> "#C62828"
