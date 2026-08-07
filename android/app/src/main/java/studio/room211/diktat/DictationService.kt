@@ -306,7 +306,11 @@ class DictationService : Service() {
         }
 
         zavrsena?.let { kraj ->
-            isRecording = false
+            // Zastavicu gasi SAMO sesija koja se zavrsava. Ranije ju je gasila
+            // svaka: kad se prethodni diktat dovrsi dok nov vec snima, tudji
+            // kraj bi oborio `isRecording` — tajmer bi stao, `finishSession`
+            // bi prosao i ugasio servis usred snimanja.
+            if (kraj == session) isRecording = false
             // Gleda se SESIJA, ne "da li mikrofon radi": nov diktat sme da pocne
             // dok se prethodni obradjuje, pa bi cekanje na miran mikrofon spojilo
             // dva diktata u jedan poziv.
