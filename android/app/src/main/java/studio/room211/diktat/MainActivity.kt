@@ -28,7 +28,6 @@ import studio.room211.diktat.Ui.setBranchEnabled
 import studio.room211.diktat.Ui.dp
 import studio.room211.diktat.Ui.field
 import studio.room211.diktat.Ui.switch
-import studio.room211.diktat.Ui.withInfo
 
 class MainActivity : AppCompatActivity() {
 
@@ -55,19 +54,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Diktat"
-            setTextAppearance(
-                com.google.android.material.R.style.TextAppearance_Material3_HeadlineMedium
-            )
-            setPadding(dp(4), dp(16), 0, 0)
-        })
-        root.addView(TextView(this).apply {
             text = "verzija ${versionName()}"
             setTextAppearance(
                 com.google.android.material.R.style.TextAppearance_Material3_BodySmall
             )
             alpha = 0.6f
-            setPadding(dp(4), 0, 0, dp(16))
+            setPadding(dp(4), dp(12), 0, dp(16))
         })
 
         // Grupisano po pitanju na koje odgovaras, a ne po tome kad je sta
@@ -172,51 +164,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ai(): ViewGroup {
-        // Objasnjenja stoje iza dugmeta „i" umesto ispod svake stavke: ekran je
-        // inace bio dvostruko duzi nego sto treba. Stavke idu punom sirinom —
-        // uvlacenje je imalo smisla dok je postojao glavni prekidac.
+        // Stavke idu punom sirinom, bez opisa ispod i bez dugmadi za informacije:
+        // naziv prekidaca je dovoljan, a sve ostalo je samo produzavalo ekran.
         val (card, box) = card(this, "AI")
         box.addView(
             body(this, "Izabran alat znači da se AI koristi. Radi uz API ključ " +
                 "(Google AI Studio), koji ostaje sačuvan i posle nadogradnje.")
         )
 
-        box.addView(withInfo(this,
-            switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) { cfg.audioCheck = it },
-            "Model dobija i sam zvuk, pa ispravlja ono što je prepoznavanje pogrešno " +
-                "čulo — najviše skraćenice i strane nazive (\u201EAI\u201C ume da " +
-                "postane \u201Epa\u201C).\n\nOvo je najsporiji deo: snimak ide " +
-                "drugi put, pa se za 20s diktata čeka oko 10s; ostalo traje oko " +
-                "sekunde. Čuva se najviše 120s zvuka po diktatu."))
+        box.addView(switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
+            cfg.audioCheck = it
+        })
 
-        box.addView(withInfo(this,
-            switch(this, "Sredi tekst (tačke i velika slova)", cfg.polishTidy) {
-                cfg.textStyle = if (it) "written" else "spoken"
-            },
-            "Dodaje tačke i velika slova, i usput sređuje reči koje se gramatički ne " +
-                "slažu. Isključeno: tekst ostaje malim slovima i bez interpunkcije, " +
-                "kako je izgovoren.\n\nKvačice ne zavise od ovoga — njih vraća samo " +
-                "prepoznavanje, a skida ih prekidač u sekciji Tekst."))
+        box.addView(switch(this, "Sredi tekst (tačke i velika slova)", cfg.polishTidy) {
+            cfg.textStyle = if (it) "written" else "spoken"
+        })
 
-        box.addView(withInfo(this,
-            switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
-                cfg.polishParagraphs = it
-            },
-            "Prazan red između smisaonih celina. Isključuje se samo po sebi kad je " +
-                "uključeno \u201ESažmi u tačke\u201C — oba odgovaraju na isto pitanje."))
+        box.addView(switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
+            cfg.polishParagraphs = it
+        })
 
-        box.addView(withInfo(this,
-            switch(this, "Sažmi u tačke", cfg.polishBullets) { cfg.polishBullets = it },
-            "Spisak: tačno jedna tvrdnja po tački, kratke rečenice, bez poštapalica. " +
-                "Duga izjava se deli na više tačaka (granica je oko dvanaest reči). " +
-                "Pitanje ostaje pitanje. Činjenice, brojevi i imena ostaju."))
+        box.addView(switch(this, "Sažmi u tačke", cfg.polishBullets) {
+            cfg.polishBullets = it
+        })
 
-        box.addView(withInfo(this,
-            switch(this, "Izbaci ponavljanja", cfg.polishDedupe) { cfg.polishDedupe = it },
-            "Kad se ista reč ili fraza izgovori dvaput zaredom — jer se čovek " +
-                "ispravlja — ostaje jednom. Namerno ponavljanje " +
-                "(\u201Evrlo, vrlo dugo\u201C) se ne dira.\n\nNe hvata ponavljanje " +
-                "razbacano po rečenici: za model to nije očigledno suvišno."))
+        box.addView(switch(this, "Izbaci ponavljanja", cfg.polishDedupe) {
+            cfg.polishDedupe = it
+        })
 
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
