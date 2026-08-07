@@ -193,6 +193,12 @@ Za osećaj koliko je to — tipične vrednosti:
 | minut Spotify-a | 1.1 MB |
 | učitavanje jedne veb stranice | 2.2 MB |
 
+## Tekst
+
+Kartica *Tekst* drži ono što radi sam kod, bez modela i bez ključa: bez kvačica,
+skraćenice (uz pravila i probu) i maskiranje psovki. Radi i kad je AI isključen —
+zato je odvojeno od AI kartice.
+
 ## Obrada teksta
 
 Isto što radi i macOS verzija, sve se menja u aplikaciji:

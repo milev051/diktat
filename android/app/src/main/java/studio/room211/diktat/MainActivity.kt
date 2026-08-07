@@ -219,11 +219,6 @@ class MainActivity : AppCompatActivity() {
                 "i bez interpunkcije, kako je izgovoren."))
         )
 
-        val kvacice = indent(this, switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)",
-            cfg.asciiDiacritics) { cfg.asciiDiacritics = it })
-        alati.add(kvacice)
-        box.addView(kvacice)
-
         val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
             cfg.polishParagraphs = it
         })
@@ -287,7 +282,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun tekst(): ViewGroup {
-        val (card, box) = card(this, "Skraćenice i psovke")
+        // Ovo radi nas kod, bez modela i bez kljuca — zato je odvojeno od AI
+        // kartice i radi i kad je AI iskljucen.
+        val (card, box) = card(this, "Tekst")
+        box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
+            cfg.asciiDiacritics = it
+        })
         // Prekidac je obrnut od podesavanja: ukljucen znaci pFilter=0, sto je i
         // podrazumevano. Da pise "maskiraj", jedini bi stajao iskljucen.
         box.addView(switch(this, "Ne maskiraj psovke zvezdicama", !cfg.profanityFilter) {
