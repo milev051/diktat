@@ -10,7 +10,7 @@ DEFAULTS = {
     # --- Prepoznavanje ---
     "language": "sr-RS",
     "api_key": "",                # prazno = ugradjeni javni Chromium kljuc
-    "profanity_filter": False,    # True bi maskirao psovke ("sranje" -> "s*****")
+    # Maskiranje psovki je uklonjeno kao podesavanje: uvek `pFilter=0`.
     # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci
     # da model sredjuje tekst — prekidac za to stoji u AI grupi.
     "text_style": "spoken",
@@ -128,7 +128,7 @@ def _migrate(cfg: dict) -> dict:
                   "audio_check_low_only", "audio_check_threshold",
                   "polish_emoji", "polish_emoji_rate", "polish_emoji_recent",
                   "join_thousands", "trailing_space", "capitalize_first",
-                  "polish_level", "polish_concise"):
+                  "polish_level", "polish_concise", "profanity_filter"):
         cfg.pop(mrtvo, None)
     return cfg
 

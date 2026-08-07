@@ -554,7 +554,6 @@ class DictateApp(rumps.App):
             language=self.cfg.get("language", "sr-RS"),
             sample_rate=self.cfg["sample_rate"],
             key=self.cfg.get("api_key") or None,
-            profanity_filter=bool(self.cfg.get("profanity_filter", False)),
         )
         if not text:
             return text

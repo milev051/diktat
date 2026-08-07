@@ -23,9 +23,8 @@ class Config(context: Context) {
     val stripPunctuation: Boolean
         get() = textStyle == "spoken"
 
-    var profanityFilter: Boolean
-        get() = prefs.getBoolean("profanity_filter", false)
-        set(v) = prefs.edit().putBoolean("profanity_filter", v).apply()
+    /** Uvek iskljuceno: `pFilter=0`. Maskiranje psovki niko nije koristio. */
+    val profanityFilter = false
 
     /** č ć ž š đ -> c c z s dj. Podrazumevano iskljuceno, kao na Mac-u. */
     var asciiDiacritics: Boolean
@@ -51,10 +50,8 @@ class Config(context: Context) {
     /** Sigurnosna granica i za neprekidni rezim — da zaboravljen diktat stane. */
     val continuousMaxSeconds get() = prefs.getInt("continuous_max_seconds", 3600)
 
-    /** Salji FLAC umesto sirovog PCM-a: oko 40% manje podataka. */
-    var compressAudio: Boolean
-        get() = prefs.getBoolean("compress_audio", true)
-        set(v) = prefs.edit().putBoolean("compress_audio", v).apply()
+    /** Uvek ukljuceno: ako sazimanje ne uspe, salje se sirov zvuk kao i pre. */
+    val compressAudio = true
 
     /** "5.000" -> "5000"; zarez kao decimalni ostaje. */
     /** Uvek ukljuceno: „5.000" -> „5000"; zarez ostaje decimalni. */
@@ -89,16 +86,13 @@ class Config(context: Context) {
             .putString("abbreviation_defaults", Abbreviations.defaultText())
             .apply()
 
-    /** Ne snimaj ako nema polja u koje bi tekst usao. */
-    var requireInputField: Boolean
-        get() = prefs.getBoolean("require_input_field", true)
-        set(v) = prefs.edit().putBoolean("require_input_field", v).apply()
+    /** Uvek ukljuceno: bez polja za unos diktat zavrsi u praznom. */
+    val requireInputField = true
 
     /** Posle uspesnog upisa vrati clipboard kakav je bio — da izdiktirano ne
      *  ostane u istoriji clipboard-a. */
-    var restoreClipboard: Boolean
-        get() = prefs.getBoolean("restore_clipboard", true)
-        set(v) = prefs.edit().putBoolean("restore_clipboard", v).apply()
+    /** Uvek ukljuceno: tekst se ne ostavlja u clipboard-u kad upis prodje. */
+    val restoreClipboard = true
 
     /** Uvek ukljuceno: bez razmaka se recenice slepe pri nadovezivanju. */
     val trailingSpace = true

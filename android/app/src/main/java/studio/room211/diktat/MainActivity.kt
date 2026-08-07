@@ -28,6 +28,7 @@ import studio.room211.diktat.Ui.setBranchEnabled
 import studio.room211.diktat.Ui.dp
 import studio.room211.diktat.Ui.field
 import studio.room211.diktat.Ui.switch
+import studio.room211.diktat.Ui.withInfo
 
 class MainActivity : AppCompatActivity() {
 
@@ -152,9 +153,6 @@ class MainActivity : AppCompatActivity() {
                     "tada mikrofon na tastaturi radi isto, bez Pristupačnosti.",
             )
         )
-        box.addView(switch(this, "Ne ostavljaj tekst u clipboard-u", cfg.restoreClipboard) {
-            cfg.restoreClipboard = it
-        })
         return card
     }
 
@@ -170,103 +168,69 @@ class MainActivity : AppCompatActivity() {
                     "Isključeno: jedan snimak do 30s, pa obrada.",
             )
         )
-        box.addView(switch(this, "Snimaj samo kad ima polja za unos", cfg.requireInputField) {
-            cfg.requireInputField = it
-        })
         return card
     }
 
     private fun ai(): ViewGroup {
-        // Sve sto model radi je na jednom mestu, kao i u meniju na Mac-u. Razlika
-        // u trajanju se ne gubi: stoji uz sam prekidac koji je uzrokuje.
+        // Objasnjenja stoje iza dugmeta „i" umesto ispod svake stavke: ekran je
+        // inace bio dvostruko duzi nego sto treba. Stavke idu punom sirinom —
+        // uvlacenje je imalo smisla dok je postojao glavni prekidac.
         val (card, box) = card(this, "AI")
         box.addView(
-            body(
-                this,
-                "Izabran alat sam po sebi znači da se AI koristi — nema posebnog " +
-                    "prekidača. Ceo diktat se sačeka pa jednim pozivom ode modelu; " +
-                    "dok se čeka, pokazivač pokazuje AI.\n\n" +
-                    "Radi samo uz API ključ (Google AI Studio), koji ostaje sačuvan " +
-                    "i posle nadogradnje.",
-            )
+            body(this, "Izabran alat znači da se AI koristi. Radi uz API ključ " +
+                "(Google AI Studio), koji ostaje sačuvan i posle nadogradnje.")
         )
 
-        val slusa = indent(this, switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
-            cfg.audioCheck = it
-        })
-        box.addView(slusa)
-        box.addView(
-            indent(this, body(this, "Model dobija i sam zvuk, pa ispravlja ono što je " +
-                "prepoznavanje pogrešno čulo — najviše skraćenice i strane nazive " +
-                "(\u201EAI\u201C ume da postane \u201Epa\u201C).\n\n" +
-                "Ovo je najsporiji deo: snimak ide drugi put, pa se za 20s diktata " +
-                "čeka oko 10s; ostalo traje oko sekunde. Čuva se najviše 120s zvuka " +
-                "po diktatu — preko toga se prepis više ne proverava."))
-        )
+        box.addView(withInfo(this,
+            switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) { cfg.audioCheck = it },
+            "Model dobija i sam zvuk, pa ispravlja ono što je prepoznavanje pogrešno " +
+                "čulo — najviše skraćenice i strane nazive (\u201EAI\u201C ume da " +
+                "postane \u201Epa\u201C).\n\nOvo je najsporiji deo: snimak ide " +
+                "drugi put, pa se za 20s diktata čeka oko 10s; ostalo traje oko " +
+                "sekunde. Čuva se najviše 120s zvuka po diktatu."))
 
-        val sredi = indent(this, switch(this, "Sredi tekst (tačke i velika slova)",
-            cfg.polishTidy) { cfg.textStyle = if (it) "written" else "spoken" })
-        box.addView(sredi)
-        box.addView(
-            indent(this, body(this, "Dodaje tačke i velika slova, i usput sređuje reči " +
-                "koje se gramatički ne slažu. Isključeno: tekst ostaje malim slovima " +
-                "i bez interpunkcije, kako je izgovoren."))
-        )
+        box.addView(withInfo(this,
+            switch(this, "Sredi tekst (tačke i velika slova)", cfg.polishTidy) {
+                cfg.textStyle = if (it) "written" else "spoken"
+            },
+            "Dodaje tačke i velika slova, i usput sređuje reči koje se gramatički ne " +
+                "slažu. Isključeno: tekst ostaje malim slovima i bez interpunkcije, " +
+                "kako je izgovoren.\n\nKvačice ne zavise od ovoga — njih vraća samo " +
+                "prepoznavanje, a skida ih prekidač u sekciji Tekst."))
 
-        val pasusi = indent(this, switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
-            cfg.polishParagraphs = it
-        })
-        box.addView(pasusi)
+        box.addView(withInfo(this,
+            switch(this, "Podeli na pasuse", cfg.polishParagraphs) {
+                cfg.polishParagraphs = it
+            },
+            "Prazan red između smisaonih celina. Isključuje se samo po sebi kad je " +
+                "uključeno \u201ESažmi u tačke\u201C — oba odgovaraju na isto pitanje."))
 
-        val tacke = indent(this, switch(this, "Sažmi u tačke", cfg.polishBullets) {
-            cfg.polishBullets = it
-        })
-        box.addView(tacke)
-        box.addView(
-            indent(this, body(this, "Preuređuje izgovoreno u spisak: jedna misao po " +
-                "tački, kratke izjavne rečenice, bez poštapalica. Činjenice i brojevi " +
-                "ostaju. Isključuje podelu na pasuse."))
-        )
+        box.addView(withInfo(this,
+            switch(this, "Sažmi u tačke", cfg.polishBullets) { cfg.polishBullets = it },
+            "Spisak: tačno jedna tvrdnja po tački, kratke rečenice, bez poštapalica. " +
+                "Duga izjava se deli na više tačaka (granica je oko dvanaest reči). " +
+                "Pitanje ostaje pitanje. Činjenice, brojevi i imena ostaju."))
 
-        val ponavljanja = indent(this, switch(this, "Izbaci ponavljanja", cfg.polishDedupe) {
-            cfg.polishDedupe = it
-        })
-        box.addView(ponavljanja)
-        box.addView(
-            indent(this, body(this, "Kad se ista reč ili fraza izgovori dvaput zaredom " +
-                "— jer se čovek ispravlja — ostaje jednom. Namerno ponavljanje " +
-                "(\u201Evrlo, vrlo dugo\u201C) se ne dira."))
-        )
+        box.addView(withInfo(this,
+            switch(this, "Izbaci ponavljanja", cfg.polishDedupe) { cfg.polishDedupe = it },
+            "Kad se ista reč ili fraza izgovori dvaput zaredom — jer se čovek " +
+                "ispravlja — ostaje jednom. Namerno ponavljanje " +
+                "(\u201Evrlo, vrlo dugo\u201C) se ne dira.\n\nNe hvata ponavljanje " +
+                "razbacano po rečenici: za model to nije očigledno suvišno."))
 
         val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
             cfg.outputLanguage = it
         }
-        box.addView(indent(this, jezik))
+        box.addView(jezik)
         box.addView(
-            indent(this, body(this, "Slobodan opis, ne spisak: \u201Emakedonski\u201C, " +
-                "\u201Eengleski formalno\u201C, pa i \u201Epola makedonski pola " +
-                "srpski\u201C. Značenje ostaje isto."))
+            body(this, "Slobodan opis: \u201Emakedonski\u201C, \u201Eengleski " +
+                "formalno\u201C, pa i \u201Epola makedonski pola srpski\u201C.")
         )
 
-        polishLine = indent(this, body(this, ""))
+        polishLine = body(this, "")
         box.addView(polishLine)
-
-        box.addView(body(this, "Napredno"))
         val (kljuc, _) = field(this, "API ključ", cfg.polishApiKey) { cfg.polishApiKey = it }
         box.addView(kljuc)
-        val (model, _) = field(this, "Model (prazno = ${Polish.DEFAULT_MODEL})", cfg.polishModel) {
-            cfg.polishModel = it
-        }
-        box.addView(model)
-        val (pojmovi, _) = field(this, "Pojmovi koje često izgovaram", cfg.vocabulary) {
-            cfg.vocabulary = it
-        }
-        box.addView(pojmovi)
-        box.addView(
-            body(this, "Skraćenice i nazivi koje prepoznavanje stalno pogreši. Idu " +
-                "modelu uz snimak, odvojeni zarezom.")
-        )
-
         return card
     }
 
@@ -276,11 +240,6 @@ class MainActivity : AppCompatActivity() {
         val (card, box) = card(this, "Tekst")
         box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
             cfg.asciiDiacritics = it
-        })
-        // Prekidac je obrnut od podesavanja: ukljucen znaci pFilter=0, sto je i
-        // podrazumevano. Da pise "maskiraj", jedini bi stajao iskljucen.
-        box.addView(switch(this, "Ne maskiraj psovke zvezdicama", !cfg.profanityFilter) {
-            cfg.profanityFilter = !it
         })
 
         box.addView(switch(this, "Skraćuj česte fraze", cfg.abbreviations) {
@@ -321,9 +280,6 @@ class MainActivity : AppCompatActivity() {
         val (card, box) = card(this, "Potrošnja podataka")
         trafficLine = body(this, "")
         box.addView(trafficLine)
-        box.addView(switch(this, "Šalji sažeto (FLAC, ~40% manje)", cfg.compressAudio) {
-            cfg.compressAudio = it
-        })
         box.addView(
             body(this, "Ako sažimanje ne uspe, šalje se kao pre. Traži Android 10 ili noviji.")
         )

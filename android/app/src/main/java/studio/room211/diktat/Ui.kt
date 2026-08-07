@@ -114,6 +114,44 @@ object Ui {
         return group
     }
 
+    /**
+     * Prekidac plus dugme „i" koje otvara objasnjenje.
+     *
+     * Objasnjenja su ranije stajala kao tekst ispod svake stavke, pa je ekran
+     * bio dvostruko duzi nego sto treba. Ovako se vide samo kad zatrebaju.
+     */
+    fun withInfo(context: Context, control: View, info: String): LinearLayout {
+        val red = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        control.layoutParams = LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        )
+        red.addView(control)
+        red.addView(
+            MaterialButton(
+                context, null,
+                com.google.android.material.R.attr.materialButtonOutlinedStyle,
+            ).apply {
+                text = "i"
+                minWidth = context.dp(44)
+                minimumWidth = context.dp(44)
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    android.app.AlertDialog.Builder(context)
+                        .setMessage(info)
+                        .setPositiveButton("U redu", null)
+                        .show()
+                }
+            }
+        )
+        return red
+    }
+
     /** Uvuce podelement, da se vidi kome pripada. */
     fun <T : View> indent(context: Context, view: T): T = view.apply {
         setPadding(context.dp(16), paddingTop, paddingRight, paddingBottom)

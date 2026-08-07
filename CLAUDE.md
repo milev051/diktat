@@ -391,6 +391,15 @@ traže model ni ključ i rade i kad je AI isključen — zato imaju svoj podmeni
 `Tekst`. U AI grupi ostaje samo ono što model zaista radi. Isti test za svaku
 buduću stavku: da li radi bez ključa?
 
+**Objašnjenja stoje iza dugmeta „i", ne ispod svake stavke.** Ekran je inače
+dvostruko duži nego što treba, a opisi se čitaju jednom pa nikad više.
+
+**Podešavanje koje uvek stoji isto nije podešavanje.** Maskiranje psovki,
+sažimanje zvuka, „snimaj samo kad ima polja za unos" i vraćanje clipboard-a su
+postali konstante — svaki je imao jednu razumnu vrednost i nikad drugu. Isto
+važi i za polja koja se popune jednom (`vocabulary`, `polish_model`): ostaju u
+`config.json` odnosno `SharedPreferences`, ali ne i na ekranu.
+
 **Ono što se ne koristi — izlazi.** Uklonjeni su emotikoni (cela logika, uz
 testove), izbor ulaznog jezika, ponavljanje neuspelih diktata iz menija, debug
 prekidač, otvaranje `config.json` i stavka sa statusom: menu-bar ikonica već

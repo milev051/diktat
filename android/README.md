@@ -167,6 +167,7 @@ prijavi 0.93 i za rečenicu sa odsečenom rečju.
 ## Potrošnja podataka
 
 Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.
+Sažimanje zvuka je uvek uključeno; ako ne uspe, šalje se sirov zvuk kao i pre.
 
 Zvuk se šalje kao **FLAC** — oko 40% manje od sirovog PCM-a, uz identičan
 transkript. Potvrđeno na telefonu. Ako sažimanje ne uspe (Android stariji od 10, ili greška enkodera),
@@ -205,7 +206,6 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 
 | | podrazumevano | |
 |---|---|---|
-| Ne maskiraj psovke | uključeno | `pFilter=0`; isključeno daje `sranje` → `s*****` |
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
 | Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
 
