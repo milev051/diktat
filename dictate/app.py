@@ -159,19 +159,23 @@ class DictateApp(rumps.App):
         for stavka in (self.item_hold, self.item_toggle, None, self.item_continuous):
             snimanje_menu.add(stavka if stavka is not None else rumps.separator)
 
-        # Stil teksta je prekidac u AI grupi: "izgovoreno" je podrazumevano
-        # ponasanje, a "sredjeno" je posao koji radi model.
+        # "Sredjeno" je posao koji radi model, pa ostaje u AI grupi.
         self.item_tidy = rumps.MenuItem(
             "Sredi tekst (tačke i velika slova)", callback=self._toggle_tidy
         )
+
+        # Ova dva radi nas kod, bez modela i bez kljuca — zato imaju svoj
+        # podmeni i rade i kad je AI iskljucen.
+        tekst_menu = rumps.MenuItem("Tekst")
         self.item_ascii = rumps.MenuItem(
             "Bez kvačica (č ć ž š → c c z s)", callback=self._toggle_ascii
         )
-        # Skracenice nisu AI posao, ali jesu izgled teksta — stoje uz ostale.
         self.item_abbrev = rumps.MenuItem(
             "Skraćuj česte fraze (ne znam → nzm)",
             callback=self._make_polish_toggle("abbreviations", True),
         )
+        for stavka in (self.item_ascii, self.item_abbrev):
+            tekst_menu.add(stavka)
 
         # Sve sto model radi je na jednom mestu, ali u dva bloka: prepoznavanje
         # (sporo, salje zvuk) i obrada teksta (brzo, salje samo tekst).
@@ -206,8 +210,6 @@ class DictateApp(rumps.App):
             rumps.separator,
             self.item_listen,
             self.item_tidy,
-            self.item_ascii,
-            self.item_abbrev,
             self.item_polish_para,
             self.item_polish_bullets,
             self.item_polish_dedupe,
@@ -216,7 +218,7 @@ class DictateApp(rumps.App):
             self.item_polish_count,
         ):
             ai_menu.add(stavka)
-        for stavka in (self.item_listen, self.item_tidy, self.item_ascii, self.item_abbrev,
+        for stavka in (self.item_listen, self.item_tidy,
                        self.item_polish_para, self.item_polish_bullets,
                        self.item_polish_dedupe, self.item_language_out):
             stavka._menuitem.setIndentationLevel_(1)
@@ -227,6 +229,7 @@ class DictateApp(rumps.App):
             self.mic_menu,
             snimanje_menu,
             ai_menu,
+            tekst_menu,
             None,
             rumps.MenuItem("Izlaz", callback=self._quit),
         ]

@@ -386,6 +386,11 @@ podmeni ulazi još jednom — to je granica, ne propust.
 ručnom stavkom. Sam snimak to nikad nije pogađalo — uređaji se osvežavaju pred
 svaki diktat — ali je izbor u meniju lagao dok se slušalice priključe.
 
+**Ono što radi naš kod ne stoji u AI grupi.** „Bez kvačica" i skraćenice ne
+traže model ni ključ i rade i kad je AI isključen — zato imaju svoj podmeni
+`Tekst`. U AI grupi ostaje samo ono što model zaista radi. Isti test za svaku
+buduću stavku: da li radi bez ključa?
+
 **Ono što se ne koristi — izlazi.** Uklonjeni su emotikoni (cela logika, uz
 testove), izbor ulaznog jezika, ponavljanje neuspelih diktata iz menija, debug
 prekidač, otvaranje `config.json` i stavka sa statusom: menu-bar ikonica već

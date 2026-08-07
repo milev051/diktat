@@ -88,7 +88,7 @@ Dva nezavisna podešavanja:
 | Stavka | |
 |---|---|
 | **Istorija** | poslednjih `history_size` tekstova; klik kopira u clipboard |
-| **Snimanje / AI** | podmeniji; sve ostalo je u `config.json` |
+| **Snimanje / AI / Tekst** | podmeniji; sve ostalo je u `config.json` |
 | **Mikrofon** | izbor ulaza; lista se sama osvežava kad otvoriš podmeni |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
