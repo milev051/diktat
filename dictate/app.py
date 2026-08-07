@@ -21,7 +21,7 @@ from Foundation import NSAttributedString
 
 from . import (
     abbrev, audio, config, debugdump, hotkey, insert, listen, overlay, pending,
-    polish, webstt,
+    polish, groq, webstt,
 )
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
@@ -185,6 +185,15 @@ class DictateApp(rumps.App):
         self.item_listen = rumps.MenuItem(
             "Sluša snimak (preciznije prepoznavanje)", callback=self._toggle_listen
         )
+        self.item_groq = rumps.MenuItem(
+            "Groq: Whisper + GPT-OSS (drugo mišljenje)", callback=self._toggle_groq
+        )
+        self.item_groq_key = rumps.MenuItem(
+            "Groq API ključ…", callback=self._set_groq_key
+        )
+        self.item_groq_models = rumps.MenuItem(
+            "Groq modeli…", callback=self._set_groq_models
+        )
         self.item_polish_para = rumps.MenuItem(
             "Podeli na pasuse",
             callback=self._make_polish_toggle("polish_paragraphs", True),
@@ -206,6 +215,9 @@ class DictateApp(rumps.App):
 
         for stavka in (
             self.item_listen,
+            self.item_groq,
+            self.item_groq_key,
+            self.item_groq_models,
             self.item_tidy,
             self.item_polish_para,
             self.item_polish_bullets,
@@ -316,6 +328,11 @@ class DictateApp(rumps.App):
         # Alati rade cim postoji kljuc; izabran alat je sam po sebi "ukljuceno".
         radi = polish.available(self.cfg)
         self.item_listen.state = 1 if listen.enabled(self.cfg) else 0
+        self.item_groq.state = 1 if groq.enabled(self.cfg) else 0
+        self.item_groq_key.title = (
+            "Groq API ključ: podešen" if self.cfg.get("groq_api_key")
+            else "Groq API ključ…"
+        )
         self.item_polish_para.state = 1 if self.cfg.get("polish_paragraphs", True) else 0
         self.item_polish_bullets.state = 1 if self.cfg.get("polish_bullets", False) else 0
         self.item_polish_dedupe.state = 1 if self.cfg.get("polish_dedupe", False) else 0
@@ -572,7 +589,7 @@ class DictateApp(rumps.App):
         celine. Granica postoji jer neprekidan rezim ume da traje satima —
         preko nje se zvuk vise ne cuva, a tekst ostaje onakav kakav je.
         """
-        if not pcm or not listen.enabled(self.cfg):
+        if not pcm or not (listen.enabled(self.cfg) or groq.enabled(self.cfg)):
             return
         granica = float(self.cfg.get("audio_check_max_seconds", 120))
         with self._audio_lock:
@@ -601,8 +618,14 @@ class DictateApp(rumps.App):
         if not delovi:
             return tekst, False
         try:
-            ispravljen = listen.check_batch(delovi, tekst, self.cfg)
-            self._count_polish()
+            if groq.enabled(self.cfg):
+                # Groq dobija prednost kada je uključen: u suprotnom bi isti
+                # audio nepotrebno išao i Gemini-ju i Groq-u.
+                ispravljen = groq.check_batch(delovi, tekst, self.cfg)
+                self._count_polish(2)  # Whisper + GPT-OSS
+            else:
+                ispravljen = listen.check_batch(delovi, tekst, self.cfg)
+                self._count_polish()
             if ispravljen != tekst:
                 print(f"[diktat] AI slušao {len(delovi)} segm.: {tekst!r} -> {ispravljen!r}")
             return ispravljen, True
@@ -787,15 +810,15 @@ class DictateApp(rumps.App):
             return 0
         return int(self.cfg.get("polish_count", 0))
 
-    def _count_polish(self):
-        """Brojac poziva po danu — Google ne nudi nacin da se vidi preostala kvota."""
+    def _count_polish(self, amount=1):
+        """Brojač svih AI poziva po danu."""
         import datetime
 
         danas = datetime.date.today().isoformat()
         if self.cfg.get("polish_count_day") != danas:
             self.cfg["polish_count_day"] = danas
             self.cfg["polish_count"] = 0
-        self.cfg["polish_count"] = int(self.cfg.get("polish_count", 0)) + 1
+        self.cfg["polish_count"] = int(self.cfg.get("polish_count", 0)) + amount
         config.save(self.cfg)
         # Naslov se osvezava odmah: _sync_menu_marks se zove samo na izmenu iz
         # menija, pa bi brojac inace stajao na staroj vrednosti do sledeceg klika.
@@ -1075,10 +1098,56 @@ class DictateApp(rumps.App):
         self._sync_menu_marks()
         self._keep_menu_open()
 
+    def _toggle_groq(self, _):
+        if not self.cfg.get("groq_api_key"):
+            self._set_groq_key(_)
+            if not self.cfg.get("groq_api_key"):
+                return
+        self.cfg["groq_enabled"] = not bool(self.cfg.get("groq_enabled", False))
+        config.save(self.cfg)
+        self._sync_menu_marks()
+        self._keep_menu_open()
+
+    def _set_groq_key(self, _):
+        odgovor = rumps.Window(
+            message="Ključ se čuva samo u lokalnom config.json fajlu.",
+            title="Groq API ključ",
+            default_text=self.cfg.get("groq_api_key", ""),
+            ok="Sačuvaj",
+            cancel="Otkaži",
+            dimensions=(420, 24),
+        ).run()
+        if not odgovor.clicked:
+            return
+        self.cfg["groq_api_key"] = odgovor.text.strip()
+        config.save(self.cfg)
+        self._sync_menu_marks()
+
+    def _set_groq_models(self, _):
+        odgovor = rumps.Window(
+            message="Prvi red = Whisper model; drugi red = model za poređenje.",
+            title="Groq modeli",
+            default_text=(
+                f"{self.cfg.get('groq_transcription_model', groq.DEFAULT_TRANSCRIPTION_MODEL)}\n"
+                f"{self.cfg.get('groq_merge_model', groq.DEFAULT_MERGE_MODEL)}"
+            ),
+            ok="Sačuvaj",
+            cancel="Otkaži",
+            dimensions=(420, 70),
+        ).run()
+        if not odgovor.clicked:
+            return
+        redovi = [red.strip() for red in odgovor.text.splitlines() if red.strip()]
+        if redovi:
+            self.cfg["groq_transcription_model"] = redovi[0]
+        if len(redovi) > 1:
+            self.cfg["groq_merge_model"] = redovi[1]
+        config.save(self.cfg)
+
 
     def _batch(self) -> bool:
         """Ceka li se kraj diktata zbog provere snimka."""
-        return listen.enabled(self.cfg)
+        return listen.enabled(self.cfg) or groq.enabled(self.cfg)
 
     def _deferred(self) -> bool:
         """Ceka li se kraj diktata uopste — zbog modela ili zbog provere."""

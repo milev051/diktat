@@ -56,6 +56,13 @@ DEFAULTS = {
     "audio_check": False,         # model slusa snimak i ispravlja prepis
     "compress_audio": True,       # FLAC preko ffmpeg-a ako ga ima; inace PCM/WAV
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
+    # --- Groq (Whisper + GPT-OSS drugo misljenje) ---
+    "groq_enabled": False,
+    "groq_api_key": "",
+    "groq_transcription_model": "whisper-large-v3",
+    "groq_merge_model": "openai/gpt-oss-120b",
+    "groq_reasoning_effort": "medium",
+    "groq_max_completion_tokens": 2048,
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
     "vocabulary": "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK",
     # Slobodan opis: "makedonski", "pola makedonski pola srpski", "engleski

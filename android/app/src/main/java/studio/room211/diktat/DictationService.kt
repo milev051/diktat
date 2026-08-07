@@ -215,7 +215,7 @@ class DictationService : Service() {
      * celine. Granica postoji jer neprekidan rezim ume da traje satima.
      */
     private fun keepAudio(sesija: Int, ticket: Int, pcm: ByteArray) {
-        if (pcm.isEmpty() || !Listen.enabled(cfg)) return
+        if (pcm.isEmpty() || !(Listen.enabled(cfg) || Groq.enabled(cfg))) return
         val sek = pcm.size / 2.0 / cfg.sampleRate
         synchronized(audioParts) {
             val moji = audioParts.getOrPut(sesija) { sortedMapOf() }
@@ -328,7 +328,7 @@ class DictationService : Service() {
     private fun formal() = Polish.available(cfg) && Polish.toolCount(cfg) > 0
 
     /** Ceka li se kraj diktata zbog provere snimka. */
-    private fun batch() = Listen.enabled(cfg)
+    private fun batch() = Listen.enabled(cfg) || Groq.enabled(cfg)
 
     /** Ceka li se kraj diktata uopste — zbog modela ili zbog provere. */
     private fun deferred() = formal() || batch()
@@ -358,7 +358,14 @@ class DictationService : Service() {
             if (batch()) {
                 val delovi = takeAudio(sesija)
                 if (delovi.isNotEmpty()) {
-                    runCatching { Listen.check(delovi, tekst, cfg).also { cfg.countPolish() } }
+                    runCatching {
+                        if (Groq.enabled(cfg)) {
+                            // Groq ima prednost da se isti audio ne šalje i Gemini-ju.
+                            Groq.check(delovi, tekst, cfg).also { cfg.countPolish(); cfg.countPolish() }
+                        } else {
+                            Listen.check(delovi, tekst, cfg).also { cfg.countPolish() }
+                        }
+                    }
                         .onSuccess { polazni = it; sredjeno = true }
                 }
             }

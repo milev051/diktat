@@ -167,6 +167,25 @@ class Config(context: Context) {
     /** Koliko zvuka najvise cuvamo za grupnu proveru na kraju diktata. */
     val audioCheckMaxSeconds = 120
 
+    // --- Groq (Whisper + GPT-OSS drugo misljenje) ---
+    var groqEnabled: Boolean
+        get() = prefs.getBoolean("groq_enabled", false)
+        set(v) = prefs.edit().putBoolean("groq_enabled", v).apply()
+
+    var groqApiKey: String
+        get() = prefs.getString("groq_api_key", "")!!
+        set(v) = prefs.edit().putString("groq_api_key", v.trim()).apply()
+
+    var groqTranscriptionModel: String
+        get() = prefs.getString("groq_transcription_model", Groq.DEFAULT_TRANSCRIPTION_MODEL)!!
+            .ifBlank { Groq.DEFAULT_TRANSCRIPTION_MODEL }
+        set(v) = prefs.edit().putString("groq_transcription_model", v.trim()).apply()
+
+    var groqMergeModel: String
+        get() = prefs.getString("groq_merge_model", Groq.DEFAULT_MERGE_MODEL)!!
+            .ifBlank { Groq.DEFAULT_MERGE_MODEL }
+        set(v) = prefs.edit().putString("groq_merge_model", v.trim()).apply()
+
     /** Model slusa snimak i ispravlja prepis. */
     var audioCheck: Boolean
         get() = prefs.getBoolean("audio_check", false)

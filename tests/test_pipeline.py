@@ -114,6 +114,15 @@ class KadaSeCekaKraj(unittest.TestCase):
         self.assertTrue(app._batch())
         self.assertTrue(app._deferred())
 
+    def test_groq_provera_odlaze_ubacivanje(self):
+        app = napravi(audio_check=False, groq_enabled=True, groq_api_key="x")
+        self.assertTrue(app._batch())
+        self.assertTrue(app._deferred())
+
+    def test_groq_bez_kljuceva_ne_odlaze(self):
+        app = napravi(audio_check=False, groq_enabled=True, groq_api_key="")
+        self.assertFalse(app._batch())
+
     def test_bez_provere_i_bez_alata_tekst_ide_odmah(self):
         app = napravi(audio_check=False)
         self.assertFalse(app._deferred())

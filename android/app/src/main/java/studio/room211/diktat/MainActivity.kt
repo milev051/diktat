@@ -169,12 +169,32 @@ class MainActivity : AppCompatActivity() {
         val (card, box) = card(this, "AI")
         box.addView(
             body(this, "Izabran alat znači da se AI koristi. Radi uz API ključ " +
-                "(Google AI Studio), koji ostaje sačuvan i posle nadogradnje.")
+                "(Google AI Studio ili Groq), koji ostaje sačuvan i posle nadogradnje.")
         )
 
         box.addView(switch(this, "Sluša snimak (preciznije)", cfg.audioCheck) {
             cfg.audioCheck = it
         })
+
+        box.addView(switch(this, "Groq: Whisper + GPT-OSS (drugo mišljenje)", cfg.groqEnabled) {
+            cfg.groqEnabled = it
+        })
+        box.addView(
+            body(this, "Google prepis i Groq Whisper prepis se porede u GPT-OSS modelu; " +
+                "ako Groq nije dostupan, ostaje Google tekst.")
+        )
+        val (groqKey, _) = field(this, "Groq API ključ", cfg.groqApiKey) {
+            cfg.groqApiKey = it
+        }
+        box.addView(groqKey)
+        val (whisperModel, _) = field(
+            this, "Groq Whisper model", cfg.groqTranscriptionModel,
+        ) { cfg.groqTranscriptionModel = it }
+        box.addView(whisperModel)
+        val (mergeModel, _) = field(
+            this, "Groq model za poređenje", cfg.groqMergeModel,
+        ) { cfg.groqMergeModel = it }
+        box.addView(mergeModel)
 
         box.addView(switch(this, "Sredi tekst (tačke i velika slova)", cfg.polishTidy) {
             cfg.textStyle = if (it) "written" else "spoken"

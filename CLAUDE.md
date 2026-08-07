@@ -259,6 +259,15 @@ pamte **po tiketu**, jer se prepoznaju paralelno pa bi redosled inače bio
 proizvoljan. Otkazan diktat mora da isprazni taj bafer, inače bi model u
 sledećoj proveri „čuo" prethodni diktat.
 
+**Groq je zasebna alternativa za proveru snimka.** `groq_enabled` +
+`groq_api_key` uključuju dva poziva za ceo diktat: WAV ide na Whisper, a
+`openai/gpt-oss-120b` dobija Google i Whisper prepis i vraća konačan tekst.
+Kada je Groq uključen, ima prednost nad Gemini `audio_check` prolazom da se
+audio ne šalje dvaput. Mac i Android moraju imati istu logiku i podrazumevane
+modele (`whisper-large-v3`, `openai/gpt-oss-120b`). Ako bilo koji Groq poziv
+padne, zadržava se Google prepis; brojač AI poziva tada ne sme da spreči diktat.
+API ključ se nikad ne upisuje u git.
+
 **Sređivanje se ne radi dvaput.** Prolaz u kome model sluša snimak vraća tekst
 sa interpunkcijom, velikim slovima i kvačicama — pa je poseban poziv za „sredi
 tekst" bio drugi poziv za isti posao. Izmereno: vraćao je **identičan** tekst za
