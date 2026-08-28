@@ -56,6 +56,11 @@ jezika — a Web Speech najviše greši baš na skraćenicama i stranim nazivima
 | slanje posle Stop-a | 64.7s | **15.6s** |
 | slanje u toku (ovako radi) | 64.7s | **0.0s** |
 
+Ono što je posle toga ostalo bilo je naše: server je gotov 0.5s posle Stop-a bez
+obzira na dužinu diktata, a ostatak je bila tempirana pauza kojom se prepoznaje
+da je utihnuo. Skraćena je sa 3.0s na 1.0s, uz duži rok kad je celina još u
+letu — ukupno čekanje **3.5s → 1.5s**.
+
 Cena je ista — naplaćuje se zvuk, a zvuk je isti. Tekst i dalje stiže tek na
 kraju, u jednom komadu: „Live" je ime modela, ne prikaz reč-po-reč.
 

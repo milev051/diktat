@@ -171,6 +171,27 @@ drugi pokušaj nema šta da pošalje. Zato `_transcribe_live` usput piše zvuk n
 privremeni disk (ne u listu — sat vremena je preko 100 MB) i pri otkazu ga
 sačuva u `~/Diktat-neuspeli`, odakle se ponavlja rukom (`./run.sh replay`).
 
+**Posle strimovanja, sve što se još čeka je NAŠA pauza.** Izmereno na snimcima
+koji staju usred govora (8.5s i 26.6s): poslednji prepis stigne **0.5s** posle
+Stop-a, i to **ne zavisi od dužine diktata**. Sve preko toga bio je
+`LIVE_IDLE_SECONDS`. Ni na 0.8s se ne izgubi nijedna celina — server je stigao
+dok se šalje rep tišine.
+
+Zato dva roka umesto jednog:
+
+| rok | kada važi | zašto |
+|---|---|---|
+| `LIVE_QUIET_SECONDS` (1.0s) | poslednja celina finalizovana | tišina tada stvarno znači kraj |
+| `LIVE_IDLE_SECONDS` (3.0s) | međurezultat bez svog finala | celina je u letu, prekid bi je odsekao |
+
+Ukupno čekanje posle Stop-a: **3.5s → 1.5s**, mereno kroz `recognize_live_stream`.
+
+**Najveći razmak između poruka je 0.47s u strim režimu**, a 1.4s u batch režimu
+— tamo server pacira sam sebe kroz nagomilan zvuk. Zato se rok sme skratiti tek
+uz strimovanje. Tok se uvek završava obrascem
+`… FINAL → generationComplete → prazno →` tišina; **`turnComplete` ne postoji**,
+pa čistog signala za kraj nema i tišina ostaje jedini.
+
 **`generationComplete` NIJE kraj diktata.** Izmereno na snimku od 19s sa dve
 pauze: stigao je **tri puta**, posle svake izgovorene celine. Prekid na njemu je
 odbacivao sve posle prve pauze — od 17 sekundi govora stizala je samo prva

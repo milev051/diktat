@@ -50,9 +50,27 @@ LIVE_CHUNK_MS = 100
 # tempu daje isti rezultat, a traje 28.7s umesto 11.5s.
 LIVE_TAIL_SILENCE = 2.0
 # Posle zvuka server ne zatvara vezu: šalje prazne poruke dok radi, pa stane.
-# Tišina je zato jedini znak da je gotov. Izmereni razmaci između poruka dok
-# radi su do 0.9s, pa je 3s trostruka rezerva.
+# Tišina je zato jedini znak da je gotov — i to je JEDINO što se još čeka:
+# izmereno, poslednji prepis stigne 0.5s posle Stop-a bez obzira na dužinu
+# diktata, pa je sve preko toga bila naša tempirana pauza.
+#
+# Dve strpljivosti, jer nisu isti slučajevi:
+#   `IDLE`  — celina je započeta a nije finalizovana; prekid bi je odsekao,
+#             pa se čeka dugo (razmaci dok server radi idu do ~1.4s).
+#   `QUIET` — poslednja celina je finalizovana i ništa novo nije počelo;
+#             tada tišina stvarno znači kraj i nema šta da se izgubi.
+# Izmereno (strim, snimci koji staju usred govora, 8.5s i 26.6s): ni na 0.8s se
+# ne izgubi nijedna celina — server je stigao dok se šalje rep. Ukupno čekanje
+# posle Stop-a pada sa 3.5s na 1.5s. Rizičan slučaj (celina u letu) pokriva
+# `IDLE`, pa `QUIET` sme da bude kratak.
+#
+# Najveći razmak između poruka posle Stop-a je 0.47s u strim režimu (u batch
+# režimu je 1.4s, jer server tamo pacira sam sebe kroz nagomilan zvuk) — 1.0s
+# je dakle dvostruka rezerva. Tok se uvek završava istim obrascem:
+# `… FINAL → generationComplete → prazno →` tišina. `turnComplete` NE postoji,
+# pa čistog signala za kraj nema; tišina je jedino što ga označava.
 LIVE_IDLE_SECONDS = 3.0
+LIVE_QUIET_SECONDS = 1.0
 
 
 class GeminiSttError(Exception):
@@ -243,12 +261,20 @@ def recognize_stream(komadi, cfg, timeout=180) -> str:
             ws.send_json({"realtimeInput": {"audioStreamEnd": True}})
 
             # Od sada tišina znači "gotov je", pa se čeka kratko.
-            ws.set_timeout(LIVE_IDLE_SECONDS)
+            ws.set_timeout(LIVE_QUIET_SECONDS)
             posle_zadnjeg = ""
+            produzeno = False
             while True:
                 try:
                     poruka = ws.recv_json()
-                except WebSocketError as exc:
+                except WebSocketError:
+                    if posle_zadnjeg and not produzeno:
+                        # Celina je u toku: video se međurezultat bez svog
+                        # finala. Prekid ovde bi je odsekao, pa joj se jednom
+                        # da pun rok.
+                        produzeno = True
+                        ws.set_timeout(LIVE_IDLE_SECONDS)
+                        continue
                     if delovi or posle_zadnjeg:
                         break            # utihnuo je — to je kraj, ne greška
                     raise
@@ -265,6 +291,8 @@ def recognize_stream(komadi, cfg, timeout=180) -> str:
                 if tekst:
                     delovi.append(tekst)
                     posle_zadnjeg = ""
+                    produzeno = False
+                    ws.set_timeout(LIVE_QUIET_SECONDS)
                     continue
                 # `generationComplete` stiže posle SVAKE izgovorene celine, ne
                 # na kraju diktata — prekid na njemu bi odbacio sve posle prve

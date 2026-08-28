@@ -217,6 +217,81 @@ class Strimovanje(unittest.TestCase):
         self.assertTrue(poslato)
 
 
+class DveStrpljivosti(unittest.TestCase):
+    """Kratka pauza kad je celina gotova, duga kad je jos u letu.
+
+    Izmereno: posle Stop-a server je gotov za 0.5s bez obzira na duzinu
+    diktata, pa je sve preko toga bila nasa tempirana pauza. Ali ako je celina
+    zapoceta a nije finalizovana, kratak prekid bi je odsekao — zato dva roka.
+    """
+
+    def odigraj(self, poruke):
+        """Pusti niz poruka; `None` glumi istek roka (tisinu)."""
+        redosled = list(poruke)
+        rokovi = []
+
+        class LazniWs:
+            close_code = close_reason = None
+
+            def __enter__(self_): return self_
+            def __exit__(self_, *a): return False
+            def send_json(self_, poruka): pass
+            def set_timeout(self_, s): rokovi.append(s)
+
+            def recv_json(self_):
+                if not redosled:
+                    raise geministt.WebSocketError("tisina")
+                sledeca = redosled.pop(0)
+                if sledeca is None:
+                    raise geministt.WebSocketError("tisina")
+                return sledeca
+
+        stari = geministt.WebSocket
+        geministt.WebSocket = lambda *a, **k: LazniWs()
+        try:
+            tekst = geministt.recognize_stream([b"\x01\x02" * 800], cfg())
+        finally:
+            geministt.WebSocket = stari
+        return tekst, rokovi
+
+    def test_posle_finala_kratak_rok(self):
+        tekst, rokovi = self.odigraj([
+            {"setupComplete": {}},
+            {"serverContent": {"inputTranscription": {"text": "gotovo"}}},
+            None,
+        ])
+        self.assertEqual(tekst, "gotovo")
+        # Posle svakog finala se rok vraca na kratak.
+        self.assertEqual(rokovi[-1], geministt.LIVE_QUIET_SECONDS)
+
+    def test_celina_u_letu_dobija_pun_rok(self):
+        # Medjurezultat bez finala, pa tisina: mora da se produzi jednom i
+        # sacekamo finale, umesto da se odsece.
+        tekst, rokovi = self.odigraj([
+            {"setupComplete": {}},
+            {"serverContent": {"interimInputTranscription": {"text": "poce"}}},
+            None,                                   # kratka tisina
+            {"serverContent": {"inputTranscription": {"text": "pocetak i kraj"}}},
+            None,
+        ])
+        self.assertEqual(tekst, "pocetak i kraj")
+        self.assertIn(geministt.LIVE_IDLE_SECONDS, rokovi)
+
+    def test_produzava_se_samo_jednom(self):
+        # Ako ni posle punog roka nista ne stigne, uzima se medjurezultat —
+        # pola prepisa je bolje nego nista.
+        tekst, _ = self.odigraj([
+            {"setupComplete": {}},
+            {"serverContent": {"interimInputTranscription": {"text": "pola"}}},
+            None,
+            None,
+        ])
+        self.assertEqual(tekst, "pola")
+
+    def test_kratak_rok_je_kraci_od_punog(self):
+        self.assertLess(geministt.LIVE_QUIET_SECONDS, geministt.LIVE_IDLE_SECONDS)
+
+
 class Greske(unittest.TestCase):
     def test_bez_kljuca_ne_zove_mrezu(self):
         with self.assertRaises(geministt.GeminiSttError) as ctx:
