@@ -2,6 +2,8 @@ package studio.room211.diktat
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import kotlin.concurrent.thread
@@ -17,6 +19,11 @@ class SttService : RecognitionService() {
 
     private var recorder: Recorder? = null
     private lateinit var cfg: Config
+    private var activeListener: Callback? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val safetyStop = Runnable {
+        activeListener?.let { finish(it) }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -25,11 +32,21 @@ class SttService : RecognitionService() {
 
     override fun onStartListening(intent: Intent, listener: Callback) {
         cfg = Config(this)
+        activeListener = listener
         listener.readyForSpeech(Bundle())
         try {
             recorder = Recorder(cfg.sampleRate).also { it.start() }
             listener.beginningOfSpeech()
+            if (cfg.transcriptionProvider == "openai") {
+                val seconds = if (cfg.openAiLongRecording) {
+                    cfg.openAiMaxSeconds
+                } else {
+                    cfg.maxSeconds
+                }
+                handler.postDelayed(safetyStop, seconds * 1000L)
+            }
         } catch (exc: Exception) {
+            activeListener = null
             listener.error(SpeechRecognizer.ERROR_AUDIO)
         }
     }
@@ -37,17 +54,30 @@ class SttService : RecognitionService() {
     override fun onStopListening(listener: Callback) = finish(listener)
 
     override fun onCancel(listener: Callback) {
-        recorder?.stop()
+        handler.removeCallbacks(safetyStop)
+        val pcm = recorder?.stop() ?: ByteArray(0)
+        cfg.addRecordedSeconds(pcm.size / 2.0 / cfg.sampleRate)
         recorder = null
+        activeListener = null
     }
 
     private fun finish(listener: Callback) {
+        if (recorder == null) return
+        handler.removeCallbacks(safetyStop)
         val pcm = recorder?.stop() ?: ByteArray(0)
+        cfg.addRecordedSeconds(pcm.size / 2.0 / cfg.sampleRate)
         recorder = null
+        activeListener = null
         listener.endOfSpeech()
         thread {
             try {
-                val text = TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
+                val text = if (cfg.transcriptionProvider == "openai") {
+                    OpenAiTranscription.postProcess(
+                        OpenAiTranscription.recognize(pcm, cfg), cfg,
+                    )
+                } else {
+                    TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
+                }
                 if (text.isBlank()) {
                     listener.error(SpeechRecognizer.ERROR_NO_MATCH)
                     return@thread
@@ -58,9 +88,25 @@ class SttService : RecognitionService() {
                     )
                     putFloatArray(SpeechRecognizer.CONFIDENCE_SCORES, floatArrayOf(1f))
                 })
-            } catch (_: Exception) {
+            } catch (exc: Exception) {
+                if (pcm.size >= 6_400) {
+                    // Snimak je vidljiv u aplikaciji u kartici „Sačuvani
+                    // audio“. Ovde ne prikazuj dodatni Toast: tastatura već
+                    // prikazuje grešku, a raniji Toast je pravio duplo
+                    // obaveštenje i često izgledao kao da OpenAI puca više puta.
+                    PendingStore(this, cfg.sampleRate).save(pcm, cfg.transcriptionProvider)
+                }
                 runCatching { listener.error(SpeechRecognizer.ERROR_NETWORK) }
             }
         }
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(safetyStop)
+        val pcm = recorder?.stop() ?: ByteArray(0)
+        cfg.addRecordedSeconds(pcm.size / 2.0 / cfg.sampleRate)
+        recorder = null
+        activeListener = null
+        super.onDestroy()
     }
 }

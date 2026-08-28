@@ -193,6 +193,56 @@ def merge(google_text: str, whisper_text: str, cfg, timeout=90, trace=None) -> s
     return text
 
 
+def manipulate_text(text: str, cfg, instruction: str, timeout=60) -> str:
+    """Obradi već prepoznat tekst bez slanja audio-snimka."""
+    key = (cfg.get("groq_api_key") or "").strip()
+    if not key:
+        raise GroqError("Nema Groq API ključa za obradu teksta.")
+    payload = {
+        "model": DEFAULT_MERGE_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Obrađuješ diktirani tekst. Poštuj uputstvo doslovno i "
+                    "vrati samo konačan tekst."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"{instruction}\n\nSirov transkript:\n{text}",
+            },
+        ],
+        "temperature": 0.0,
+        "max_completion_tokens": int(cfg.get("groq_max_completion_tokens", 2048)),
+        "top_p": 1,
+        "reasoning_effort": cfg.get("groq_reasoning_effort", "medium"),
+        "stream": False,
+    }
+    request = urllib.request.Request(
+        CHAT_ENDPOINT,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        },
+    )
+    response = _request_json(request, timeout)
+    try:
+        content = response["choices"][0]["message"]["content"]
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "") for part in content if isinstance(part, dict)
+            )
+        result = str(content or "").strip()
+    except (KeyError, IndexError, TypeError) as exc:
+        raise GroqError("Groq GPT-OSS nije vratio tekst za obradu.") from exc
+    if not result:
+        raise GroqError("Groq GPT-OSS je vratio prazan tekst za obradu.")
+    return result
+
+
 def check_batch(delovi, google_text: str, cfg, timeout=180, trace=None) -> str:
     """Whisper + poređenje sa Google prepisom u dva poziva."""
     whisper_text = transcribe(delovi, cfg, timeout=min(timeout, 120))

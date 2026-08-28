@@ -1,6 +1,7 @@
 """Sklapanje uputstva i pravila oko emotikona."""
 
 import unittest
+from unittest.mock import patch
 
 from dictate import polish
 
@@ -39,6 +40,20 @@ class Uputstvo(unittest.TestCase):
         prazan = cfg(text_style="spoken", polish_paragraphs=False)
         self.assertEqual(polish.tools(prazan), [])
         self.assertEqual(polish.polish("tekst", prazan), "tekst")
+
+    def test_model_za_tekst_ima_odvojene_kljuceve(self):
+        self.assertTrue(polish.available(cfg(text_model="gemini")))
+        self.assertFalse(polish.available(cfg(text_model="groq", groq_api_key="")))
+        self.assertTrue(
+            polish.available(cfg(text_model="groq", groq_api_key="groq-key"))
+        )
+
+    def test_groq_model_se_koristi_za_manipulaciju(self):
+        c = cfg(text_model="groq", groq_api_key="groq-key")
+        with patch("dictate.groq.manipulate_text", return_value="obrađen tekst") as poziv:
+            self.assertEqual(polish.polish("sirov tekst", c), "obrađen tekst")
+        self.assertEqual(poziv.call_args.args[0], "sirov tekst")
+        self.assertIn(polish.PASUSI, poziv.call_args.args[2])
 
 
 

@@ -29,6 +29,7 @@ object WebStt {
         Exception(message)
 
     private const val RETRY_WAIT_MS = 1_000L
+    private const val MAX_RETRIES = 5
 
     /**
      * Prvo se proba FLAC (oko 40% manje podataka), pa PCM ako ne prodje.
@@ -40,22 +41,37 @@ object WebStt {
         if (cfg.compressAudio) {
             val flac = FlacEncoder.encode(pcm, cfg.sampleRate)
             if (flac != null) {
-                runCatching { return send(flac, "audio/x-flac; rate=${cfg.sampleRate}", cfg, pcm.size) }
+                try {
+                    return withRetry {
+                        send(flac, "audio/x-flac; rate=${cfg.sampleRate}", cfg, pcm.size)
+                    }
+                } catch (exc: SttException) {
+                    // 400 može značiti da endpoint nije prihvatio FLAC; tada
+                    // probaj PCM. Prolazna mrežna greška je već dobila svih
+                    // pet dodatnih pokušaja i nema smisla slati drugi format.
+                    if (exc.retryable) throw exc
+                }
             }
         }
         return withRetry { send(pcm, "audio/l16; rate=${cfg.sampleRate}", cfg, pcm.size) }
     }
 
     private fun withRetry(block: () -> String): String {
-        try {
-            return block()
-        } catch (exc: SttException) {
-            if (!exc.retryable) throw exc
-        } catch (exc: java.io.IOException) {
-            // mreza pukla usred zahteva
+        var last: Exception? = null
+        for (attempt in 0..MAX_RETRIES) {
+            try {
+                return block()
+            } catch (exc: SttException) {
+                if (!exc.retryable || attempt == MAX_RETRIES) throw exc
+                last = exc
+            } catch (exc: java.io.IOException) {
+                // mreža pukla usred zahteva
+                if (attempt == MAX_RETRIES) throw exc
+                last = exc
+            }
+            Thread.sleep(RETRY_WAIT_MS * (attempt + 1L).coerceAtMost(5L))
         }
-        Thread.sleep(RETRY_WAIT_MS)
-        return block()
+        throw last ?: java.io.IOException("Google transkripcija nije uspela.")
     }
 
     private fun send(body: ByteArray, contentType: String, cfg: Config, pcmSize: Int): String {
@@ -88,6 +104,9 @@ object WebStt {
                 sent = body.size.toLong(),
                 received = reply.toByteArray().size.toLong(),
                 seconds = pcmSize / 2.0 / cfg.sampleRate,
+                provider = "google",
+                model = "web-speech",
+                operation = "transkripcija",
             )
             return parse(reply)
         } finally {

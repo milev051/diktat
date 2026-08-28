@@ -2,6 +2,7 @@
 # Pokretanje aplikacije:   ./run.sh
 # Provera podesavanja:     ./run.sh doctor
 # Snimi i prepisi 5s:      ./run.sh test 5
+# Ponovi zadnji neuspeli:  ./run.sh replay
 # Testovi logike:          ./run.sh tests
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -22,6 +23,11 @@ fi
 
 if [ "${1:-}" = "test" ]; then
   shift
+  exec .venv/bin/python selftest.py "$@"
+fi
+
+# Pusti sacuvan snimak kroz izabrani izvor, bez ponovnog diktiranja.
+if [ "${1:-}" = "replay" ]; then
   exec .venv/bin/python selftest.py "$@"
 fi
 

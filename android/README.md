@@ -10,9 +10,11 @@ verzija.
 30        obrađuje          (žuto)
 ```
 
-**Režim „Neprekidno"** (u aplikaciji) ukida granicu: seče na pauzama i šalje
-delove dok snimanje teče dalje, pa tekst stiže usput; ostatak ide kad ručno
-zaustaviš. Sigurnosna granica ostaje na sat vremena.
+**Google neprekidno snimanje** prikazuje se neposredno ispod izbora Google
+provajdera. Ukida standardnu granicu: seče na pauzama i šalje delove dok
+snimanje teče dalje, pa tekst stiže usput. Sigurnosna granica ostaje jedan sat.
+Kada se izabere OpenAI, ova opcija nestaje i na njenom mestu se prikazuju
+**OpenAI dugi diktat** i izbor pisma.
 
 U običnom režimu staje na 30s — i zato što endpoint odbija duže zahteve, i da slučajno
 pokrenut diktat ne snima satima. Nastavak traži nov pritisak.
@@ -43,11 +45,9 @@ traži ništa osim mikrofona ali radi samo iz tastature.
 Piše na vrhu ekrana aplikacije, pored imena — `Diktat v0.4`. Ako se ne poklapa
 sa `versionName` u `app/build.gradle.kts`, instalacija je stara.
 
-**Nova podrazumevana pravila stižu sama — ali samo ako svoja nisi menjao.**
-Uz pravila se pamti kako su podrazumevana izgledala kad su sačuvana; ako se to
-dvoje poklapa, nova verzija ih tiho osveži. Ako si nešto menjao, tvoja se ne
-diraju i nova pokupiš dugmetom *Vrati podrazumevane skraćenice* (koje briše
-tvoje izmene).
+**Česte fraze su deo builda i prikazuju se samo za čitanje.** Nove или измењене
+фразе уносе се у код пре новог builda, па на телефону нема дугмета којим би се
+случајно обрисале.
 
 ## Instalacija
 
@@ -103,39 +103,123 @@ Ako upis **ne prođe**, tekst svejedno ostane u clipboard-u — izgubiti diktat 
 gore nego da ostane zapisan. Zato drugi prekidač znači „ne ostavljaj kad ne
 moraš", a ne „nikad".
 
-Podrazumevane skraćenice su u `Abbreviations.kt`, lista `DEFAULT`. Menjanje te
-liste utiče samo na **nove instalacije** — postojeća instalacija ima svoja
-pravila sačuvana, dok se ne pritisne *Vrati podrazumevane skraćenice*.
+Kartica **Istorija diktata** čuva poslednja 3 uspešna rezultata lokalno na
+telefonu. Dodirni bilo koju stavku da ceo tekst kopiraš u clipboard; dugme
+**Obriši istoriju** briše samo tu lokalnu listu.
+
+Podrazumevane skraćenice su u `Abbreviations.kt`, lista `DEFAULT`. Na telefonu
+se lista može pročitati, ali ne i menjati. Ugrađena pravila obuhvataju i
+pretvaranje izgovorenih brojeva: `pet minuta` → `5min`, `petmin` → `5min`,
+`dvadeset pet sati` → `25 sati`; iznosi poput `pet evra` ostaju `5 evra`,
+bez automatskog pretvaranja u znak valute.
+
+U kartici **Tekst** su odvojena dva prekidača: **Sva slova mala** i **Ukloni
+interpunkciju**. Drugi uklanja znakove, ali čuva separatore u brojevima kao
+`10:30`, `3,5`, `2.0`, `1/2` i `10-20`; navodnici, crtice, zagrade i simboli se
+uklanjaju. Oba prekidača rade i posle AI obrade.
 
 ## Ako prepoznavanje zakaže
 
-Prolazne greške (mreža, 429, 5xx) se ponavljaju jednom automatski. Ako i drugi
-pokušaj padne, **snimak se čuva** — sekcija *Neuspeli diktati* pokazuje koliko
-ih ima i šalje ih ponovo. Drži se poslednjih 5.
+Prolazne greške (mreža, timeout, 429, 5xx) automatski se pokušavaju do šest puta
+ukupno. Ako i šesti pokušaj padne, **snimak se čuva** — sekcija *Sačuvani audio*
+pokazuje koliko ih ima i šalje ih ponovo. Pamti se i provajder prvog pokušaja,
+pa se snimak ne šalje slučajno drugom servisu ako u međuvremenu promeniš izbor.
+Drži se poslednja 3.
+
+## OpenAI GPT transkripcija
+
+U kartici *AI* izaberi **Provider transkripcije → OpenAI GPT Transcribe**. Google
+Speech-to-Text je podrazumevan i vraća se izborom **Google Speech-to-Text**.
+OpenAI režim koristi samo završeni snimak posle Stop-a i model:
+
+```text
+gpt-transcribe
+```
+
+Pauze u govoru ne prave zasebne OpenAI pozive. Uobičajeni diktat se šalje kao
+jedan zahtev posle Stop-a; samo snimak duži od pet minuta deli se na veće
+komade zbog ograničenja veličine audio-fajla.
+
+U kartici **API ključevi** dugme **Proveri sve API ključeve** proverava Gemini,
+Groq i OpenAI bez slanja audio-snimka i bez trošenja transkripcionih minuta.
+
+Ne koristi `gpt-live-transcribe`, WebSocket, WebRTC ni govor-u-govor tok. Poziv
+ide na `POST https://api.openai.com/v1/audio/transcriptions` kao
+`multipart/form-data`, sa `file`, `model=gpt-transcribe`, `languages[]=sr`,
+srpskim promptom i JSON odgovorom.
+
+Кључ се уноси у посебној секцији **API ključevi**, где постоје одвојена поља
+за Gemini, Groq и OpenAI. Кључеви се чувају локално; ниједан није уграђен у
+source code или APK. За јавну дистрибуцију препоручује се backend/proxy, јер
+директан клијентски позив открива кључ на уређају.
+
+Опција **OpenAI dugi diktat (do 60 min)** заобилази стандардну границу од 30
+секунди, али намерно има фиксни сигурносни лимит од 60 минута. Ако микрофон
+остане укључен, снимање се зато аутоматски прекида.
+
+Снимак се прво покушава послати као **FLAC** преко постојећег Android енкодера;
+ако енкодер није доступан или не успе, шаље се **WAV** са 16 kHz, 16-bit, mono
+PCM-ом. Проверавају се празан/прекратак снимак и граница од 25 MB. Мрежне грешке,
+timeout, 401/403, 400, 413, 429 и 5xx добијају јасну поруку; timeout, мрежа,
+429 и 5xx се једном понове, а неуспео аудио остаје сачуван за поновни покушај.
+
+Подешавање **OpenAI output script** има три вредности:
+
+| избор | понашање |
+|---|---|
+| Auto | модел бира писмо |
+| Ćirilica | моделу се тражи српска ћирилица |
+| Latinica | моделу се тражи латиница; ако врати ћирилицу, локално се детерминистички пребацује у латиницу |
+
+Локална конверзија обрађује `љ/њ/џ` пре једнословних мапирања (`lj/nj/dž`) и
+не мења интерпункцију, размаке, велика и мала слова, бројеве, URL-ове, енглеске
+речи или преломе редова. Google и сви остали режими не пролазе кроз ову
+конверзију.
+
+Провера без телефона:
+
+```bash
+cd android && ./gradlew test
+```
+
+Тестови покривају модел/endpoint, prompt за оба писма, WAV заглавље и
+ћирилица→латиница конверзију. На телефону треба пробати исти снимак у Google,
+OpenAI Auto, OpenAI Ćirilica и OpenAI Latinica режимима, затим убацивање у
+различита поља и слање текста у чат.
 
 ## AI obrada teksta
 
-Kartica *AI* (bez glavnog prekidača — izabran alat znači da se AI koristi): prekidač plus polje za **API ključ** (Google AI
-Studio). Ceo diktat se sačeka pa jednim pozivom ode modelu. Dok se čeka, pilula
+Kartica *AI* (bez glavnog prekidača — izabran alat znači da se AI koristi):
+избори алата су одвојени од секције **API ključevi**, где се уносе Gemini,
+Groq и OpenAI кључ. Ceo diktat se sačeka pa jednim pozivom ode modelu. Dok se čeka, pilula
 pokazuje plavo **AI**.
 
-Alati su **nezavisni** — uputstvo se sklapa od izabranih. U kartici stoje kao
-**podelementi** glavnog prekidača: uvučeni i sivi dok je AI obrada isključena.
+U istoj kartici postoji izbor **Model za manipulaciju teksta**: Gemini ili
+Groq GPT-OSS 120B. On važi za sređivanje, pasuse, tačke, ponavljanja i prevod,
+dok **Provider transkripcije** ostaje zaseban izbor. Gemini i Groq dobijaju
+samo već transkribovan tekst; audio иде искључиво изабраном Google или OpenAI
+провајдеру транскрипције.
+
+Alati su **nezavisni** — uputstvo se sklapa od izabranih. Ako је изабран бар
+један алат и постоји одговарајући кључ, обрада се аутоматски користи.
 
 | alat | podrazumevano | šta radi |
 |---|---|---|
 | Sredi tekst | isključeno | tačke i velika slova; usput i gramatička neslaganja |
+| Dodaj samo zareze | isključeno | model analizira tekst i dodaje samo zareze, bez tačaka i ostalih znakova |
 | Sažmi u tačke | isključeno | preuredi tekst u spisak tačaka |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
 | Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
 
-**Google/Gemini sluša snimak** i **Groq preciznost** su nezavisne opcije. Ako je
-prva isključena, a Groq uključen, Google uradi osnovni prepis, Groq Whisper
-presluša isti audio, a GPT-OSS uporedi oba teksta. Groq modeli su ugrađeni u
-aplikaciju i ne podešavaju se na ekranu.
-
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
 kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.
+
+Kada su uključeni **Dodaj samo zareze**, **Podeli na pasuse**, **Sva slova
+mala** i **Ukloni interpunkciju**, izabrani Gemini ili Groq model određuje mesta
+za zareze i smisaone pasuse. Lokalna završna obrada uklanja sve остале знакове,
+ali чува зарезе и двоструке нове редове између пасуса.
+Зарез се додатно уклања непосредно пре или после самосталног везника `i`, као и
+на крају пасуса.
 
 Kad nijedan izabrani alat ne sme da menja reči, izlaz se poredi sa ulazom reč
 po reč; ako se razlikuje, upisuje se naš tekst.
@@ -151,28 +235,12 @@ podešeni model nestane (404), automatski se pokušava sa
 `gemini-flash-lite-latest`; ako i to padne, lepi se **nedoteran** tekst. Ključ ostaje sačuvan i posle nadogradnje aplikacije — `SharedPreferences`
 preživljava instalaciju preko postojeće dok su paket i potpis isti.
 
-## AI sluša snimak
-
-Prekidač *AI sluša snimak (preciznije)* u kartici AI obrade. Snimak ide i modelu,
-zajedno sa onim što je Web Speech čuo; model sluša zvuk i ispravlja greške.
-Izmereno (greška po reči, tri rečenice sa šumom): Web Speech 0.30, model sam
-0.29, model uz prvi prepis **0.17**. Sam model u šumu halucinira, pa mu prvi
-prepis služi kao sidro.
-
-Polje **Pojmovi koje često izgovaram** ide modelu uz snimak: skraćenice i strani
-nazivi su najslabija tačka endpointa („AI" ume da postane „pa"). Izmereno na pet
-rečenica: greška po reči 0.197 → **0.080**, bez ijedne greške 1/5 → **4/5**.
-
-Ceo diktat ide **jednim pozivom** sa svim segmentima kao delovima — provera po
-segmentu je trošila 6–9 poziva na jednu poruku. Zato tekst tada stiže tek na
-kraju diktata, a ne deo po deo. Zvuk ide kao FLAC u base64 — drugi put, pa se
-broji u potrošnju. Podstavka
-*…samo kad je pouzdanost niska* to smanjuje, ali propušta greške: endpoint
-prijavi 0.93 i za rečenicu sa odsečenom rečju.
-
 ## Potrošnja podataka
 
-Aplikacija broji koliko je poslato i primljeno, i prikazuje to na svom ekranu.
+Aplikacija broji koliko je poslato i primljeno, a posebno meri ukupno trajanje
+svih uhvaćenih snimaka. Na ekranu se prikazuju ukupno snimljene sekunde i
+sekunde koje su ušle u uspešne upload-e; ta dva broja mogu malo da se razlikuju
+ako zahtev ne uspe ili se snimak otkaže.
 Sažimanje zvuka je uvek uključeno; ako ne uspe, šalje se sirov zvuk kao i pre.
 
 Zvuk se šalje kao **FLAC** — oko 40% manje od sirovog PCM-a, uz identičan
@@ -200,10 +268,22 @@ Za osećaj koliko je to — tipične vrednosti:
 | minut Spotify-a | 1.1 MB |
 | učitavanje jedne veb stranice | 2.2 MB |
 
+## Procena koristi — 10 dana
+
+U kartici **Procena koristi — 10 dana** pokreni novi period kada želiš da meriš
+stvarnu vrednost diktiranja. Aplikacija lokalno beleži broj rezultata,
+karaktere i sekunde snimanja po danima. Potrošnju API-ja unosiš ručno, a brzina
+kucanja služi za približan proračun koliko bi ti vremena trebalo da isti tekst
+otkucaš. Izveštaj prikazuje prosek po danu, cenu po diktatu, cenu na 1.000
+karaktera i procenjeno vreme kucanja. Dodatno prikazuje broj poziva i vreme
+zvuka po svakom korišćenom provajderu/modelu, da se Google i OpenAI mogu
+uporediti na istom desetodnevnom uzorku. Podaci ostaju na telefonu.
+
 ## Tekst
 
-Kartica *Tekst* drži ono što radi sam kod, bez modela i bez ključa: bez kvačica,
-skraćenice (uz pravila i probu) i maskiranje psovki. Radi i kad je AI isključen —
+Kartica *Tekst* drži ono što radi sam kod, bez modela i bez ključa: nezavisno
+uključivanje malih slova i uklanjanja interpunkcije, bez kvačica, skraćenice
+(uz pravila i probu) i maskiranje psovki. Radi i kad je AI isključen —
 zato je odvojeno od AI kartice.
 
 ## Obrada teksta
@@ -213,42 +293,26 @@ Isto što radi i macOS verzija, sve se menja u aplikaciji:
 | | podrazumevano | |
 |---|---|---|
 | Bez kvačica | **isključeno** | `č ć ž š đ → c c z s dj` |
-| Skraćenice | uključeno | `ne znam → nzm`, `jebi ga → jbg`; lista se menja u aplikaciji |
+| Skraćenice | uključeno | `ne znam → nzm`, `je li/jeli → je l`, `da li → da l`; lista je ugrađena i samo za čitanje |
 
-Pravilo je `fraza=skraćenica`, jedno po redu. Ako skraćenica počinje sa `<`,
-pojede i **razmak ispred** pa se zalepi za prethodnu reč:
-
-```
-minuta=<min        „15 minuta"     → „15min"
-procenata=<%       „50 procenata"  → „50%"
-```
-
-Poklapaju se samo **cele reči** — `znamenito` i `prominuta` ostaju netaknuti —
-a duže fraze idu prve, da pravilo za `znam` ne pojede `ne znam`.
-
-Red koji počinje sa `~` je **regularni izraz**, a `{1}`…`{9}` u zameni su
-uhvaćene grupe. Time se može i premeštati, što valutama treba — dolar ide
-ispred cifre, dinar iza:
+Честе фразе су уграђене у build. Бројеви се претварају у цифре, а јединица се
+раздваја ако се слепи са бројем:
 
 ```
-~(\d+(?:[.,]\d+)?)\s*dolara?=${1}      „100 dolara" → „$100"
-dinara=RSD                             „5000 dinara" → „5000 RSD"
-evra=€                                 „20 evra" → „20 €"
+„pet minuta"       → „5min"
+„petmin"           → „5min"
+„sto dvadeset i pet minuta" → „125min"
+„pet dinara"       → „5 dinara"
 ```
 
-Regularni izrazi se primenjuju **prvi**, da prosto pravilo `dolara=$` ne pojede
-reč pre nego što premeštanje stigne na red.
+Поставка **Скраћивање честих фраза** и даље може да се искључи; претварање
+изговорених бројева остаје укључено и тада.
 
-Ako `<` izgleda kao da ne radi, dva su uzroka — oba su sada pokrivena, ali
-vredi ih znati:
+Правила за честе фразе нису корисничко подешавање на телефону:
+приказују се само за читање, док се њихова листа мења у `Abbreviations.kt`
+пре builda. Поље *Proba pravila* остаје доступно да провериш резултат без
+диктирања.
 
-- **razmak posle znaka**: `dinara=< RSD` → razmak dolazi iz same zamene
-- **stari red iznad novog**: ako je `dinara=RSD` ostao iznad `dinara=<RSD`,
-  prvi pojede reč. Sada **poslednji red pobeđuje**.
-
-Velika polja (pravila, proba) su namerno **na dnu ekrana** — svi prekidači su
-iznad njih, da se do njih dolazi bez skrolovanja preko teksta. Između ta dva
-polja stoji *Potrošnja podataka*, da ne budu jedno uz drugo.
 
 U sekciji *Skraćenice* postoji polje **Proba** — upišeš rečenicu i odmah vidiš
 šta pravila urade, bez diktiranja.
@@ -316,6 +380,7 @@ app/src/main/java/studio/room211/diktat/
   TileService.kt         rezervni okidač
   Recorder.kt            mikrofon → 16 kHz PCM
   WebStt.kt              endpoint i parsiranje odgovora
+  OpenAiTranscription.kt završeni upload na OpenAI gpt-transcribe endpoint
   TextPolish.kt          mala slova, interpunkcija, kvačice
   Config.kt              podešavanja
 build.sh                 napravi i instaliraj

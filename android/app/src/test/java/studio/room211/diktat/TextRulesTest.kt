@@ -42,8 +42,41 @@ class TextRulesTest {
         // primenjuje, ne koje su tacno skracenice.
         val d = Abbreviations.DEFAULT
         assertEquals("nzm koliko", Abbreviations.apply("ne znam koliko", d))
+        assertEquals("jbm li ga stvarno", Abbreviations.apply("jebem li ga stvarno", d))
+        // "da li" se NE skracuje: "da l" izgleda krnje. "je l" je ostalo.
+        assertEquals("je l ovo je l da li", Abbreviations.apply("je li ovo jeli da li", d))
+        // Prepoznavanje "svejedno" vraca i rastavljeno, pa oba oblika rade.
+        assertEquals("svj mi je", Abbreviations.apply("svejedno mi je", d))
+        assertEquals("svj mi je", Abbreviations.apply("sve jedno mi je", d))
         assertEquals("traje 15min", Abbreviations.apply("traje 15 minuta", d))
-        assertEquals("kosta $100", Abbreviations.apply("kosta 100 dolara", d))
+        assertEquals("kosta 100dolara", Abbreviations.apply("kosta 100 dolara", d))
+    }
+
+    @Test
+    fun tekstualniBrojeviOstajuTekstualniAJediniceSeSredjuju() {
+        val d = Abbreviations.DEFAULT
+        assertEquals("pet min", Abbreviations.apply("pet minuta", d))
+        assertEquals("pet min", Abbreviations.apply("petmin", d))
+        assertEquals("dvadeset pet sati", Abbreviations.apply("dvadeset pet sati", d))
+        assertEquals("pet dinara", Abbreviations.apply("pet dinara", d))
+        assertEquals("sto dvadeset i pet min", Abbreviations.apply("sto dvadeset i pet minuta", d))
+        assertEquals("dve hiljade trista dinara", Abbreviations.apply("dve hiljade trista dinara", d))
+        assertEquals("zato što je kasno", Abbreviations.apply("zato sto je kasno", d))
+        assertEquals("sto dinara", Abbreviations.apply("sto dinara", d))
+        assertEquals("pet min", Abbreviations.apply("pet minuta", emptyList()))
+        assertEquals(
+            "pet min pet min 5min",
+            Abbreviations.apply("pet minuta petmin 5min", d),
+        )
+    }
+
+    @Test
+    fun `svi oblici minuta postaju min`() {
+        assertEquals(
+            "1min 2min 3min",
+            Abbreviations.apply("1 minut 2 minute 3 minuta", Abbreviations.DEFAULT),
+        )
+        assertEquals("jedan min dve min tri min", Abbreviations.apply("jedan minut dve minute tri minuta", Abbreviations.DEFAULT))
     }
 
     @Test
@@ -68,8 +101,38 @@ class TextRulesTest {
             TextPolish.stripPunctuation("Cena je 1.500,25 dinara."))
         assertEquals("Danas je lep dan zar ne",
             TextPolish.stripPunctuation("Danas je lep dan, zar ne?"))
-        assertEquals("crno-beli film bez crtice",
+        assertEquals("crnobeli film bez crtice",
             TextPolish.stripPunctuation("crno-beli film — bez crtice"))
+    }
+
+    @Test
+    fun `opcija samo zarezi cuva zareze a uklanja ostale znake`() {
+        assertEquals(
+            "danas je lep dan, zar ne",
+            TextPolish.stripPunctuation("danas je lep dan, zar ne?", keepCommas = true),
+        )
+        assertEquals(
+            "sastanak je u 10:30, ponesi verziju 2.0",
+            TextPolish.stripPunctuation(
+                "sastanak je u 10:30, ponesi verziju 2.0.",
+                keepCommas = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `opcija samo zarezi ne ostavlja zarez uz veznik i`() {
+        assertEquals(
+            "uzeo sam hleb i mleko, pa sam otišao",
+            TextPolish.stripPunctuation(
+                "uzeo sam hleb, i mleko, pa sam otišao.",
+                keepCommas = true,
+            ),
+        )
+        assertEquals(
+            "želim ovo i ono",
+            TextPolish.stripPunctuation("želim ovo i, ono,", keepCommas = true),
+        )
     }
 
     @Test

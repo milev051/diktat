@@ -8,7 +8,7 @@ ponovo iz menija, ili bar preslusa.
 import wave
 from pathlib import Path
 
-KEEP = 5   # koliko poslednjih neuspelih snimaka drzimo
+KEEP = 3   # koliko poslednjih neuspelih snimaka drzimo
 
 
 class PendingStore:
@@ -16,6 +16,9 @@ class PendingStore:
         self.dir = Path(directory).expanduser()
         self.rate = sample_rate
         self.keep = keep
+        if self.dir.exists():
+            # I ranije sačuvani folderi odmah poštuju novi limit.
+            self._trim()
 
     def save(self, pcm: bytes) -> Path | None:
         if not pcm:

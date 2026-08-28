@@ -19,6 +19,8 @@ from . import webstt
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_MODEL = "gemini-flash-lite-latest"
+DEFAULT_TEXT_MODEL = "gemini"
+GROQ_TEXT_MODEL = "groq"
 
 # Izmereno: flash-lite doteruje za ~1s i ne dira reci; gemini-3.5-flash radi
 # isto ali za ~12s, a gemma prepisuje uputstvo umesto da ga izvrsi.
@@ -92,8 +94,25 @@ class PolishError(Exception):
         self.retryable = retryable
 
 
-def available(cfg) -> bool:
+def gemini_available(cfg) -> bool:
     return bool(str(cfg.get("polish_api_key") or "").strip())
+
+
+def groq_available(cfg) -> bool:
+    return bool(str(cfg.get("groq_api_key") or "").strip())
+
+
+def text_model(cfg) -> str:
+    return GROQ_TEXT_MODEL if str(cfg.get("text_model", DEFAULT_TEXT_MODEL)).lower() == GROQ_TEXT_MODEL else DEFAULT_TEXT_MODEL
+
+
+def text_model_label(cfg) -> str:
+    return "Groq GPT-OSS 120B" if text_model(cfg) == GROQ_TEXT_MODEL else "Gemini"
+
+
+def available(cfg) -> bool:
+    """Postoji li ključ za trenutno izabrani model za obradu teksta."""
+    return groq_available(cfg) if text_model(cfg) == GROQ_TEXT_MODEL else gemini_available(cfg)
 
 
 def tidy_on(cfg) -> bool:
@@ -140,9 +159,22 @@ def polish(text: str, cfg, timeout=60, vec_sredjeno=False) -> str:
         return text
     if not tools(cfg, vec_sredjeno):
         return text                 # nema alata — nema ni poziva
+    model_izbor = text_model(cfg)
+    if model_izbor == GROQ_TEXT_MODEL:
+        if not groq_available(cfg):
+            raise PolishError("Nema Groq API ključa za obradu teksta.")
+        try:
+            from . import groq
+            rezultat = groq.manipulate_text(
+                text, cfg, _uputstvo(cfg, vec_sredjeno), timeout=timeout
+            )
+        except groq.GroqError as exc:
+            raise PolishError(str(exc), retryable=True) from exc
+        return _proveri(text, rezultat, cfg)
+
     key = str(cfg.get("polish_api_key") or "").strip()
     if not key:
-        raise PolishError("Nema API ključa za doterivanje.")
+        raise PolishError("Nema Gemini API ključa za doterivanje.")
 
     model = cfg.get("polish_model") or DEFAULT_MODEL
     try:

@@ -11,14 +11,30 @@ CONFIG_PATH = ROOT / "config.json"
 DEFAULT_POLISH_API_KEY = ""
 DEFAULT_GROQ_API_KEY = ""
 
+# Izvori transkripcije; nepoznata vrednost bezbedno pada na Google, da
+# postojece instalacije nastave da rade.
+PROVIDERS = ("google", "openai", "gemini_live")
+
 DEFAULTS = {
     # --- Prepoznavanje ---
+    # "google" = besplatni Web Speech endpoint; "openai" = GPT transkripcija;
+    # "gemini_live" = gemini-3.5-transcribe-live preko Live API-ja.
+    # Obicni "gemini" (gemini-3.5-transcribe) je uklonjen: 25 zahteva dnevno
+    # na besplatnom nivou ne znaci nista za svakodnevni rad.
+    "transcription_provider": "google",
     "language": "sr-RS",
     "api_key": "",                # prazno = ugradjeni javni Chromium kljuc
+    "openai_api_key": "",          # opciono; koristi se samo uz OpenAI provajder
+    "openai_output_script": "latin",  # OpenAI desktop output is always Latin
+    "openai_long_recording": True, # OpenAI dugi diktat, uz sigurnosni limit
+    "openai_max_seconds": 3600,    # najviše 60 minuta po jednom OpenAI diktatu
+    "recorded_seconds": 0.0,       # ukupno vreme uhvaćenog zvuka na ovom računaru
     # Maskiranje psovki je uklonjeno kao podesavanje: uvek `pFilter=0`.
     # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci
     # da model sredjuje tekst — prekidac za to stoji u AI grupi.
     "text_style": "spoken",
+    "lowercase": True,             # независно од интерпункције
+    "strip_punctuation": True,     # бројеви типа 10:30 и 3,5 остају читави
     "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
     "abbreviations": True,        # „ne znam" -> „nzm"
     "abbreviation_rules": "",     # prazno = ugradjena lista (dictate/abbrev.py)
@@ -45,13 +61,14 @@ DEFAULTS = {
     # kad tekst ima nov red, jer bi ga kucanje poslalo kao Enter.
     "insert_method": "auto",      # "auto" | "type" | "paste" | "clipboard_only"
     "restore_clipboard": True,
-    "history_size": 10,           # koliko poslednjih tekstova cuvati za kopiranje
+    "history_size": 5,            # koliko poslednjih tekstova cuvati za kopiranje
     "show_overlay": False,        # pilula sa vremenom preko ekrana
     "overlay_position": "top-right",
 
     # --- Formalni rezim (doterivanje jezickim modelom) ---
     "polish_api_key": DEFAULT_POLISH_API_KEY,  # Google AI Studio kljuc
     "polish_model": "",           # prazno = gemini-flash-lite-latest
+    "text_model": "gemini",       # "gemini" | "groq"
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
     "polish_paragraphs": True,
     # Preuredi u spisak tacaka (nalik ASD-STE100); iskljucuje pasuse.
@@ -81,16 +98,19 @@ DEFAULTS = {
 
 def load() -> dict:
     cfg = dict(DEFAULTS)
+    saved = {}
     if CONFIG_PATH.exists():
         try:
-            cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+            saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            cfg.update(saved)
         except (json.JSONDecodeError, OSError) as exc:
             raise RuntimeError(f"Ne mogu da procitam {CONFIG_PATH}: {exc}") from exc
-    return _migrate(cfg)
+    return _migrate(cfg, saved)
 
 
-def _migrate(cfg: dict) -> dict:
+def _migrate(cfg: dict, saved=None) -> dict:
     """Preuzmi vrednosti iz starih naziva i izbaci kljuceve kojih vise nema."""
+    saved = cfg if saved is None else saved
     if "language_codes" in cfg:
         codes = cfg.pop("language_codes") or []
         if codes:
@@ -117,6 +137,34 @@ def _migrate(cfg: dict) -> dict:
         cfg["insert_method"] = "auto"
         cfg["_insert_migrated"] = True
 
+    # Izvor transkripcije je jedan izbor. Nepoznata ili stara vrednost bezbedno
+    # ostaje na Google-u, da postojece instalacije nastave da rade.
+    izvor = str(cfg.get("transcription_provider", "google")).lower()
+    cfg["transcription_provider"] = (
+        izvor if izvor in PROVIDERS else "google"
+    )
+    script = str(cfg.get("openai_output_script", "latin")).lower()
+    cfg["openai_output_script"] = script if script in {"auto", "cyrillic", "latin"} else "latin"
+    # Desktop OpenAI diktat koristi latinicu radi usklađenosti sa Androidom.
+    if cfg["transcription_provider"] == "openai":
+        cfg["openai_output_script"] = "latin"
+    cfg["openai_long_recording"] = bool(cfg.get("openai_long_recording", True))
+    try:
+        cfg["openai_max_seconds"] = min(
+            3600, max(60, int(cfg.get("openai_max_seconds", 3600)))
+        )
+    except (TypeError, ValueError):
+        cfg["openai_max_seconds"] = 3600
+    cfg["text_model"] = (
+        "groq" if str(cfg.get("text_model", "gemini")).lower() == "groq" else "gemini"
+    )
+    # Istorija je namerno fiksirana na pet stavki, da bude ista kao na telefonu.
+    cfg["history_size"] = 5
+    try:
+        cfg["recorded_seconds"] = max(0.0, float(cfg.get("recorded_seconds", 0.0)))
+    except (TypeError, ValueError):
+        cfg["recorded_seconds"] = 0.0
+
     # Glavni prekidac je uklonjen — izabran alat sam znaci "ukljuceno". Ko ga je
     # imao ugasenog, alate treba i ugasiti, da mu se AI ne upali sam od sebe.
     if "polish" in cfg:
@@ -132,13 +180,22 @@ def _migrate(cfg: dict) -> dict:
     if cfg.get("text_style") == "raw":
         cfg["text_style"] = "spoken"
 
+    # Nova dva prekidaca nasleduju stari izbor izgleda samo ako korisnik jos
+    # nije upisao zasebne vrednosti. Tako stari "written" ostaje pisan, a
+    # podrazumevani "spoken" ostaje malim slovima bez znakova.
+    if "lowercase" not in saved:
+        cfg["lowercase"] = cfg.get("text_style") != "written"
+    if "strip_punctuation" not in saved:
+        cfg["strip_punctuation"] = cfg.get("text_style") != "written"
+
     for mrtvo in ("engine", "credentials_json", "project_id", "location",
-                  "model", "punctuation", "lowercase", "strip_punctuation",
+                  "model", "punctuation",
                   "polish_tidy", "auto_segment", "max_seconds",
                   "audio_check_low_only", "audio_check_threshold",
                   "polish_emoji", "polish_emoji_rate", "polish_emoji_recent",
                   "join_thousands", "trailing_space", "capitalize_first",
-                  "polish_level", "polish_concise", "profanity_filter"):
+                  "polish_level", "polish_concise", "profanity_filter",
+                  "spoken_numbers_to_digits"):
         cfg.pop(mrtvo, None)
     return cfg
 

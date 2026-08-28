@@ -33,8 +33,14 @@ class DictationService : Service() {
 
     companion object {
         const val ACTION_TOGGLE = "studio.room211.diktat.TOGGLE"
+        const val ACTION_RETRY_PENDING = "studio.room211.diktat.RETRY_PENDING"
+        const val EXTRA_PENDING_NAME = "pending_name"
         private const val CHANNEL = "diktat"
         private const val NOTIFICATION_ID = 1
+        // OpenAI prima ceo uobičajeni diktat jednim pozivom. Tek veoma dug
+        // snimak se deli na petominutne komade da WAV i radna memorija ostanu
+        // bezbedno ispod granice od 25 MB.
+        private const val OPENAI_CHUNK_SECONDS = 5 * 60.0
 
         @Volatile
         var isRecording = false
@@ -49,7 +55,7 @@ class DictationService : Service() {
     private val tickRunnable = Runnable { tick() }
     // Osigurac: ako obrada nikad ne javi da je gotova (nit umre, poziv visi
     // preko svog roka), pilula bi zauvek stajala i servis se ne bi ugasio.
-    // Granica je iznad najduzeg poziva (provera snimka ceka do 180s).
+    // Granica je iznad najdužeg transkripcionog poziva (OpenAI čeka do 180 s).
     private val watchdogRunnable = Runnable {
         if (!isRecording) {
             pending.set(0)
@@ -75,10 +81,10 @@ class DictationService : Service() {
     private var session = 0
     private val formalParts = sortedMapOf<Int, MutableList<String>>()
     private val pendingBy = HashMap<Int, Int>()
-    // Zvuk segmenata za grupnu proveru; kljuc je ticket, da redosled ostane
-    // hronoloski i kad se segmenti prepoznaju paralelno.
-    private val audioParts = HashMap<Int, java.util.SortedMap<Int, ByteArray>>()
-    private val audioSeconds = HashMap<Int, Double>()
+    // OpenAI se ne poziva dok snimanje traje. U neprekidnom rezimu gotovi
+    // segmenti idu na disk, pa telefon ne gomila sat vremena PCM-a u RAM-u;
+    // svi se salju tek kad korisnik pritisne Stop.
+    private val openAiParts = HashMap<Int, MutableList<java.io.File>>()
     @Volatile private var polishing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -91,8 +97,9 @@ class DictationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_TOGGLE) {
-            if (isRecording) stopRecording() else startRecording()
+        when (intent?.action) {
+            ACTION_TOGGLE -> if (isRecording) stopRecording() else startRecording()
+            ACTION_RETRY_PENDING -> retryPending(intent.getStringExtra(EXTRA_PENDING_NAME))
         }
         return START_NOT_STICKY
     }
@@ -101,6 +108,11 @@ class DictationService : Service() {
 
     private fun startRecording() {
         cfg = Config(this)
+        if (cfg.transcriptionProvider == "openai" && cfg.openAiApiKey.isBlank()) {
+            toast("OpenAI API ključ nije podešen — unesi ga u aplikaciji")
+            stopSelf()
+            return
+        }
         // Bez polja u koje bi tekst usao snimanje nema smisla — inace se
         // diktat pokrene i sa pocetnog ekrana, pa zavrsi u praznom.
         if (cfg.requireInputField && InsertService.isRunning &&
@@ -122,7 +134,7 @@ class DictationService : Service() {
         startedAt = System.currentTimeMillis()
         showPill()
         tick()
-        if (cfg.continuous) thread { segmentLoop() }
+        if (cfg.longRecording) thread { segmentLoop() }
     }
 
     private fun stopRecording() {
@@ -138,7 +150,7 @@ class DictationService : Service() {
         busy = true
         updatePill(elapsed(), busy = true)
 
-        if (cfg.continuous) {
+        if (cfg.longRecording) {
             // Petlja sama pokupi ostatak iz reda i posalje rep; ovde se samo
             // trazi kraj, da se poslednji komadi ne izgube.
             recorder?.requestStop()
@@ -147,6 +159,7 @@ class DictationService : Service() {
 
         val pcm = recorder?.stop() ?: ByteArray(0)
         recorder = null
+        cfg.addRecordedSeconds(pcm.size / 2.0 / cfg.sampleRate)
         // Kroz `ship` zbog tiketa: raniji diktat u istom servisu je vec pomerio
         // `expected`, pa bi tvrdo zakucana nula zauvek cekala svoj red — pilula
         // bi ostala sa poslednjom cifrom dok se servis rucno ne prekine.
@@ -154,30 +167,39 @@ class DictationService : Service() {
     }
 
     /**
-     * Neprekidni rezim: sece na pauzama i salje delove dok snimanje tece
-     * dalje. Segment se pusta iz memorije cim ode — inace bi dug diktat
-     * nagomilao sve u baferu.
+     * Neprekidni režim: Google seče na pauzama i šalje delove tokom snimanja.
+     * OpenAI ignoriše pauze i čuva veće komade koje šalje tek posle Stop-a.
+     * Segment se pušta iz memorije čim ode na mrežu ili u privremeni fajl.
      */
     private fun segmentLoop() {
         val rec = recorder ?: return
+        val openAi = cfg.transcriptionProvider == "openai"
         val detector = PauseDetector(pauseSeconds = cfg.pauseSeconds)
         val cutAfter = cfg.segmentAfterSeconds.toDouble()
-        val hardCut = cfg.maxRequestSeconds.toDouble()
+        val hardCut = if (openAi) OPENAI_CHUNK_SECONDS else cfg.maxRequestSeconds.toDouble()
         var frames = java.io.ByteArrayOutputStream()
         var seconds = 0.0
         var bytesInSegment = 0
+        var totalBytes = 0L
 
         while (true) {
             val chunk = rec.nextChunk() ?: break
             if (chunk.isEmpty()) continue
             frames.write(chunk)
+            totalBytes += chunk.size
             bytesInSegment += chunk.size
             val step = chunk.size / 2.0 / cfg.sampleRate
             seconds += step
-            val paused = detector.feed(peakLevel(chunk), step)
-            // Tvrdi rez postoji jer endpoint odbija zahteve duze od ~30s, a
-            // neko moze da prica bez ijedne pauze.
-            if (bytesInSegment > 0 && ((paused && seconds >= cutAfter) || seconds >= hardCut)) {
+            // Google-ov endpoint traži kratke delove, pa koristi pauze. OpenAI
+            // dobija ceo uobičajeni diktat u jednom zahtevu: ranije je svaka
+            // pauza pravila novi API poziv i posle Stop-a nepotrebno množila
+            // vreme čekanja.
+            val paused = !openAi && detector.feed(peakLevel(chunk), step)
+            // Google ima tvrdu granicu od oko 30 s; OpenAI se deli tek na pet
+            // minuta zbog veličine fajla i potrošnje memorije.
+            if (bytesInSegment > 0 &&
+                ((!openAi && paused && seconds >= cutAfter) || seconds >= hardCut)
+            ) {
                 ship(frames.toByteArray(), last = false)
                 frames = java.io.ByteArrayOutputStream()
                 bytesInSegment = 0
@@ -189,17 +211,36 @@ class DictationService : Service() {
         val rest = rec.stop()
         recorder = null
         frames.write(rest)
+        totalBytes += rest.size
+        cfg.addRecordedSeconds(totalBytes / 2.0 / cfg.sampleRate)
         ship(frames.toByteArray(), last = true)
     }
 
     private fun ship(pcm: ByteArray, last: Boolean) {
+        if (cfg.transcriptionProvider == "openai") {
+            shipOpenAiPart(pcm, last)
+            return
+        }
         if (pcm.isEmpty()) {
-            if (last) handler.post { finishSession() }
+            if (!last) return
+            // U neprekidnom režimu korisnik često pritisne Stop tokom tišine,
+            // pa je završni rep prazan iako je raniji segment već poslat.
+            // I prazan rep mora da bude tiket: bez njega prethodni segment
+            // nema oznaku „poslednji“, pa se tekst može ispisati, ali pilula
+            // ostane narandžasta i servis nikad ne završi.
+            val myTicket = nextTicket++
+            val mojaSesija = session
+            pending.incrementAndGet()
+            synchronized(formalParts) {
+                pendingBy[mojaSesija] = (pendingBy[mojaSesija] ?: 0) + 1
+            }
+            handler.post {
+                deliver("", null, myTicket, last = true, sesija = mojaSesija)
+            }
             return
         }
         val myTicket = nextTicket++
         val mojaSesija = session
-        keepAudio(mojaSesija, myTicket, pcm)
         pending.incrementAndGet()
         synchronized(formalParts) { pendingBy[mojaSesija] = (pendingBy[mojaSesija] ?: 0) + 1 }
         thread {
@@ -208,27 +249,160 @@ class DictationService : Service() {
     }
 
     /**
-     * Sacuvaj zvuk segmenta za grupnu proveru na kraju diktata.
-     *
-     * Ceo diktat ide modelu jednim pozivom: provera po segmentu je trosila
-     * 6-9 poziva na jednu diktiranu poruku, a model je video krhotinu umesto
-     * celine. Granica postoji jer neprekidan rezim ume da traje satima.
+     * Sacuva jedan zavrseni segment, ali ga ne salje dok korisnik ne pritisne
+     * Stop. Za obican rezim lista ima jedan fajl; za neprekidni rezim svaki
+     * rez na pauzi ostaje zaseban upload posle kraja snimanja.
      */
-    private fun keepAudio(sesija: Int, ticket: Int, pcm: ByteArray) {
-        if (pcm.isEmpty() || !(Listen.enabled(cfg) || Groq.enabled(cfg))) return
-        val sek = pcm.size / 2.0 / cfg.sampleRate
-        synchronized(audioParts) {
-            val moji = audioParts.getOrPut(sesija) { sortedMapOf() }
-            if ((audioSeconds[sesija] ?: 0.0) + sek > cfg.audioCheckMaxSeconds) return
-            moji[ticket] = pcm
-            audioSeconds[sesija] = (audioSeconds[sesija] ?: 0.0) + sek
+    private fun shipOpenAiPart(pcm: ByteArray, last: Boolean) {
+        val mojaSesija = session
+        if (pcm.isNotEmpty()) {
+            val file = java.io.File(cacheDir, "openai-${mojaSesija}-${System.nanoTime()}.pcm")
+            runCatching {
+                file.writeBytes(pcm)
+                synchronized(openAiParts) {
+                    openAiParts.getOrPut(mojaSesija) { mutableListOf() }.add(file)
+                }
+            }.onFailure {
+                file.delete()
+                handler.post { toast("Ne mogu da sačuvam OpenAI audio snimak") }
+            }
+        }
+        if (!last) return
+
+        val files = synchronized(openAiParts) {
+            openAiParts.remove(mojaSesija)?.toList() ?: emptyList()
+        }
+        if (files.isEmpty()) {
+            handler.post {
+                toast("Snimak je prazan ili prekratak")
+                finishSession()
+            }
+            return
+        }
+        val myTicket = nextTicket++
+        pending.incrementAndGet()
+        synchronized(formalParts) { pendingBy[mojaSesija] = 1 }
+        thread {
+            recognizeOpenAiAndDeliver(files, ticket = myTicket, sesija = mojaSesija)
         }
     }
 
-    private fun takeAudio(sesija: Int): List<ByteArray> = synchronized(audioParts) {
-        val delovi = audioParts.remove(sesija)?.values?.toList() ?: emptyList()
-        audioSeconds.remove(sesija)
-        delovi
+    private fun recognizeOpenAiAndDeliver(
+        files: List<java.io.File>,
+        ticket: Int,
+        sesija: Int,
+    ) {
+        val pieces = mutableListOf<String>()
+        var problem: String? = null
+        var failedFileIndex: Int? = null
+        try {
+            for ((index, file) in files.withIndex()) {
+                val pcm = runCatching { file.readBytes() }.getOrElse {
+                    throw OpenAiTranscription.OpenAiException("Ne mogu da pročitam audio snimak.")
+                }
+                try {
+                    val piece = OpenAiTranscription.postProcess(
+                        OpenAiTranscription.recognize(pcm, cfg), cfg,
+                    ).trim()
+                    if (piece.isNotBlank()) pieces += piece
+                } catch (exc: Exception) {
+                    // Ako je prethodni segment uspeo, njega ne bacamo; korisnik
+                    // dobija jasan problem i neuspešni deo ostaje za ponovni
+                    // pokušaj. Ako nije uspeo nijedan, deliver samo prikazuje
+                    // grešku i tekst ostaje netaknut.
+                    failedFileIndex = index
+                    problem = exc.message ?: "OpenAI transkripcija nije uspela"
+                    break
+                }
+            }
+        } catch (exc: Exception) {
+            problem = exc.message ?: "OpenAI transkripcija nije uspela"
+        }
+        var savedForRetry = false
+        if (problem != null) {
+            // Cuvamo pali segment i sve posle njega; raniji su vec isporuceni.
+            val pendingStore = PendingStore(this, cfg.sampleRate)
+            // Prethodni segmenti su vec isporuceni; za ponovni pokusaj cuvamo
+            // samo onaj koji je pao i sve sto je ostalo iza njega.
+            val firstUnsent = failedFileIndex ?: 0
+            for (file in files.drop(firstUnsent)) {
+                runCatching { file.readBytes() }
+                    .getOrNull()
+                    ?.let {
+                        savedForRetry = pendingStore.save(it, cfg.transcriptionProvider) != null ||
+                            savedForRetry
+                    }
+            }
+        }
+        files.forEach { it.delete() }
+        val joined = pieces.joinToString(" ").trim()
+        val text = if (joined.isNotBlank() && cfg.trailingSpace) "$joined " else joined
+        if (problem != null && text.isNotBlank()) {
+            problem += if (savedForRetry) {
+                " — neuspeo deo je sačuvan za ponovni pokušaj"
+            } else {
+                " — audio nije mogao da se sačuva"
+            }
+        } else if (problem != null) {
+            problem += if (savedForRetry) {
+                " — snimak je sačuvan za ponovni pokušaj"
+            } else {
+                " — audio nije mogao da se sačuva"
+            }
+        }
+        handler.post { deliver(text, problem, ticket, last = true, sesija = sesija) }
+    }
+
+    /** Ponovo posalji jedan lokalno sacuvan WAV/PCM i ukloni ga tek po uspehu. */
+    private fun retryPending(name: String?) {
+        if (name.isNullOrBlank()) return
+        if (isRecording || busy || polishing) {
+            toast("Sačekaj da se trenutni diktat završi")
+            return
+        }
+        cfg = Config(this)
+        val store = PendingStore(this, cfg.sampleRate)
+        val file = store.find(name)
+        if (file == null) {
+            toast("Taj sačuvani snimak više ne postoji")
+            stopSelf()
+            return
+        }
+        thread {
+            try {
+                val pcm = store.load(file)
+                if (pcm.size < 6_400) throw OpenAiTranscription.OpenAiException(
+                    "Snimak je prekratak za ponovno slanje"
+                )
+                // Ponovi preko provajdera koji je prvobitno pao. Ako je snimak
+                // iz stare verzije i nema metapodatak, koristi trenutni izbor.
+                val provider = store.provider(file) ?: cfg.transcriptionProvider
+                val result = (if (provider == "openai") {
+                    OpenAiTranscription.postProcess(
+                        OpenAiTranscription.recognize(pcm, cfg), cfg,
+                    )
+                } else {
+                    TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
+                }).trim()
+                if (result.isBlank()) throw Exception("Model nije vratio tekst")
+                store.remove(file)
+                insertNow(if (cfg.trailingSpace) "$result " else result)
+                handler.post {
+                    toast("Sačuvani snimak je uspešno ponovljen preko " +
+                        if (provider == "openai") "OpenAI-ja" else "Google-a")
+                    stopSelf()
+                }
+            } catch (exc: Exception) {
+                handler.post {
+                    toast(
+                        "Ponovna obrada nije uspela: " +
+                            (exc.message ?: "nepoznata greška") +
+                            ". Snimak ostaje sačuvan."
+                    )
+                    stopSelf()
+                }
+            }
+        }
     }
 
     private fun recognizeAndDeliver(
@@ -240,19 +414,33 @@ class DictationService : Service() {
         var text = ""
         var problem: String? = null
         try {
-            val sirov = WebStt.recognize(pcm, cfg)
+            val sirov = if (cfg.transcriptionProvider == "openai") {
+                OpenAiTranscription.recognize(pcm, cfg)
+            } else {
+                WebStt.recognize(pcm, cfg)
+            }
             // Kad model sredjuje tekst, dobija ga nedirnutog: skracenice i
             // skidanje kvacica mu otezavaju citanje. Kad NE sredjuje (samo
             // skracuje ili dodaje emotikon), nasa pravila moraju da odrade svoje.
-            // Kad model sredjuje tekst ili slusa snimak, dobija ga nedirnutog;
-            // pravila se tada primenjuju na kraju, nad ispravljenim tekstom.
-            text = if (batch() || (formal() && cfg.polishTidy)) sirov.trim()
+            // Kad model sredjuje tekst, dobija ga nedirnutog; pravila se tada
+            // primenjuju na kraju, nad ispravljenim tekstom.
+            text = if (cfg.transcriptionProvider == "openai") {
+                OpenAiTranscription.postProcess(sirov, cfg)
+            } else if (formal() && cfg.polishTidy) sirov.trim()
             else TextPolish.apply(sirov, cfg)
         } catch (exc: Exception) {
             problem = exc.message ?: "greška u prepoznavanju"
             // Snimak se cuva da izgovoreno ne propadne.
-            PendingStore(this).save(pcm)
-            problem += " — snimak sačuvan za ponovni pokušaj"
+            val saved = if (pcm.size >= 6_400) {
+                PendingStore(this, cfg.sampleRate).save(pcm, cfg.transcriptionProvider) != null
+            } else {
+                false
+            }
+            problem += if (saved) {
+                " — snimak je sačuvan za ponovni pokušaj"
+            } else {
+                " — audio je prekratak za ponovno slanje"
+            }
         }
         handler.post { deliver(text, problem, ticket, last, sesija) }
     }
@@ -327,11 +515,8 @@ class DictationService : Service() {
     // Nema glavnog prekidaca: izabran alat sam po sebi znaci da se AI koristi.
     private fun formal() = Polish.available(cfg) && Polish.toolCount(cfg) > 0
 
-    /** Ceka li se kraj diktata zbog provere snimka. */
-    private fun batch() = Listen.enabled(cfg) || Groq.enabled(cfg)
-
-    /** Ceka li se kraj diktata uopste — zbog modela ili zbog provere. */
-    private fun deferred() = formal() || batch()
+    /** Ceka li se kraj diktata zbog tekstualne obrade. */
+    private fun deferred() = formal()
 
     /** Ceo diktat ide modelu jednim pozivom, pa tek onda u polje. */
     private fun startPolish(sesija: Int) {
@@ -341,9 +526,6 @@ class DictationService : Service() {
             moji.filter { it.isNotBlank() }.joinToString(" ").trim()
         }
         if (tekst.isBlank()) {
-            // Otkazan ili prazan diktat: zvuk mora da ode, inace bi usao u
-            // sledecu proveru i model bi "cuo" prosli diktat.
-            takeAudio(sesija)
             handler.post { finishSession() }
             return
         }
@@ -351,34 +533,9 @@ class DictationService : Service() {
         // Korisnik mora da zna da je otislo modelu i da se ceka odgovor.
         handler.post { updatePill(elapsed(), busy = true) }
         thread {
-            var polazni = tekst
-            // Ako je model slusao snimak, tekst vec ima interpunkciju i kvacice
-            // — sledeci poziv tada nema sta da sredjuje.
-            var sredjeno = false
-            if (batch()) {
-                val delovi = takeAudio(sesija)
-                if (delovi.isNotEmpty()) {
-                    runCatching {
-                        if (Groq.enabled(cfg)) {
-                            // Groq ima prednost da se isti audio ne šalje i Gemini-ju.
-                            Groq.check(delovi, tekst, cfg).also { cfg.countPolish(); cfg.countPolish() }
-                        } else {
-                            Listen.check(delovi, tekst, cfg).also { cfg.countPolish() }
-                        }
-                    }
-                        .onSuccess { polazni = it; sredjeno = true }
-                }
-            }
-            if (!formal()) {
-                // Tekst je cekao proveru pa je jos sirov — pravila tek sada.
-                val konacan = TextPolish.applyBlocks(polazni, cfg)
-                polishing = false
-                insertNow(if (cfg.trailingSpace) "$konacan " else konacan)
-                handler.post { finishSession() }
-                return@thread
-            }
+            val polazni = tekst
             val doteran = runCatching {
-                var izlaz = Polish.polish(polazni, cfg, sredjeno)
+                val izlaz = Polish.polish(polazni, cfg)
                 if (izlaz !== polazni) cfg.countPolish()
                 // Kad sredjivanje nije trazeno, model ga svejedno uradi cim
                 // prepisuje recenice — skracivanje ih vraca pravopisno uredne.
@@ -393,15 +550,20 @@ class DictationService : Service() {
                 polazni
             }
             polishing = false
-            // Uz tacke ide nov red umesto razmaka: sledeci diktat tako pocinje
-            // svoju tacku umesto da se nastavi na prethodnu.
-            val konacan = if (cfg.polishBullets) doteran.trimEnd() + "\n" else "$doteran "
+            // Uz tacke ide nov red, a uz podelu na pasuse dva nova reda:
+            // sledeci diktat se tako ne lepi za poslednji pasus.
+            val konacan = when {
+                cfg.polishBullets -> doteran.trimEnd() + "\n"
+                cfg.polishParagraphs -> doteran.trimEnd() + "\n\n"
+                else -> "$doteran "
+            }
             insertNow(konacan)
             handler.post { finishSession() }
         }
     }
 
     private fun insertNow(text: String) {
+        cfg.addHistory(text)
         // Tekst i dalje zavrsava u clipboard-u kad upis ne prodje — izgubiti ga
         // je gore. Poruka preko ekrana se ne prikazuje: pojavljivala se posle
         // svakog diktata i samo smetala.
@@ -428,7 +590,12 @@ class DictationService : Service() {
     private fun tick() {
         if (!isRecording) return
         val sec = elapsed()
-        val limit = if (cfg.continuous) cfg.continuousMaxSeconds else cfg.maxSeconds
+        val limit = if (cfg.longRecording) {
+            if (cfg.transcriptionProvider == "openai") cfg.openAiMaxSeconds
+            else cfg.continuousMaxSeconds
+        } else {
+            cfg.maxSeconds
+        }
         if (sec >= limit) {
             // Bez granice bi slucajno pokrenut diktat mogao da snima satima.
             // Nastavak trazi nov pritisak.
@@ -485,7 +652,12 @@ class DictationService : Service() {
      */
     private fun updatePill(seconds: Int, busy: Boolean) {
         val view = pill ?: return
-        val limit = if (cfg.continuous) cfg.continuousMaxSeconds else cfg.maxSeconds
+        val limit = if (cfg.longRecording) {
+            if (cfg.transcriptionProvider == "openai") cfg.openAiMaxSeconds
+            else cfg.continuousMaxSeconds
+        } else {
+            cfg.maxSeconds
+        }
         view.text = if (seconds >= 60) {
             "%d:%02d".format(seconds / 60, seconds % 60)
         } else {
@@ -498,7 +670,7 @@ class DictationService : Service() {
             busy -> "#E08A00"                                   // prepoznaje
             // U neprekidnom rezimu nema granice od 30s, pa crveno upozorenje
             // nema sta da najavi.
-            !cfg.continuous && seconds >= cfg.redAfterSeconds -> "#C62828"
+            !cfg.longRecording && seconds >= cfg.redAfterSeconds -> "#C62828"
             else -> "#1C8F3D"                                   // snima
         }
         (view.background as GradientDrawable).setColor(Color.parseColor(color))

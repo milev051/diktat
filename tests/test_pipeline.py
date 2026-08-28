@@ -16,8 +16,13 @@ def napravi(**kw):
         "sample_rate": 16000, "audio_check": True, "polish_api_key": "x",
         "audio_check_max_seconds": 120, "polish_paragraphs": False,
         "text_style": "spoken", "join_thousands": True,
+        "lowercase": True, "strip_punctuation": True,
     }
     app.cfg.update(kw)
+    if "lowercase" not in kw:
+        app.cfg["lowercase"] = app.cfg["text_style"] != "written"
+    if "strip_punctuation" not in kw:
+        app.cfg["strip_punctuation"] = app.cfg["text_style"] != "written"
     app._audio_lock = threading.Lock()
     app._audio_parts = {}
     app._audio_seconds = {}
@@ -123,6 +128,16 @@ class KadaSeCekaKraj(unittest.TestCase):
         app = napravi(audio_check=False, groq_enabled=True, groq_api_key="")
         self.assertFalse(app._batch())
 
+    def test_openai_je_jedini_izvor_transkripcije(self):
+        app = napravi(
+            transcription_provider="openai",
+            audio_check=True,
+            groq_enabled=True,
+            groq_api_key="x",
+        )
+        self.assertFalse(app._batch())
+        self.assertFalse(app._deferred())
+
     def test_bez_provere_i_bez_alata_tekst_ide_odmah(self):
         app = napravi(audio_check=False)
         self.assertFalse(app._deferred())
@@ -137,6 +152,27 @@ class KadaSeCekaKraj(unittest.TestCase):
         self.assertFalse(app._deferred())
 
 
+class OpenAiGranica(unittest.TestCase):
+    def test_dugi_openai_diktat_ima_sigurnosni_limit(self):
+        app = napravi(
+            transcription_provider="openai",
+            openai_long_recording=True,
+            openai_max_seconds=3600,
+            continuous=False,
+            max_request_seconds=30,
+        )
+        self.assertEqual(app._limit_seconds(), 3600)
+
+    def test_openai_moze_da_se_vrati_na_kratak_rezim(self):
+        app = napravi(
+            transcription_provider="openai",
+            openai_long_recording=False,
+            continuous=True,
+            max_request_seconds=30,
+        )
+        self.assertEqual(app._limit_seconds(), 30)
+
+
 class PravilaNadPasusima(unittest.TestCase):
     def test_prazan_red_prezivljava(self):
         app = napravi()
@@ -145,7 +181,7 @@ class PravilaNadPasusima(unittest.TestCase):
 
     def test_brojevi_ostaju_celi(self):
         app = napravi()
-        self.assertEqual(app._rules_over_paragraphs("U 10:30, za 3,5 dinara."), "u 10:30 za 3,5 dinara")
+        self.assertEqual(app._rules_over_paragraphs("U 10:30, za 3,5 dinara."), "u 10:30 za 3,5dinara")
 
 
 if __name__ == "__main__":
@@ -157,7 +193,7 @@ class ZavrsnaObrada(unittest.TestCase):
 
     def test_kvacice_se_skidaju_ako_je_trazeno(self):
         app = napravi(ascii_diacritics=True)
-        self.assertEqual(app._after_model("Juče je bio čas."), "Juce je bio cas.")
+        self.assertEqual(app._after_model("Juče je bio čas."), "juce je bio cas")
 
     def test_interpunkcija_i_velika_slova_ostaju(self):
         # To je bas posao koji je model dobio — nasa pravila ga ne smeju gasiti.
@@ -166,7 +202,7 @@ class ZavrsnaObrada(unittest.TestCase):
 
     def test_hiljade_se_spajaju(self):
         app = napravi()
-        self.assertEqual(app._after_model("Cena je 5.000 dinara."), "Cena je 5000 dinara.")
+        self.assertEqual(app._after_model("Cena je 5.000 dinara."), "cena je 5000dinara")
 
 
 class StilPresudjuje(unittest.TestCase):
@@ -183,7 +219,13 @@ class StilPresudjuje(unittest.TestCase):
 
     def test_sredjeno_zadrzava_interpunkciju(self):
         app = napravi(text_style="written")
+        # Stil "sredjeno" ne dira ni znake ni velika slova.
         self.assertEqual(app._after_model("Da li si tu?"), "Da li si tu?")
+
+    def test_sredjeno_i_dalje_skracuje(self):
+        # Skracenice rade nezavisno od stila; malo slovo dolazi iz same zamene.
+        app = napravi(text_style="written")
+        self.assertEqual(app._after_model("Ne znam, da li si tu?"), "nzm, da li si tu?")
 
 
 class NacinUpisa(unittest.TestCase):
@@ -241,10 +283,16 @@ class SpisakTacaka(unittest.TestCase):
         out = app._rules_over_paragraphs("prvi pasus.\n\ndrugi pasus.")
         self.assertEqual(out, "prvi pasus\n\ndrugi pasus")
 
-    def test_crtica_usred_reda_i_dalje_odlazi(self):
-        # „crno-beli" ostaje celo, a crtica koja stoji sama nestaje.
+    def test_crtica_usred_reda_odlazi(self):
+        # Kada je uklanjanje interpunkcije ukljuceno, odlazi i crtica u reci.
         app = napravi(text_style="spoken")
-        self.assertEqual(app._rules_over_paragraphs("crno-beli film - lep"), "crno-beli film lep")
+        self.assertEqual(app._rules_over_paragraphs("crno-beli film - lep"), "crnobeli film lep")
+
+    def test_mala_slova_i_interpunkcija_su_nezavisni(self):
+        app = napravi(lowercase=False, strip_punctuation=True)
+        self.assertEqual(app._apply_rules("Zdravo, SVETE!"), "Zdravo SVETE")
+        app = napravi(lowercase=True, strip_punctuation=False)
+        self.assertEqual(app._apply_rules("Zdravo, SVETE!"), "zdravo, svete!")
 
 
 class BojaNaslova(unittest.TestCase):
@@ -279,3 +327,111 @@ class BojaNaslova(unittest.TestCase):
         app = self.napravi_sat(continuous=False)
         app._record_started_at = 0.0      # kao da traje jako dugo
         self.assertEqual(app._title_color(), "recording")
+
+
+class StopDokSePokrece(unittest.TestCase):
+    """Brz start pa odmah stop.
+
+    Pokretanje ceka na oslobodjen mikrofon, pa STOP ume da stigne dok
+    `_recorder` jos ne postoji. Bez pamcenja tog STOP-a snimanje krene posle
+    njega i vise ne staje — taster tada deluje mrtvo.
+    """
+
+    def napravi(self):
+        app = app_mod.DictateApp.__new__(app_mod.DictateApp)
+        app._session_lock = threading.Lock()
+        app._recorder = None
+        app._starting = 0
+        app._stop_requested = False
+        return app
+
+    def test_stop_bez_pokretanja_ne_dize_zastavicu(self):
+        app = self.napravi()
+        app._on_stop()
+        self.assertFalse(app._stop_requested)
+
+    def test_stop_dok_se_pokrece_pamti_se(self):
+        app = self.napravi()
+        app._starting = 1
+        app._on_stop()
+        self.assertTrue(app._stop_requested)
+
+    def test_pokretanje_pokupi_zapamcen_stop(self):
+        app = self.napravi()
+        zaustavljeno = []
+
+        def lazni_start():
+            # Ovde `_on_start` stoji dok ceka mikrofon; STOP stigne bas tada.
+            app._on_stop()
+            self.assertTrue(app._stop_requested)
+            with app._session_lock:
+                propusteni = app._stop_requested
+                app._stop_requested = False
+            if propusteni:
+                zaustavljeno.append(True)
+            return True
+
+        app._start_recording = lazni_start
+        self.assertTrue(app._on_start())
+        self.assertEqual(zaustavljeno, [True])
+        self.assertEqual(app._starting, 0)
+        self.assertFalse(app._stop_requested)
+
+    def test_brojac_se_vrati_i_kad_pokretanje_pukne(self):
+        def puca():
+            raise RuntimeError("mikrofon")
+
+        app = self.napravi()
+        app._start_recording = puca
+        with self.assertRaises(RuntimeError):
+            app._on_start()
+        self.assertEqual(app._starting, 0)
+
+
+class JedanZahtevPoDiktatu(unittest.TestCase):
+    """Koji put uzima koji izvor.
+
+    Gemini Live strimuje zvuk DOK snimanje traje (`_transcribe_live`) — tako
+    nema cekanja na kraju: izmereno 15.6s naspram 0.0s na 64.7s zvuka. OpenAI
+    salje ceo snimak posle Stop-a. Google sece na pauzama i lepi tekst usput.
+    """
+
+    def napravi(self, izvor):
+        app = app_mod.DictateApp.__new__(app_mod.DictateApp)
+        app.cfg = {
+            "transcription_provider": izvor, "continuous": True,
+            "sample_rate": 16000, "pause_seconds": 0.7,
+            "segment_after_seconds": 0, "max_request_seconds": 30,
+        }
+        app._dump = None
+        app._debug_sessions = {}
+        return app
+
+    def put(self, izvor):
+        """Koji se put bira, bez pravog snimanja."""
+        app = self.napravi(izvor)
+        izabrano = []
+        app._transcribe_whole = lambda rec, oznaka="ceo": izabrano.append(oznaka)
+        app._transcribe_live = lambda rec: izabrano.append("gemini_live")
+        app._segmenting = lambda: bool(app.cfg.get("continuous"))
+
+        class Snimak:
+            session = 1
+            cancelled = True
+
+        app._tracked = lambda rec: iter(())
+        app._settle_phase = lambda *a, **k: None
+        app._recognize_or_keep = lambda pcm: ""
+        app._keep_audio = lambda *a: None
+        app._transcribe(Snimak())
+        return izabrano
+
+    def test_live_strimuje_u_toku(self):
+        self.assertEqual(self.put("gemini_live"), ["gemini_live"])
+
+    def test_openai_ostaje_na_svom_putu(self):
+        self.assertEqual(self.put("openai"), ["openai"])
+
+    def test_google_sece_na_pauzama(self):
+        # Prazan spisak = nije uzet put "ceo diktat", nego uobicajeni.
+        self.assertEqual(self.put("google"), [])

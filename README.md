@@ -30,6 +30,61 @@ ide vrlo dobro (izmerena pouzdanost 0.93).
 > Endpoint je nedokumentovan i koristi javni ključ. Radi godinama, ali ga Google
 > može ugasiti bez najave. Ako se to desi, `./run.sh doctor` će to jasno reći.
 
+### Izbor provajdera transkripcije
+
+U meniju **AI** biraš jedan od tri izvora; Google je podrazumevan.
+
+| Izbor | Model | Ključ | Granica po zahtevu |
+|---|---|---|---|
+| **Transkripcija: Google** | Web Speech (Chromium) | ugrađen javni | ~30 s |
+| **Transkripcija: OpenAI GPT** | `gpt-transcribe` | OpenAI | do 60 min |
+| **Transkripcija: Gemini 3.5 Transcribe Live** | `gemini-3.5-transcribe-live` | Gemini | do 60 min |
+
+OpenAI šalje jedan završen snimak tek posle Stop-a na Audio Transcriptions API;
+potrebno je da uneseš svoj OpenAI API ključ u **AI → API ključevi → OpenAI API
+ključ…**. Ovo je OpenAI Platform API, a ne ChatGPT pretplata.
+
+Gemini Transcribe Live koristi **isti ključ kao AI obrada** (`polish_api_key`) i
+na besplatnom nivou nema ni dnevnu ni minutnu granicu. Prednost nad besplatnim
+Google endpointom: prima duže snimke, podržava `sr-RS` i dobija nagoveštaj
+jezika — a Web Speech najviše greši baš na skraćenicama i stranim nazivima.
+
+**Zvuk se šalje dok pričaš, ne posle Stop-a.** Zato na kraju nema čekanja:
+
+| | zvuk 64.7s | čekanje posle Stop-a |
+|---|---|---|
+| slanje posle Stop-a | 64.7s | **15.6s** |
+| slanje u toku (ovako radi) | 64.7s | **0.0s** |
+
+Cena je ista — naplaćuje se zvuk, a zvuk je isti. Tekst i dalje stiže tek na
+kraju, u jednom komadu: „Live" je ime modela, ne prikaz reč-po-reč.
+
+Mana: komadi sa mikrofona se čitaju samo jednom, pa neuspeo poziv nema šta da
+ponovi. Snimak se zato čuva u `~/Diktat-neuspeli` i ponavlja se sa
+`./run.sh replay`.
+
+> **Obična `gemini-3.5-transcribe` varijanta je isprobana pa uklonjena.** Na
+> besplatnom nivou ima 3 zahteva u minuti i **25 dnevno**, što za svakodnevni
+> rad ne znači ništa. Live varijanta nema ni jednu ni drugu granicu.
+
+Kada je izabran OpenAI ili Gemini, **provera snimka se gasi** (Google/Gemini
+sluša snimak, Groq preciznost): prepoznavanje već radi jak audio model, pa bi
+drugi prolaz slao isti zvuk još jednom, slabijem. AI obrada teksta (prevod,
+tačke, pasusi) radi normalno.
+
+Prepis stiže na **latinici** — endpoint za `sr-RS` vraća ćirilicu, i to
+nedosledno, pa se pismo poravnava pre svega ostalog. Izmereno: snimak od 19s sa
+dve pauze prepiše se za ~9s.
+
+### Izbor modela za manipulaciju teksta
+
+U meniju **AI → Model za manipulaciju teksta** biraš **Gemini** ili
+**Groq GPT-OSS 120B**. Na Androidu je isti izbor u AI kartici. Ovo je odvojeno
+od transkripcije: izbor određuje samo podelu na pasuse, tačke, sređivanje,
+ponavljanja i prevod. Groq-ov model koristi `openai/gpt-oss-120b` preko Groq
+chat endpointa; postojeća opcija **Groq preciznost** i dalje znači dodatnu
+audio-proveru i nije isto što i ovaj izbor.
+
 ---
 
 ## Instalacija
@@ -82,17 +137,45 @@ Dva nezavisna podešavanja:
   (0.8s), jer se taster pušta tačno na kraju poslednje reči pa bi se ona izgubila.
 - Ako umesto diktata pritisneš **prečicu** (Option+E i slično), snimanje se otkazuje
   i ništa se ne ubacuje. Desni Option i dalje kuca specijalne znake normalno.
+- **Brz start pa odmah stop** se više ne gubi. Pokretanje čeka da se mikrofon
+  oslobodi (do ~1.5s), pa je STOP u tom prozoru ranije padao u prazno i snimanje
+  je nastavljalo bez kraja. Sada se zapamti i izvrši čim snimanje krene. Uz to,
+  dok se snima, u meniju stoji **Zaustavi snimanje** kao izlaz u nuždi.
+
+### Provera da li prepoznavanje radi
+
+```bash
+./run.sh test 20           # snimi 20s SA PAUZAMA i ispiši šta je čuo
+./run.sh replay            # pusti poslednji neuspeo snimak kroz isti put
+./run.sh replay ~/x.wav    # ili određen snimak
+```
+
+Oba idu kroz **izabrani izvor**, isti koji koristi i aplikacija. Ispis nosi i
+broj reči na sekundu zvuka: kratak prepis za dug snimak znači da se nešto
+izgubilo usput.
+
+**Testiraj sa pauzama.** Snimak od pet sekundi ima jednu izgovorenu celinu i
+prolazi i kad je duži diktat pokvaren — tako je jedan bug (prepis staje na prvoj
+pauzi) dugo prolazio neprimećeno.
+
+`replay` ne traži mikrofon: neuspeli diktati se čuvaju u `~/Diktat-neuspeli`, pa
+se ista greška ponavlja i posmatra bez slučajnosti.
 
 ### Meni
 
 | Stavka | |
 |---|---|
+| **Zaustavi snimanje** | vidi se **samo dok se snima**; zaustavlja diktat mišem, kad prekidač zakaže |
 | **Istorija** | poslednjih `history_size` tekstova; klik kopira u clipboard |
+| **Procena koristi (10 dana)** | dnevni diktati, karakteri i sekunde; trošak se unosi ručno |
 | **Snimanje / AI / Tekst** | podmeniji; sve ostalo je u `config.json` |
 | **Mikrofon** | izbor ulaza; lista se sama osvežava kad otvoriš podmeni |
 | **Osveži audio uređaje** | ručno, ako lista zaglavi |
 | **Režim** | drži taster / prekidač |
-| **AI obrada teksta** | glavni prekidač; alati su uvučeni ispod njega i sivi dok je isključen |
+| **AI obrada teksta** | izabrani alat sam uključuje obradu |
+| **Transkripcija** | tačno jedan izbor: Google, OpenAI GPT ili Gemini 3.5 Transcribe Live |
+| **API ključevi** | odvojeno: Gemini, Groq i OpenAI |
+| **Tekst** | nezavisno: sva slova mala i uklanjanje interpunkcije |
 | **Jezik** | srpski, engleski, hrvatski |
 | **Detaljan log obrade** | uključi/isključi snimanje toka; zatim **Otvori poslednji log…** |
 
@@ -104,10 +187,18 @@ Dva nezavisna podešavanja:
 |---|---|---|
 | `language` | `sr-RS` | menja se i iz menija |
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
+| `transcription_provider` | `google` | `google`, `openai` ili `gemini_live`; međusobno isključivi izbor |
+| `openai_api_key` | `""` | OpenAI Platform ključ; ne čuvati ga u repozitorijumu |
+| `openai_output_script` | `auto` | `auto`, `cyrillic` ili `latin` |
+| `openai_long_recording` | `true` | dugi OpenAI diktat, sa sigurnosnim limitom |
+| `openai_max_seconds` | `3600` | gornja granica OpenAI diktata, 60 minuta |
+| `recorded_seconds` | `0` | ukupno vreme uhvaćenog zvuka na računaru |
+| `lowercase` | `true` | sva slova mala, nezavisno od interpunkcije |
+| `strip_punctuation` | `true` | ukloni znakove; separatori `10:30`, `3,5`, `2.0` ostaju |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `compress_audio` | `true` | FLAC ka endpointu, 36% manje; bez `ffmpeg`-a ide PCM |
-| `text_style` | `spoken` | `spoken` = mala slova bez interpunkcije (podrazumevano), `written` = AI sređuje |
-| `abbreviations` | `true` | „ne znam" → „nzm"; ista pravila kao na Androidu |
+| `text_style` | `spoken` | stil koji traži AI; lokalni prekidači za mala slova i interpunkciju su odvojeni |
+| `abbreviations` | `true` | „ne znam" → „nzm", „je li" → „je l", „svejedno"/„sve jedno" → „svj"; „15 minuta" → „15min" |
 | `abbreviation_rules` | `""` | prazno = ugrađena lista; format `fraza=skraćenica`, jedno po redu |
 | `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
@@ -125,13 +216,26 @@ Dva nezavisna podešavanja:
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `auto` | `auto` = kuca tekst i ne dira clipboard (prelazi na lepljenje samo za tekst sa novim redom); `type` \| `paste` \| `clipboard_only` | `paste`, `type` (znak po znak), `clipboard_only` |
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
-| `history_size` | `10` | koliko poslednjih tekstova čuvati za kopiranje |
+| `history_size` | `3` | koliko poslednjih tekstova čuvati za kopiranje |
 | `show_overlay` | `false` | pilula sa vremenom preko ekrana |
 | `overlay_position` | `top-right` | `top-right` ili `bottom` |
+| `text_model` | `gemini` | model za manipulaciju teksta: `gemini` ili `groq` |
 | `groq_enabled` | `false` | Groq Whisper + GPT-OSS drugo mišljenje |
 | `groq_api_key` | `""` | Groq ključ; ne čuvati ga u repozitorijumu |
 
 Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
+
+### Procena koristi diktiranja
+
+U meniju **Procena koristi (10 dana)** pokreni novi period. Aplikacija lokalno
+beleži broj uspešnih rezultata, karaktere i sekunde snimanja za svaki dan.
+Potrošnju API-ja uneseš ručno kada je vidiš, a brzina kucanja služi samo za
+grubu procenu koliko bi vremena trebalo da se isti broj karaktera otkuca.
+Izveštaj prikazuje prosek po danu, cenu po diktatu, cenu na 1.000 karaktera i
+procenu vremena kucanja. Podaci su lokalni i ne šalju se nigde.
+Izveštaj beleži i uspešne pozive po provajderu/modelu — posebno Google ili
+OpenAI transkripciju, Gemini/Groq obradu i Groq Whisper proveru — da posle
+deset dana možeš da uporediš šta je stvarno korišćeno.
 
 ---
 
@@ -141,8 +245,8 @@ Meni → **AI**. Nema posebnog prekidača: izabran alat sam po sebi znači da se
 koristi. Ceo diktat se sačeka, pa se **jednim pozivom**
 pošalje jezičkom modelu. Dok se čeka odgovor, u menu baru stoji plavo **AI**.
 
-Traži ključ sa Google AI Studio u `polish_api_key`. Bez ključa stavka piše da
-ključa nema i obrada se ne može uključiti.
+Traži ključ za trenutno izabrani model: Gemini koristi `polish_api_key`, a Groq
+koristi `groq_api_key`. Bez odgovarajućeg ključa obrada se ne može uključiti.
 
 Alati ispod su **nezavisni** — uputstvo se sklapa od izabranih. Sređivanje je
 samo jedan od njih, pa možeš tražiti kraći tekst ili emotikon, a da model
@@ -168,7 +272,8 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 
 | ključ | podrazumevano | |
 |---|---|---|
-| `polish_api_key` | `""` | bez njega režim ne radi |
+| `polish_api_key` | `""` | Gemini ključ; potreban samo ako je izabran Gemini |
+| `text_model` | `gemini` | `gemini` ili `groq` za manipulaciju teksta |
 | `polish_model` | `""` | prazno = `gemini-flash-lite-latest` |
 | `polish_prompt` | `""` | prazno = ugrađeno uputstvo |
 | `polish_bullets` | `false` | sažmi u spisak tačaka; isključuje pasuse |
@@ -183,14 +288,19 @@ jednog na oko sto pedeset.
 
 Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
 
+Kod prolazne greške transkripcije (mreža, timeout, 429 ili 5xx) Google i OpenAI
+automatski pokušavaju još **5 puta** pre nego što se audio sačuva za ručni
+ponovni pokušaj. Nevažeći ključ i neispravan zahtev se ne ponavljaju.
+
 Ako je *AI sluša snimak* uključeno, taj prolaz već vraća sređen tekst, pa se
 poseban poziv za *sredi tekst* **preskače** — isti posao se ne radi dvaput
 (izmereno: vraćao je identičan tekst za 0.7s). Ostali alati (pasusi, sažimanje,
 emotikoni) se i dalje traže drugim pozivom.
 
-Kad je *sredi tekst* uključeno, posle modela se primenjuju još samo `join_thousands`
-i `ascii_diacritics`. `lowercase` i `strip_punctuation` se preskaču: to je baš
-ono što je model dobio da uradi.
+Kad je *sredi tekst* uključeno, posle modela se i dalje primenjuju lokalni
+prekidači `lowercase`, `strip_punctuation`, `join_thousands` i
+`ascii_diacritics`. Tako se željeni oblik izlaza može zadati nezavisno od toga
+šta je model vratio.
 
 ### Kvota i rezervni plan
 

@@ -1,13 +1,9 @@
-"""Skracenice: „ne znam" -> „nzm". Ista pravila kao na Androidu.
+"""Skracenice i uredjivanje jedinica, ista pravila kao na Androidu.
 
 Format je jedan red po pravilu, `fraza=skracenica`. Red koji pocinje sa `#` je
-komentar. Dva posebna znaka:
-
-  minuta=<min          `<` pojede i RAZMAK ISPRED, pa se zalepi: „15 minuta" -> „15min"
-  ~(\\d+)\\s*dolara={1}   `~` znaci regularni izraz; `{1}` je uhvacena grupa
-
-Regularni izrazi idu PRVI: „100 dolara" mora da postane „$100" pre nego sto
-prosto pravilo stigne da pojede samu rec „dolara".
+komentar. Slepljene jedinice se razdvajaju, a brojevi napisani recima ostaju
+onako kako ih je transkripcija vratila. Oblici „minut", „minuta" i „minute"
+postaju „min"; uz cifru se lepe, pa „15 minuta" postaje „15min".
 """
 
 import re
@@ -15,6 +11,9 @@ import re
 DEFAULT = [
     ("ne znam", "nzm"),
     ("jebi ga", "jbg"),
+    ("jebem li ga", "jbm li ga"),
+    ("je li", "je l"),
+    ("jeli", "je l"),
     ("znam", "znm"),
     ("ne mogu", "nmg"),
     ("nema veze", "nmvz"),
@@ -23,20 +22,88 @@ DEFAULT = [
     ("to jest", "tj"),
     ("to je to", "tjt"),
     ("svejedno", "svj"),
+    # Prepoznavanje ovo vraca i rastavljeno, pa oba oblika moraju u spisak.
+    ("sve jedno", "svj"),
     ("mislim", "msm"),
-    ("minuta", "<min"),
-    ("minut", "<min"),
-    # „posto" ne ide ovde: znaci i „procenata" i „buduci da", pa bi zamena
-    # pokvarila drugu upotrebu. „procenata" je jednoznacno.
-    ("procenata", "<%"),
-    (r"~(\d+(?:[.,]\d+)?)\s*dolara?", "${1}"),
-    ("dolara", "$"),
-    ("dolar", "$"),
-    ("rsd", "<din"),
-    ("eur", "<€"),
 ]
 
 _GRUPA = re.compile(r"\{(\d)\}")
+
+_BROJEVI = {
+    "nula": 0,
+    "jedan": 1, "jedna": 1, "jedno": 1,
+    "dva": 2, "dve": 2, "dvije": 2,
+    "tri": 3, "četiri": 4, "cetiri": 4, "pet": 5,
+    "šest": 6, "sest": 6, "sedam": 7, "osam": 8, "devet": 9,
+    "deset": 10, "jedanaest": 11, "dvanaest": 12, "trinaest": 13,
+    "četrnaest": 14, "cetrnaest": 14, "petnaest": 15,
+    "šesnaest": 16, "sesnaest": 16, "sedamnaest": 17,
+    "osamnaest": 18, "devetnaest": 19,
+    "dvadeset": 20, "trideset": 30, "četrdeset": 40, "cetrdeset": 40,
+    "pedeset": 50, "šezdeset": 60, "sezdeset": 60, "sedamdeset": 70,
+    "osamdeset": 80, "devedeset": 90,
+    "sto": 100, "stotinu": 100, "dvesta": 200, "trista": 300,
+    "četiristo": 400, "cetiristo": 400, "petsto": 500, "šeststo": 600,
+    "seststo": 600, "sedamsto": 700, "osamsto": 800, "devetsto": 900,
+}
+_SKALE = {
+    "hiljadu": 1000, "hiljada": 1000, "hiljade": 1000,
+    "milion": 1_000_000, "miliona": 1_000_000,
+    "milijardu": 1_000_000_000, "milijarde": 1_000_000_000,
+}
+_BROJ_RECI = tuple(sorted(_BROJEVI | _SKALE, key=len, reverse=True))
+_BROJ_DEO = "(?:" + "|".join(re.escape(reč) for reč in _BROJ_RECI) + ")"
+_JEDINICE = (
+    "minuta", "minut", "minute", "min", "sati", "sata", "sat", "časova",
+    "časa", "čas", "sekundi", "sekunde", "sekunda", "sek", "dinara", "dinar",
+    "din", "kilometara", "kilometar", "km", "metara", "metar", "m", "grama",
+    "gram", "kg", "evra", "evro", "eur", "dolara", "dolar", "usd", "procenata",
+    "procenat", "h", "s",
+)
+_JEDINICA_DEO = "(?:" + "|".join(
+    re.escape(reč) for reč in sorted(_JEDINICE, key=len, reverse=True)
+) + ")"
+_SLEPLJENA_JEDINICA = re.compile(
+    rf"(?<!\w)(?P<broj>{_BROJ_DEO})(?P<jedinica>{_JEDINICA_DEO})(?!\w)",
+    re.IGNORECASE,
+)
+_SLEPLJENA_CIFRA = re.compile(
+    rf"(?<!\w)(?P<broj>\d+(?:[.,]\d+)?)(?P<jedinica>{_JEDINICA_DEO})(?!\w)",
+    re.IGNORECASE,
+)
+_CIFRA_UZ_JEDINICU = re.compile(
+    rf"(?<!\w)(?P<broj>\d+(?:[.,]\d+)?)[ \t]+(?P<jedinica>{_JEDINICA_DEO})(?!\w)",
+    re.IGNORECASE,
+)
+_MINUTA_UZ_CIFRU = re.compile(
+    r"(?<!\w)(?P<broj>\d+(?:[.,]\d+)?)[ \t]+(?:minuta|minut|minute|min)(?!\w)",
+    re.IGNORECASE,
+)
+_OBLIK_MINUTA = re.compile(
+    r"(?<!\w)(?:minuta|minut|minute)(?!\w)",
+    re.IGNORECASE,
+)
+_STO_KAO_STO = re.compile(
+    r"(?i)(?<!\w)sto(?=\s+(?:je|sam|si|smo|ste|su|će|ce|ću|cu|bi|bih|bismo|biste|nisam|nije|nisi|nismo|niste|nisu|može|moze|mogu|treba|trebalo)(?!\w))"
+)
+_STO_U_KONTEKSTU = re.compile(
+    r"(?i)(?<!\w)(zato)\s+sto(?!\w)"
+)
+
+
+def normalize_spoken_numbers(text: str) -> str:
+    """Razdvoji tekstualni broj od jedinice, bez menjanja samog broja."""
+    if not text:
+        return text
+    # ASR ponekad vrati „sto“ umesto „što“. Zaštiti najčešće vezničke obrasce
+    # pre ostalih pravila, da „zato što je“ ne postane „zato sto je“.
+    text = _STO_U_KONTEKSTU.sub(lambda m: f"{m.group(1)} što", text)
+    text = _STO_KAO_STO.sub("što", text)
+    text = _SLEPLJENA_JEDINICA.sub(r"\g<broj> \g<jedinica>", text)
+    text = _SLEPLJENA_CIFRA.sub(r"\g<broj> \g<jedinica>", text)
+    text = _MINUTA_UZ_CIFRU.sub(r"\g<broj>min", text)
+    text = _OBLIK_MINUTA.sub("min", text)
+    return _OBLIK_MINUTA.sub("min", text)
 
 
 def default_text() -> str:
@@ -73,9 +140,11 @@ def _zamena(korisnicka: str) -> str:
 
 
 def apply(text: str, rules) -> str:
-    if not text.strip() or not rules:
+    if not text.strip():
         return text
-    out = text
+    out = normalize_spoken_numbers(text)
+    if not rules:
+        return _CIFRA_UZ_JEDINICU.sub(r"\g<broj>\g<jedinica>", out)
 
     for uzorak, zamena in rules:
         if not uzorak.startswith("~"):
@@ -95,4 +164,6 @@ def apply(text: str, rules) -> str:
         # rec-znak, pa bi provera stavljena ranije oborila poklapanje.
         uzorak = (r"\s*" if lepi else "") + rf"(?<!\w){re.escape(fraza)}(?!\w)"
         out = re.sub(uzorak, kratko.replace("\\", r"\\"), out, flags=re.IGNORECASE)
-    return out
+    # Posle korisničkih pravila: `dinara=RSD` zadržava razmak, dok
+    # `dinara=<RSD` namerno lepi zamenu uz cifru.
+    return _CIFRA_UZ_JEDINICU.sub(r"\g<broj>\g<jedinica>", out)

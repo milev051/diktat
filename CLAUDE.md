@@ -103,6 +103,13 @@ grupu — inače tiho pokvari brojeve.
 | `handler.postDelayed(::tick, …)` pa `removeCallbacks(::tick)` | `::tick` pravi nov objekat svaki put, pa nema šta da se skine | čuvaj jedan `Runnable` u polju |
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 | …ali **bezuslovno** preuzimanje pokreta | veliko polje zaglavi celu stranicu, donje sekcije nedostupne | preuzmi samo ako `layout.height > vidljiva visina` |
+| Live: zvuk poslat tek posle Stop-a | čekanje raste sa dužinom diktata — 15.6s na 64.7s zvuka | strimuj u toku snimanja; čekanje padne na 0.0s |
+| …a strim provučen kroz ponavljanje | komadi sa mikrofona se čitaju jednom, drugi pokušaj šalje prazno | bez ponavljanja; snimak na disk pa u `~/Diktat-neuspeli` |
+| Krnji komad poslat kao svoj okvir | mikrofon ne isporučuje na granici od 100ms — prepoznavanje se lomi po sredini reči | nosi ostatak u sledeći prolaz |
+| Live API: prekid čitanja na `generationComplete` | ta zastavica stiže posle **svake** izgovorene celine, ne na kraju diktata — od 17s govora stigne samo prva rečenica | čitaj dok ne **utihne** (kratak timeout), skupljaj sve `inputTranscription` |
+| …a zvuk poslat bez repa tišine | poslednja celina ostane na međurezultatu i nikad se ne finalizuje — izmereno 2 od 3 | dodaj ~2s tišine pre `audioStreamEnd` |
+| `selftest.py` zvao Google ma šta bilo izabrano | `./run.sh test` prolazi dok je pravi izvor pokvaren | alat ide kroz isti izbor izvora kao aplikacija |
+| STOP koji stigne dok `_on_start` još čeka mikrofon | `_recorder` je još `None`, pa STOP nema šta da zaustavi — snimanje krene odmah posle njega i **više ne staje**; taster deluje mrtvo | brojač `_starting` i zastavica `_stop_requested`; pokretanje ih pokupi pod istim katancem |
 
 ---
 
@@ -117,6 +124,107 @@ aplikacija nema šta da vrati.
 nalog, karticu i `grpcio`. Besplatni endpoint radi za srpski (izmereno 0.93) i
 nema podešavanja. Ne vraćaj ga bez izričitog zahteva.
 
+**`gemini-3.5-transcribe-live` je treći izvor transkripcije.** Live API preko
+WebSocket-a, isti ključ kao AI obrada (`polish_api_key`), podržava `sr-RS`.
+
+**Obična varijanta `gemini-3.5-transcribe` je isprobana pa uklonjena.**
+Besplatne kvote (AI Studio → Rate Limit, 28.08.2026):
+
+| model | RPM | TPM | RPD |
+|---|---|---|---|
+| `gemini-3.5-transcribe` | 3 | 10K | **25** |
+| `gemini-3.5-transcribe-live` | bez granice | 20K | **bez granice** |
+
+Dvadeset pet zahteva dnevno ne znači ništa za svakodnevni rad, a 3 u minuti bi
+davilo i bez toga. Live nema ni jednu ni drugu granicu; 20K tokena u minuti je
+oko 800s zvuka (25 tokena po sekundi), što diktat ne može da dostigne. Ne
+vraćaj običnu varijantu bez izričitog zahteva — `_migrate` zatečeno `"gemini"`
+obara na `"google"`.
+
+**Obrada ide POSLE snimanja, ne u toku.** Cela sesija je jedan WebSocket poziv
+nad gotovim snimkom (`_transcribe_whole`): poveži se, pošalji zvuk, uzmi prepis,
+zatvori. Model tako vidi ceo diktat umesto krhotina odsečenih na pauzama — isti
+razlog iz kog formalni režim zove model jednom, na kraju. „Live" je ime modela,
+ne prikaz reč-po-reč; taj bi tražio da se ceo tok snimanja preokrene u streaming.
+
+Uz njega se **gasi druga provera snimka** (`_own_audio_model`): `audio_check` i
+Groq postoje zato što besplatni Web Speech greši, a slati isti zvuk još jednom
+slabijem modelu je dupli saobraćaj za lošiji rezultat. AI obrada teksta (prevod,
+tačke, pasusi) ostaje netaknuta.
+
+**Zvuk se strimuje DOK snimanje traje, ne posle Stop-a.** Izmereno na 64.7s
+zvuka: slanje posle Stop-a ostavlja **15.6s** čekanja, slanje u toku **0.0s** —
+server stiže u realnom vremenu, pa je prepis gotov u trenutku kad pustiš taster.
+Broj prepoznatih celina je isti (11). Čekanje kod „sve odjednom" raste sa
+dužinom diktata, pa je na dugom diktatu to jedina stvar koja se oseti.
+
+**Cena je pri tom ista, jer se naplaćuje zvuk, a zvuk je isti.** Izmereno na
+22.7s: u oba slučaja ~568 audio tokena i **4 konačna prepisa od 203 znaka**.
+Razlika je samo u međurezultatima: 6 poruka (84 znaka) naspram 28 poruka
+(869 znakova). Strim traje duže pa ih pošalje više. Da li se oni uopšte
+naplaćuju nije objavljeno; i ako jesu, uz besplatan nivo (bez granice RPM/RPD)
+to ništa ne menja.
+
+**Mana strimovanja: nema drugog pokušaja.** Komadi sa mikrofona se čitaju samo
+jednom, pa `recognize_live_stream` namerno NE ide kroz `_sa_ponavljanjem` —
+drugi pokušaj nema šta da pošalje. Zato `_transcribe_live` usput piše zvuk na
+privremeni disk (ne u listu — sat vremena je preko 100 MB) i pri otkazu ga
+sačuva u `~/Diktat-neuspeli`, odakle se ponavlja rukom (`./run.sh replay`).
+
+**`generationComplete` NIJE kraj diktata.** Izmereno na snimku od 19s sa dve
+pauze: stigao je **tri puta**, posle svake izgovorene celine. Prekid na njemu je
+odbacivao sve posle prve pauze — od 17 sekundi govora stizala je samo prva
+rečenica. Čitanje se zato završava **tišinom**: posle zvuka server ne zatvara
+vezu nego šalje prazne `serverContent` poruke dok radi, pa stane. Izmereni
+razmaci između poruka dok radi su do 0.9s, otud `LIVE_IDLE_SECONDS = 3.0`.
+
+**Bez repa tišine poslednja celina se ne finalizuje.** Izmereno na istom snimku:
+bez repa stignu **2 od 3** konačna prepisa, sa 2s tišine sva tri. Zato se pred
+`audioStreamEnd` doda `LIVE_TAIL_SILENCE` (2s) nula. Ako i pored toga poslednja
+celina ostane samo na međurezultatu, uzima se on — pola prepisa je bolje nego
+ništa.
+
+**Zvuk se šalje punom brzinom, ne u realnom tempu.** Izmereno: isti rezultat,
+11.5s naspram 28.7s. Ne usporavaj slanje „da bi ličilo na stream".
+
+**Live vraća ćirilicu za `sr-RS`, i to nedosledno** — u istom diktatu i
+„тест тест" i „Test test". Projekat je latinični (Android isto), pa
+`post_process` prvo poravna pismo kroz `openai.to_latin`.
+
+**Razlog otkaza stiže u CLOSE okviru i mora da se pročita.** Izmereno na živom
+endpointu: mrtav ključ se javlja kao `CLOSE 1007: API key not valid`, a ne kao
+greška pri rukovanju. Bez čitanja tog okvira korisnik vidi „veza zatvorena" i
+nema pojma gde je problem. 1007 se **ne ponavlja** — nosi i pogrešan ključ i
+pogrešan `setup`, oba su naša greška.
+
+**Sve je provereno na živom endpointu** (28.08.2026, sa važećim ključem):
+rukovanje, `setupComplete` na naš `_live_setup`, prepis kroz `inputTranscription`,
+čitanje CLOSE razloga. Snimak od 19s se prepiše za ~9s.
+
+**WebSocket klijent je pisan rukom** (`dictate/wsock.py`), bez `websockets`.
+Ceo projekat priča sa mrežom preko `urllib`, a Live API nam treba samo za jedan
+tok: pošalji JSON okvire, čitaj JSON okvire, zatvori. `websockets` bi uvukao
+asyncio u kod koji je ceo sinhron i nitima vođen.
+
+**GUID iz RFC 6455 je `258EAFA5-E914-47DA-95CA-C5AB0DC85B11`.** Prekucan je
+pogrešno iz glave (`…-95CA-5AB0DC85B11D`, slovo `C` odlutalo) i to je prošlo
+kroz sve testove okvira — greška se videla tek kao „Pogrešan Sec-WebSocket-Accept"
+nad savršeno ispravnim 101 odgovorom. Zato se konstanta proverava **vektorom iz
+samog RFC-a** (`dGhlIHNhbXBsZSBub25jZQ==` → `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`), ne
+nasumičnim ključem. Isto pravilo kao za ADTS zaglavlje: što se sklapa bit po bit,
+ima test sa poznatim odgovorom.
+
+**`gemini-3.5-live-translate-preview` ne može da zameni naš prevod.** Provereno
+28.08.2026. u zvaničnoj dokumentaciji: prima **samo zvuk** („Text input is not
+supported"), radi isključivo preko WebSocket Live API-ja, i uvek vraća zvuk —
+prepis je samo dodatak (`outputAudioTranscription`). Naš prevod radi nad **već
+gotovim transkriptom**, pa mu taj model nema šta da ponudi. Uz to: nema
+besplatnog nivoa (ulaz 3,50 $ / izlaz 21,00 $ po milionu tokena, ~0,037 $ po
+minutu) i ne prima ni `vocabulary` ni naše uputstvo. Srpski jeste na spisku,
+kao `sr` (ne `sr-RS`). Ne pokušavaj ponovo bez
+izričitog zahteva — jedini smislen oblik bio bi zaseban režim „diktiram na
+jednom jeziku, ubacuje se na drugom" koji zaobilazi ceo postojeći put.
+
 **`pFilter=0` gasi maskiranje psovki.** Ime parametra je **osetljivo na velika
 slova** — `pfilter` se tiho ignoriše.
 
@@ -130,6 +238,13 @@ Gboard to ne pita.
 **Boja u menu baru ide preko `nsstatusitem.button().setAttributedTitle_`**, jer
 `rumps.title` ne ume boju. Font mora biti `monospacedDigit` — inače se širina
 naslova menja svake sekunde i ostale ikonice poskakuju.
+
+**`da li` se ne skraćuje.** „da l" izgleda krnje bez „i"; „je l" je ustaljeno i
+ostaje. Skraćenica mora da bude oblik koji se i tako piše, ne samo kraći niz.
+
+**Prepoznavanje `svejedno` vraća i rastavljeno**, pa su u spisku oba oblika
+(`svejedno` i `sve jedno`). Isto proveri za svaku novu složenicu — jedan oblik
+u spisku hvata pola slučajeva.
 
 **„Pošto" ne ide u podrazumevane skraćenice.** Znači i „procenata" i „budući
 da", pa bi zamena pokvarila drugu upotrebu. U listi stoji samo `procenata=<%`,
@@ -162,10 +277,27 @@ pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
 živ**, ne samo da nema greške u prevođenju. Dva pada su uhvaćena samo ovako:
 
 ```bash
-./run.sh tests           # 53 testa logike, bez mikrofona i mreze
+./run.sh tests           # testovi logike, bez mikrofona i mreze
 ./run.sh doctor          # dozvole, mikrofon, endpoint
-./run.sh test 5          # snimi 5s i ispiši šta je čuo
+./run.sh test 20         # snimi 20s SA PAUZAMA i ispiši šta je čuo
+./run.sh replay          # pusti poslednji neuspeo snimak kroz isti put
+./run.sh replay ~/x.wav  # ili odredjen snimak
 ```
+
+**`test` i `replay` idu kroz IZABRANI izvor**, isti izbor koji radi i
+`DictateApp._recognize`. Ranije je `selftest.py` uvek zvao Google, pa je greška
+u drugom izvoru prolazila neprimećeno — tako je bug „stane na prvoj pauzi" i
+preživeo.
+
+**Dug diktat se testira samo pauzama.** Greška je bila u tome što se prekidalo
+posle prve izgovorene celine, a snimak od 5s ima samo jednu — prolazio je uredno.
+Zato `./run.sh test 20` izričito traži da praviš pauze, a ispis nosi i **broj
+reči na sekundu zvuka**: kratak prepis za dug snimak znači da se nešto izgubilo.
+
+**`replay` je najbrži put do ponovljene greške.** Neuspeli diktati se ionako
+čuvaju u `~/Diktat-neuspeli`, pa se ista greška posmatra bez mikrofona i bez
+slučajnosti. Snimci se mogu i spajati sa tišinom između, da se dobije diktat sa
+više celina.
 
 **Android** — release je skupljen R8-om, pa komponente iz manifesta moraju
 ostati u `proguard-rules.pro`; inače ih R8 preimenuje i sistem ih ne nađe.

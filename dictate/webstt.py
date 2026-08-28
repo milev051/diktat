@@ -38,6 +38,7 @@ class WebSttError(Exception):
 
 
 RETRY_WAIT = 1.0
+MAX_RETRIES = 5
 
 
 def recognize(
@@ -47,7 +48,7 @@ def recognize(
     key=None,
     timeout=30,
     profanity_filter=False,
-    retries=1,
+    retries=MAX_RETRIES,
 ):
     """Salje sirov 16-bit PCM i vraca prepoznat tekst ('' ako nista).
 
@@ -66,7 +67,7 @@ def recognize_full(
     key=None,
     timeout=30,
     profanity_filter=False,
-    retries=1,
+    retries=MAX_RETRIES,
     compress=True,
 ):
     """Kao `recognize`, ali vraca i pouzdanost — (tekst, 0.0-1.0).
@@ -85,8 +86,11 @@ def recognize_full(
         except WebSttError as exc:
             if attempt >= retries or not exc.retryable:
                 raise
-            print(f"[diktat] {exc} — pokusavam ponovo")
-            time.sleep(RETRY_WAIT)
+            print(
+                f"[diktat] {exc} — pokusavam ponovo "
+                f"({attempt + 1}/{retries})"
+            )
+            time.sleep(RETRY_WAIT * min(attempt + 1, 5))
     return "", 0.0
 
 
@@ -158,14 +162,15 @@ def _explain_http(code: int) -> str:
 
 # Tacka, zarez i dvotacka se brisu samo kad NISU izmedju cifara: endpoint ih
 # vraca kao decimalni separator ("3,5") i kao satnicu ("10:00"), pa bi ih slepo
-# brisanje spojilo u 35 i 1000. Crtica se brise samo kad stoji sama, da
-# "crno-beli" ostane celo.
+# brisanje spojilo u 35 i 1000. Crtica i simboli se uklanjaju, osim brojčanih
+# separatora (1/2, 10-20).
 _PUNCT = re.compile(
     r"(?<!\d)[.,:]"     # tacka/zarez/dvotacka bez cifre ispred
     r"|[.,:](?!\d)"     # ili bez cifre iza
     # Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
     r"|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]"
-    r"|(?<=\s)[-–—](?=\s)"
+    r"|(?<!\d)[-–—/]|[-–—/](?!\d)"
+    r"|[#%&*+<=>@\\^_`|~]"
 )
 
 

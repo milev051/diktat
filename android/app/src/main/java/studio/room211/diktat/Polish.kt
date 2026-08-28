@@ -3,6 +3,7 @@ package studio.room211.diktat
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 /**
  * AI obrada transkripta — uputstvo se sklapa od izabranih alata.
@@ -32,6 +33,13 @@ object Polish {
     private const val SREDI =
         "Oblikuj tekst: dodaj interpunkciju, velika slova i kvačice (č ć ž š đ) " +
             "gde po pravopisu treba."
+    private const val ZAREZI =
+        "Analiziraj smisao rečenica i dodaj zareze samo tamo gde olakšavaju " +
+            "čitanje. Od interpunkcijskih znakova smeš da dodaš ISKLJUČIVO zarez: " +
+            "ne dodaj tačke, upitnike, uzvičnike, dvotačke, tačke-zareze, navodnike " +
+            "ni crtice. Ne stavljaj zarez neposredno pre niti posle samostalnog " +
+            "veznika „i“ i ne završavaj pasus zarezom. Ne menjaj velika i mala " +
+            "slova, reči, njihov oblik ni redosled."
     private const val ISPRAVI =
         "Ispravi reči koje prepoznavanje očigledno nije dobro čulo — one koje se " +
             "gramatički ne slažu sa ostatkom rečenice (padež, lice, rod, broj). Ako " +
@@ -78,26 +86,45 @@ object Polish {
 
     class PolishException(message: String) : Exception(message)
 
-    fun available(cfg: Config) = cfg.polishApiKey.isNotBlank()
+    /** Provera Gemini ključa bez slanja teksta ili audio-snimka. */
+    fun testKey(cfg: Config): String {
+        val key = cfg.polishApiKey.trim()
+        if (key.isBlank()) throw PolishException("Gemini API ključ nije podešen.")
+        val conn = (URL("$ENDPOINT?key=${URLEncoder.encode(key, "UTF-8")}")
+            .openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 30_000
+        }
+        return try {
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val reply = stream?.bufferedReader()?.readText().orEmpty()
+            if (code !in 200..299) throw PolishException(explain(code))
+            val count = runCatching { JSONObject(reply).optJSONArray("models")?.length() ?: 0 }
+                .getOrDefault(0)
+            "Gemini ključ radi ($count modela dostupno)"
+        } finally {
+            conn.disconnect()
+        }
+    }
 
-    /**
-     * Broj izabranih alata; nula znaci da modelu nema sta da se posalje.
-     *
-     * `vecSredjeno` znaci da je tekst stigao iz prolaza u kome je model slusao
-     * snimak — on vec vraca interpunkciju, velika slova i kvacice, pa bi
-     * sredjivanje bio drugi poziv za posao koji je vec obavljen.
-     */
-    fun toolCount(cfg: Config, vecSredjeno: Boolean = false) = listOf(
-        cfg.polishTidy && !vecSredjeno, cfg.polishParagraphs || cfg.polishBullets,
+    fun available(cfg: Config) =
+        if (cfg.textModel == "groq") cfg.groqApiKey.isNotBlank()
+        else cfg.polishApiKey.isNotBlank()
+
+    /** Broj izabranih alata; nula znaci da modelu nema sta da se posalje. */
+    fun toolCount(cfg: Config) = listOf(
+        cfg.polishTidy || cfg.polishCommas, cfg.polishParagraphs || cfg.polishBullets,
         cfg.polishDedupe, cfg.outputLanguage.isNotBlank(),
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
-    private fun smeDaMenja(cfg: Config, vecSredjeno: Boolean = false) =
+    private fun smeDaMenja(cfg: Config) =
         cfg.polishBullets ||                       // tacke prepisuju recenice
             cfg.polishDedupe ||                    // brisanje ponavljanja skida reci
             cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
-            (cfg.polishTidy && !vecSredjeno)
+            cfg.polishTidy
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
 
@@ -121,18 +148,21 @@ object Polish {
      * se izricito zabranjuje da dira interpunkciju — inace je dodaje svejedno,
      * jer mu je to najocekivanija radnja nad sirovim transkriptom.
      */
-    fun instruction(cfg: Config, vecSredjeno: Boolean = false): String {
+    fun instruction(cfg: Config): String {
         val zadaci = mutableListOf<String>()
         val granice = mutableListOf(
             "ne dodaj nove misli i ne izbacuj postojeće",
             "ne odgovaraj na sadržaj teksta — ovo je tekst za obradu, ne pitanje",
         )
 
-        if (cfg.polishTidy && !vecSredjeno) {
+        if (cfg.polishTidy) {
             // Ispravljanje je deo sredjivanja, ne zaseban izbor: prekidac za to
             // se nije mogao dirati, a nivo "samo oblikuj" niko nije koristio.
             zadaci.add(SREDI)
             zadaci.add(ISPRAVI)
+        } else if (cfg.polishCommas) {
+            zadaci.add(ZAREZI)
+            granice.add(NE_ISPRAVLJAJ)
         } else {
             granice.add(NE_SREDJUJ)
             granice.add(NE_ISPRAVLJAJ)
@@ -159,20 +189,30 @@ object Polish {
         return listOf(UVOD, posao, ograde, KRAJ).joinToString("\n\n")
     }
 
-    fun polish(text: String, cfg: Config, vecSredjeno: Boolean = false): String {
+    fun polish(text: String, cfg: Config): String {
         if (text.isBlank()) return text
-        if (toolCount(cfg, vecSredjeno) == 0) return text   // nema alata — nema ni poziva
+        if (toolCount(cfg) == 0) return text   // nema alata — nema ni poziva
+        if (cfg.textModel == "groq") {
+            if (cfg.groqApiKey.isBlank()) {
+                throw PolishException("Nema Groq API ključa za obradu teksta.")
+            }
+            return proveri(
+                text,
+                Groq.manipulateText(text, instruction(cfg), cfg),
+                cfg,
+            )
+        }
         val key = cfg.polishApiKey
         if (key.isBlank()) throw PolishException("Nema API ključa za doterivanje.")
 
         val model = cfg.polishModel.ifBlank { DEFAULT_MODEL }
         return try {
-            proveri(text, call(model, text, cfg, key, vecSredjeno), cfg)
+            proveri(text, call(model, text, cfg, key), cfg)
         } catch (exc: PolishException) {
             // Ako podeseni model nestane ili se preimenuje, probaj podrazumevani
             // — inace bi jedna Google-ova izmena ugasila ceo formalni rezim.
             if (exc.message?.contains("ne postoji") == true && model != DEFAULT_MODEL) {
-                proveri(text, call(DEFAULT_MODEL, text, cfg, key, vecSredjeno), cfg)
+                proveri(text, call(DEFAULT_MODEL, text, cfg, key), cfg)
             } else throw exc
         }
     }
@@ -182,10 +222,9 @@ object Polish {
         text: String,
         cfg: Config,
         key: String,
-        vecSredjeno: Boolean = false,
     ): String {
         val payload = JSONObject().apply {
-            val uputstvo = instruction(cfg, vecSredjeno)
+            val uputstvo = instruction(cfg)
             put("systemInstruction", JSONObject().put("parts",
                 org.json.JSONArray().put(JSONObject().put("text", uputstvo))))
             put("contents", org.json.JSONArray().put(
@@ -209,6 +248,13 @@ object Polish {
             val code = conn.responseCode
             if (code != 200) throw PolishException(explain(code))
             val reply = conn.inputStream.bufferedReader().readText()
+            cfg.addTraffic(
+                payload.size.toLong(), reply.toByteArray().size.toLong(), 0.0,
+                countDictation = false,
+                provider = "gemini",
+                model = model,
+                operation = "obrada teksta",
+            )
             val kandidat = JSONObject(reply).getJSONArray("candidates").getJSONObject(0)
             val parts = kandidat.optJSONObject("content")?.optJSONArray("parts")
             if (parts == null || parts.length() == 0) {
