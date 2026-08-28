@@ -113,6 +113,11 @@ class DictationService : Service() {
             stopSelf()
             return
         }
+        if (GeminiStt.enabled(cfg) && cfg.polishApiKey.isBlank()) {
+            toast("Gemini API ključ nije podešen — unesi ga u aplikaciji")
+            stopSelf()
+            return
+        }
         // Bez polja u koje bi tekst usao snimanje nema smisla — inace se
         // diktat pokrene i sa pocetnog ekrana, pa zavrsi u praznom.
         if (cfg.requireInputField && InsertService.isRunning &&
@@ -134,7 +139,9 @@ class DictationService : Service() {
         startedAt = System.currentTimeMillis()
         showPill()
         tick()
-        if (cfg.longRecording) thread { segmentLoop() }
+        if (cfg.longRecording) {
+            if (GeminiStt.enabled(cfg)) thread { geminiLiveLoop() } else thread { segmentLoop() }
+        }
     }
 
     private fun stopRecording() {
@@ -214,6 +221,85 @@ class DictationService : Service() {
         totalBytes += rest.size
         cfg.addRecordedSeconds(totalBytes / 2.0 / cfg.sampleRate)
         ship(frames.toByteArray(), last = true)
+    }
+
+    /**
+     * Gemini Live: zvuk ide na mrezu DOK snimanje traje.
+     *
+     * Izmereno na 64.7s zvuka: slanje posle Stop-a ostavlja 15.6s cekanja,
+     * slanje u toku 0.0s — server stize u realnom vremenu, pa je prepis gotov
+     * u trenutku kad pustis taster. Ceo diktat je jedna sesija i jedan tiket:
+     * model tako vidi celinu umesto krhotina odsecenih na pauzama.
+     *
+     * Komadi sa mikrofona se citaju samo jednom, pa drugi pokusaj nema sta da
+     * posalje. Zato se zvuk usput pise na privremeni fajl (ne u memoriju — sat
+     * vremena je preko 100 MB) i pri otkazu zavrsi u PendingStore.
+     */
+    private fun geminiLiveLoop() {
+        val rec = recorder ?: return
+        val myTicket = nextTicket++
+        val mojaSesija = session
+        pending.incrementAndGet()
+        synchronized(formalParts) { pendingBy[mojaSesija] = (pendingBy[mojaSesija] ?: 0) + 1 }
+
+        val kopija = java.io.File(cacheDir, "live-$mojaSesija-${System.nanoTime()}.pcm")
+        var totalBytes = 0L
+        var tekst = ""
+        var problem: String? = null
+        val izlaz = runCatching { java.io.BufferedOutputStream(kopija.outputStream()) }.getOrNull()
+
+        try {
+            var zavrseno = false
+            val sirov = GeminiStt.recognizeStream(cfg) {
+                val chunk = rec.nextChunk()
+                when {
+                    chunk != null -> {
+                        runCatching { izlaz?.write(chunk) }
+                        totalBytes += chunk.size
+                        chunk
+                    }
+                    !zavrseno -> {
+                        // Mikrofon je stao; ostatak iz reda mora jos da prodje.
+                        zavrseno = true
+                        val rest = rec.stop()
+                        recorder = null
+                        if (rest.isNotEmpty()) {
+                            runCatching { izlaz?.write(rest) }
+                            totalBytes += rest.size
+                            rest
+                        } else {
+                            null
+                        }
+                    }
+                    else -> null
+                }
+            }
+            tekst = GeminiStt.postProcess(sirov, cfg)
+            if (tekst.isBlank()) problem = "Ništa nije prepoznato"
+        } catch (e: Exception) {
+            problem = e.message ?: "Gemini Transcribe Live nije uspeo"
+            runCatching { izlaz?.flush() }
+            val pcm = runCatching { kopija.readBytes() }.getOrElse { ByteArray(0) }
+            if (pcm.isNotEmpty() &&
+                PendingStore(this, cfg.sampleRate)
+                    .save(pcm, cfg.transcriptionProvider) != null
+            ) {
+                problem = "$problem — snimak sačuvan za ponovni pokušaj"
+            }
+        } finally {
+            runCatching { izlaz?.close() }
+            kopija.delete()
+            if (recorder === rec) {
+                runCatching { rec.stop() }
+                recorder = null
+            }
+        }
+
+        cfg.addRecordedSeconds(totalBytes / 2.0 / cfg.sampleRate)
+        val poruka = problem
+        handler.post {
+            deliver(tekst, poruka, myTicket, last = true, sesija = mojaSesija)
+        }
     }
 
     private fun ship(pcm: ByteArray, last: Boolean) {
@@ -377,12 +463,14 @@ class DictationService : Service() {
                 // Ponovi preko provajdera koji je prvobitno pao. Ako je snimak
                 // iz stare verzije i nema metapodatak, koristi trenutni izbor.
                 val provider = store.provider(file) ?: cfg.transcriptionProvider
-                val result = (if (provider == "openai") {
-                    OpenAiTranscription.postProcess(
+                val result = (when (provider) {
+                    "openai" -> OpenAiTranscription.postProcess(
                         OpenAiTranscription.recognize(pcm, cfg), cfg,
                     )
-                } else {
-                    TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
+                    "gemini_live" -> GeminiStt.postProcess(
+                        GeminiStt.recognize(pcm, cfg), cfg,
+                    )
+                    else -> TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
                 }).trim()
                 if (result.isBlank()) throw Exception("Model nije vratio tekst")
                 store.remove(file)
@@ -414,10 +502,10 @@ class DictationService : Service() {
         var text = ""
         var problem: String? = null
         try {
-            val sirov = if (cfg.transcriptionProvider == "openai") {
-                OpenAiTranscription.recognize(pcm, cfg)
-            } else {
-                WebStt.recognize(pcm, cfg)
+            val sirov = when {
+                cfg.transcriptionProvider == "openai" -> OpenAiTranscription.recognize(pcm, cfg)
+                GeminiStt.enabled(cfg) -> GeminiStt.recognize(pcm, cfg)
+                else -> WebStt.recognize(pcm, cfg)
             }
             // Kad model sredjuje tekst, dobija ga nedirnutog: skracenice i
             // skidanje kvacica mu otezavaju citanje. Kad NE sredjuje (samo
@@ -426,6 +514,8 @@ class DictationService : Service() {
             // primenjuju na kraju, nad ispravljenim tekstom.
             text = if (cfg.transcriptionProvider == "openai") {
                 OpenAiTranscription.postProcess(sirov, cfg)
+            } else if (GeminiStt.enabled(cfg)) {
+                GeminiStt.postProcess(sirov, cfg)
             } else if (formal() && cfg.polishTidy) sirov.trim()
             else TextPolish.apply(sirov, cfg)
         } catch (exc: Exception) {

@@ -323,7 +323,8 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val showProviderOptions: (String) -> Unit = { provider ->
-            googleRecording.visibility = if (provider == "google") View.VISIBLE else View.GONE
+            googleRecording.visibility =
+                if (provider == "google" || provider == "gemini_live") View.VISIBLE else View.GONE
             openAiRecording.visibility = if (provider == "openai") View.VISIBLE else View.GONE
         }
 
@@ -334,6 +335,7 @@ class MainActivity : AppCompatActivity() {
                 listOf(
                     "google" to "Google Speech-to-Text",
                     "openai" to "OpenAI GPT Transcribe",
+                    "gemini_live" to "Gemini 3.5 Transcribe Live",
                 ),
                 cfg.transcriptionProvider,
             ) { provider ->
@@ -346,7 +348,10 @@ class MainActivity : AppCompatActivity() {
                 this,
                 "Google koristi postojeći Web Speech tok. OpenAI šalje završen " +
                     "snimak na Audio Transcriptions API i koristi model gpt-transcribe; " +
-                "ne koristi realtime transkripciju.",
+                    "ne koristi realtime transkripciju. Gemini Transcribe Live " +
+                    "šalje zvuk DOK pričaš, pa posle Stop-a nema čekanja — traži " +
+                    "stalnu vezu i troši oko 2,5 MB po minutu. Koristi isti " +
+                    "Gemini ključ kao AI obrada.",
             )
         )
         box.addView(googleRecording)

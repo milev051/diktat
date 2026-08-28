@@ -126,6 +126,35 @@ pokazuje koliko ih ima i šalje ih ponovo. Pamti se i provajder prvog pokušaja,
 pa se snimak ne šalje slučajno drugom servisu ako u međuvremenu promeniš izbor.
 Drži se poslednja 3.
 
+## Gemini 3.5 Transcribe Live
+
+U kartici *AI* izaberi **Provider transkripcije → Gemini 3.5 Transcribe Live**.
+Koristi **isti Gemini ključ** kao AI obrada teksta (`polish_api_key`), pa se ne
+unosi drugi.
+
+```text
+gemini-3.5-transcribe-live
+```
+
+**Zvuk se šalje DOK pričaš, ne posle Stop-a.** Zato posle Stop-a nema čekanja
+koje raste sa dužinom diktata. Izmereno na 64.7s zvuka: slanje posle Stop-a
+ostavlja 15.6s čekanja, slanje u toku 0.0s; ukupno posle Stop-a ostane ~1.5s.
+
+Zbog toga važe dve stvari kojih kod Google-a nema:
+
+| | |
+|---|---|
+| **Internet mora da radi celo vreme snimanja** | ranije je trebao tek na kraju; prekid usred diktata sada obara diktat (snimak se čuva za ponovni pokušaj) |
+| **Troši ~2,5 MB po minutu** | Live API prima samo sirov PCM, FLAC se ne može poslati — oko dvostruko više nego Google uz FLAC |
+
+Prepis stiže na latinici: endpoint za `sr-RS` vraća ćirilicu, i to nedosledno,
+pa se pismo poravnava pre svega ostalog. Tekst se i dalje ubacuje **odjednom na
+kraju** — „Live" je ime modela, ne prikaz reč-po-reč.
+
+Obična varijanta `gemini-3.5-transcribe` nije ugrađena: na besplatnom nivou ima
+3 zahteva u minuti i 25 dnevno, što za svakodnevni rad ne znači ništa. Live
+varijanta nema ni jednu ni drugu granicu.
+
 ## OpenAI GPT transkripcija
 
 U kartici *AI* izaberi **Provider transkripcije → OpenAI GPT Transcribe**. Google

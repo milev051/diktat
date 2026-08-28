@@ -11,8 +11,8 @@ android {
         applicationId = "studio.room211.diktat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 65
-        versionName = "1.52"
+        versionCode = 66
+        versionName = "1.53"
     }
 
     buildTypes {
@@ -44,4 +44,8 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     testImplementation("junit:junit:4.13.2")
+    // Prava org.json implementacija: u JVM testovima je `android.jar`
+    // samo prazan kalup koji vraca podrazumevane vrednosti, pa bi svaki
+    // test nad JSON odgovorom tiho prolazio na praznom.
+    testImplementation("org.json:json:20240303")
 }

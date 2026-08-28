@@ -71,7 +71,9 @@ class SttService : RecognitionService() {
         listener.endOfSpeech()
         thread {
             try {
-                val text = if (cfg.transcriptionProvider == "openai") {
+                val text = if (GeminiStt.enabled(cfg)) {
+                    GeminiStt.postProcess(GeminiStt.recognize(pcm, cfg), cfg)
+                } else if (cfg.transcriptionProvider == "openai") {
                     OpenAiTranscription.postProcess(
                         OpenAiTranscription.recognize(pcm, cfg), cfg,
                     )

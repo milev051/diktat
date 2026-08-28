@@ -165,6 +165,15 @@ Razlika je samo u međurezultatima: 6 poruka (84 znaka) naspram 28 poruka
 naplaćuju nije objavljeno; i ako jesu, uz besplatan nivo (bez granice RPM/RPD)
 to ništa ne menja.
 
+**Strimovanje traži internet DOK snimanje traje, i troši 2,5 MB po minutu.**
+Izračunato: 16 kHz × 16 bita = 31 KB/s sirovog zvuka, base64 ga uveća za
+trećinu, plus JSON omot — 42 KB/s odlaznog saobraćaja. Live API prima **samo
+sirov PCM** (`audio/pcm;rate=16000`), FLAC se ne može poslati, pa je to
+dvostruko više nego Google Web Speech uz FLAC (~1,1 MB/min). Ukupna količina je
+ista bilo da se šalje u toku ili posle Stop-a — razlika je samo u trenutku.
+Ovo je bitno na telefonu: prekid veze usred diktata sada obara diktat, dok je
+ranije mreža trebala tek na kraju.
+
 **Mana strimovanja: nema drugog pokušaja.** Komadi sa mikrofona se čitaju samo
 jednom, pa `recognize_live_stream` namerno NE ide kroz `_sa_ponavljanjem` —
 drugi pokušaj nema šta da pošalje. Zato `_transcribe_live` usput piše zvuk na
@@ -248,6 +257,21 @@ jednom jeziku, ubacuje se na drugom" koji zaobilazi ceo postojeći put.
 
 **`pFilter=0` gasi maskiranje psovki.** Ime parametra je **osetljivo na velika
 slova** — `pfilter` se tiho ignoriše.
+
+**Gemini Transcribe Live postoji na OBE platforme.** `GeminiStt.kt` i
+`WSock.kt` su prevod `dictate/geministt.py` i `dictate/wsock.py` — iste
+konstante, isti redosled poruka, isti razlozi. Ako se logika menja, menja se na
+oba mesta; testovi postoje i tamo i ovde.
+
+**WebSocket na Androidu je isto pisan rukom**, bez OkHttp. Aplikacija nema
+nijednu mrežnu zavisnost (sve ide preko `HttpURLConnection`), a APK je ceo
+1,7 MB — biblioteka od par stotina kilobajta zbog jednog toka se ne isplati.
+
+**`org.json` u JVM testovima je prazan kalup.** `unitTests.isReturnDefaultValues`
+znači da `JSONObject` vraća podrazumevane vrednosti umesto da parsira, pa je
+svaki test nad JSON odgovorom tiho prolazio na praznom. Zato
+`testImplementation("org.json:json")` — bez toga provera imena polja ne vredi
+ništa.
 
 **Android: bočni taster je prekidač, ne držanje.** Sistem šalje samo
 „pokreni"; događaj za puštanje ne postoji.

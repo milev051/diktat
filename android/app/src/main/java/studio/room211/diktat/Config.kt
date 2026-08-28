@@ -51,6 +51,9 @@ class Config(context: Context) {
     private val prefs = context.getSharedPreferences("diktat", Context.MODE_PRIVATE)
 
     companion object {
+        /** Izvori transkripcije; spisak stoji na jednom mestu. */
+        val PROVIDERS = setOf("google", "openai", "gemini_live")
+
         // Ugrađeni ključevi važe za novu instalaciju i za ovu verziju aplikacije.
         // Menjaju se ovde kada se pravi novi globalni build.
         private const val DEFAULT_POLISH_API_KEY =
@@ -85,14 +88,23 @@ class Config(context: Context) {
         get() = prefs.getString("api_key", "")!!
         set(v) = prefs.edit().putString("api_key", v).apply()
 
-    /** Provider osnovnog transkribovanja; Google ostaje podrazumevan. */
+    /**
+     * Provider osnovnog transkribovanja; Google ostaje podrazumevan.
+     *
+     * "gemini_live" je `gemini-3.5-transcribe-live` preko Live API-ja. Obicna
+     * varijanta `gemini-3.5-transcribe` NIJE ugradjena: na besplatnom nivou ima
+     * 25 zahteva dnevno, sto za svakodnevni rad ne znaci nista. Nepoznata
+     * vrednost bezbedno pada na Google.
+     */
     var transcriptionProvider: String
         get() = when (prefs.getString("transcription_provider", "google")) {
             "openai" -> "openai"
+            "gemini_live" -> "gemini_live"
             else -> "google"
         }
         set(v) = prefs.edit().putString(
-            "transcription_provider", if (v == "openai") "openai" else "google"
+            "transcription_provider",
+            if (v in PROVIDERS) v else "google",
         ).apply()
 
     /** Ključ se unosi u aplikaciji; nema ugrađenog OpenAI ključa. */
@@ -108,9 +120,19 @@ class Config(context: Context) {
     val openAiMaxSeconds: Int
         get() = prefs.getInt("openai_max_seconds", 3600).coerceIn(60, 3600)
 
-    /** Koji režim određuje granicu snimanja za trenutno izabranog provajdera. */
+    /**
+     * Koji režim određuje granicu snimanja za trenutno izabranog provajdera.
+     *
+     * Gemini Live je UVEK dug: zvuk se strimuje dok snimanje traje, pa ga
+     * pokreće ista petlja bez obzira na „neprekidno" — a granica od 30 s je
+     * ograničenje Web Speech endpointa i ovde nema šta da radi.
+     */
     val longRecording: Boolean
-        get() = if (transcriptionProvider == "openai") openAiLongRecording else continuous
+        get() = when (transcriptionProvider) {
+            "openai" -> openAiLongRecording
+            "gemini_live" -> true
+            else -> continuous
+        }
 
     /** Auto = model bira pismo; ostale vrednosti traže određeno pismo. */
     var openAiOutputScript: String
