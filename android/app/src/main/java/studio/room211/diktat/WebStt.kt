@@ -18,6 +18,8 @@ import java.net.URLEncoder
 object WebStt {
 
     private const val ENDPOINT = "https://www.google.com/speech-api/v2/recognize"
+    // Javni Chromium kljuc, ne privatni nalog: isti je u svakoj Chromium
+    // instalaciji i sa njim radi besplatni Web Speech endpoint. Sme u repo.
     private const val DEFAULT_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 
     /**

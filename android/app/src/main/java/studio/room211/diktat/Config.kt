@@ -54,30 +54,11 @@ class Config(context: Context) {
         /** Izvori transkripcije; spisak stoji na jednom mestu. */
         val PROVIDERS = setOf("google", "openai", "gemini_live")
 
-        // Ugrađeni ključevi važe za novu instalaciju i za ovu verziju aplikacije.
-        // Menjaju se ovde kada se pravi novi globalni build.
-        private const val DEFAULT_POLISH_API_KEY =
-            ""
-        private const val DEFAULT_GROQ_API_KEY =
-            ""
-        private const val BUNDLED_KEYS_VERSION = "2026-08-07-2"
+        // Kljucevi se NE ugraduju u APK. Repozitorijum se deli, pa bi ugraden
+        // kljuc znacio da svaka instalacija trosi tudji nalog, i da kljuc
+        // zauvek ostane u istoriji commita. Korisnik ga unosi u aplikaciji;
+        // cuva se u SharedPreferences-u i nadogradnja ga ne dira.
         private val UTILITY_LOCK = Any()
-    }
-
-    init {
-        // Postojeća instalacija može imati stari ključ u SharedPreferences-u.
-        // Ugrađeni ključ se postavlja samo ako korisnik još nema svoj ključ;
-        // nadogradnja nikada ne sme da pregazi ručno unet API ključ.
-        if (prefs.getString("bundled_keys_version", "") != BUNDLED_KEYS_VERSION) {
-            val edit = prefs.edit().putString("bundled_keys_version", BUNDLED_KEYS_VERSION)
-            if (prefs.getString("polish_api_key", null).isNullOrBlank()) {
-                edit.putString("polish_api_key", DEFAULT_POLISH_API_KEY)
-            }
-            if (prefs.getString("groq_api_key", null).isNullOrBlank()) {
-                edit.putString("groq_api_key", DEFAULT_GROQ_API_KEY)
-            }
-            edit.apply()
-        }
     }
 
     var language: String
@@ -267,7 +248,7 @@ class Config(context: Context) {
     // Kljuc ostaje pri nadogradnji aplikacije: SharedPreferences prezivljava
     // instalaciju preko postojece, dok je paket i potpis isti.
     var polishApiKey: String
-        get() = prefs.getString("polish_api_key", DEFAULT_POLISH_API_KEY)!!
+        get() = prefs.getString("polish_api_key", "")!!
         set(v) = prefs.edit().putString("polish_api_key", v.trim()).apply()
 
     /** true = i ispravi ocigledne gramaticke greske, ne samo oblikuj. */
@@ -325,7 +306,7 @@ class Config(context: Context) {
 
     // --- Groq GPT-OSS obrada teksta ---
     var groqApiKey: String
-        get() = prefs.getString("groq_api_key", DEFAULT_GROQ_API_KEY)!!
+        get() = prefs.getString("groq_api_key", "")!!
         set(v) = prefs.edit().putString("groq_api_key", v.trim()).apply()
 
     /** Izbaci slucajno udvojene reci i fraze (govorna ispravka). */

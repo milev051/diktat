@@ -6,10 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.json"
 
-# Ugrađeni ključevi su podrazumevani samo da nova instalacija odmah radi.
-# Lokalni config.json i dalje može da ih zameni drugim ključem.
-DEFAULT_POLISH_API_KEY = ""
-DEFAULT_GROQ_API_KEY = ""
+# Kljucevi se NE ugraduju u kod. Repozitorijum se deli, pa bi ugraden kljuc
+# znacio da svaka kopija aplikacije trosi tudji nalog, i da kljuc zauvek ostane
+# u istoriji commita. Korisnik ga unosi u aplikaciji; cuva se u config.json,
+# koji je u .gitignore.
 
 # Izvori transkripcije; nepoznata vrednost bezbedno pada na Google, da
 # postojece instalacije nastave da rade.
@@ -66,7 +66,7 @@ DEFAULTS = {
     "overlay_position": "top-right",
 
     # --- Formalni rezim (doterivanje jezickim modelom) ---
-    "polish_api_key": DEFAULT_POLISH_API_KEY,  # Google AI Studio kljuc
+    "polish_api_key": "",  # Google AI Studio kljuc, unosi se u aplikaciji
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "text_model": "gemini",       # "gemini" | "groq"
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
@@ -80,7 +80,7 @@ DEFAULTS = {
     "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
     # --- Groq (Whisper + GPT-OSS drugo misljenje) ---
     "groq_enabled": False,
-    "groq_api_key": DEFAULT_GROQ_API_KEY,
+    "groq_api_key": "",
     "groq_reasoning_effort": "medium",
     "groq_max_completion_tokens": 2048,
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.

@@ -22,6 +22,8 @@ import urllib.request
 from . import flac
 
 ENDPOINT = "https://www.google.com/speech-api/v2/recognize"
+# Javni Chromium kljuc, ne privatni nalog: isti je u svakoj Chromium instalaciji
+# i sa njim radi besplatni Web Speech endpoint. Sme da stoji u repozitorijumu.
 DEFAULT_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 
 
@@ -169,8 +171,15 @@ _PUNCT = re.compile(
     r"|[.,:](?!\d)"     # ili bez cifre iza
     # Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
     r"|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]"
-    r"|(?<!\d)[-–—/]|[-–—/](?!\d)"
-    r"|[#%&*+<=>@\\^_`|~]"
+    # Crtica i kosa crta nestaju samo kad STOJE SAME. Uslov je `\w`, ne `\d`:
+    # sa `\d` je i „crno-beli" gubio crtu i postajao „crnobeli", jer slovo nije
+    # cifra. Sada spoj dve reci prezivi („crno-beli", „and/or"), a crta izmedju
+    # razmaka se brise („ovo - ono").
+    r"|(?<!\w)[-–—/]|[-–—/](?!\w)"
+    # `%` NIJE ovde: endpoint ga vrati za izgovoreno „procenata" (izmereno:
+    # „popust je dvadeset procenata" -> „popusti je 20%"), pa bi brisanje pojelo
+    # jedini trag jedinice. Isto vazi za `$` i `€`, koji nikad nisu ni bili tu.
+    r"|[#&*+<=>@\\^_`|~]"
 )
 
 
@@ -187,10 +196,18 @@ def join_thousands(text: str) -> str:
     return text
 
 
+# Znak koji stoji IZMEDJU DVA SLOVA, bez razmaka, drzi dve reci razdvojene:
+# brisanje bi ih slepilo ("gotovo je.sada" -> "gotovo jesada"). Zato prvo
+# postaje razmak, pa se tek onda ostatak brise. Apostrof i navodnici namerno
+# NISU ovde: „ć'š" mora da ostane jedna rec, ne „ć š".
+_LEPAK = re.compile(r"(?<=[^\W\d_])[.,:;!?\u2026]+(?=[^\W\d_])")
+
+
 def strip_punctuation(text: str) -> str:
     """Skloni interpunkciju, ali ne diraj brojeve ni spojene reci."""
     if not text:
         return text
+    text = _LEPAK.sub(" ", text)
     return " ".join(_PUNCT.sub("", text).split())
 
 
@@ -203,6 +220,71 @@ _DIACRITICS = str.maketrans({
 def to_ascii(text: str) -> str:
     """č ć ž š đ -> c c z s dj. Opciono; podrazumevano iskljuceno."""
     return text.translate(_DIACRITICS) if text else text
+
+
+# Reci koje se zavrsavaju tackom a NE zavrsavaju recenicu. Posle njih ostaje
+# malo slovo. Spisak je namerno kratak i jednoznacan: svaka dodata rec mora da
+# bude takva da iza nje nikad ne pocinje recenica.
+_SKRACENICE = {
+    "br", "cca", "dr", "god", "inz", "inž", "isl", "itd", "mr", "npr",
+    "odn", "prof", "sl", "str", "tel", "tj", "tzv", "ul",
+}
+
+
+def _kraj_recenice(rec: str, znak: str) -> bool:
+    """Da li `znak` posle reci `rec` zaista zavrsava recenicu.
+
+    Upitnik i uzvicnik uvek zavrsavaju. Tacka ne: u srpskom stoji i iza godine
+    i rednog broja ("2026. godine", "5. mesto"), iza skracenica ("npr. ovako")
+    i iza inicijala ("M. Petrovic"). U tim slucajevima ostaje malo slovo.
+    """
+    if znak != ".":
+        return True
+    if not rec:
+        return True
+    if rec[-1].isdigit():           # godina, redni broj, verzija
+        return False
+    if len(rec) == 1:               # inicijal
+        return False
+    return rec.lower() not in _SKRACENICE
+
+
+# Slepljena granica: ".Cetvrta" umesto ". Cetvrta". Trazi se VELIKO slovo posle
+# tacke, jer malo slovo tu je po pravilu domen ili ime fajla ("config.json",
+# "google.com") koje ne sme da se raskine. Upitnik i uzvicnik u njima ne
+# postoje, pa posle njih razmak ide bez tog uslova.
+_SLEPLJENO = re.compile(r"([.!?])(?=[^\W\d_])")
+
+# Granica recenice sa razmakom: znak, pa razmak, pa slovo koje treba podici.
+_GRANICA = re.compile(r"([^\s.!?]*)([.!?])([ \t]+)([^\W\d_])")
+
+
+def capitalize_sentences(text: str) -> str:
+    """Razmak i veliko slovo posle tacke, upitnika i uzvicnika.
+
+    Radi samo kad je izabran pisani stil: uz "izgovoreno" se interpunkcija ionako
+    brise, pa nema granice recenice. Prvo slovo celog komada se NE dira — diktat
+    se secka na pauzama, pa svaki sledeci komad ume da bude nastavak recenice.
+    """
+    if not text:
+        return text
+
+    def _razmak(m):
+        znak = m.group(1)
+        slovo = text[m.end(1)]
+        if znak == "." and not slovo.isupper():
+            return znak
+        return znak + " "
+
+    text = _SLEPLJENO.sub(_razmak, text)
+
+    def _veliko(m):
+        rec, znak, razmak, slovo = m.groups()
+        if not _kraj_recenice(rec, znak):
+            return m.group(0)
+        return rec + znak + razmak + slovo.upper()
+
+    return _GRANICA.sub(_veliko, text)
 
 
 def tidy(text: str) -> str:
