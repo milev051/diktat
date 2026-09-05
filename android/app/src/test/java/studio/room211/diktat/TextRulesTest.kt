@@ -49,7 +49,16 @@ class TextRulesTest {
         assertEquals("svj mi je", Abbreviations.apply("svejedno mi je", d))
         assertEquals("svj mi je", Abbreviations.apply("sve jedno mi je", d))
         assertEquals("traje 15min", Abbreviations.apply("traje 15 minuta", d))
-        assertEquals("kosta 100dolara", Abbreviations.apply("kosta 100 dolara", d))
+        // Cela rec se NE lepi uz cifru: "100dolara" izgleda kao greska.
+        assertEquals("kosta 100 dolara", Abbreviations.apply("kosta 100 dolara", d))
+        assertEquals("kosta 500 dinara", Abbreviations.apply("kosta 500 dinara", d))
+        assertEquals("placa 20 evra", Abbreviations.apply("placa 20 evra", d))
+        assertEquals("stigao za 3 sata", Abbreviations.apply("stigao za 3 sata", d))
+        // Kratka oznaka se i dalje lepi, trocifrena oznaka valute ne.
+        assertEquals("ceka 30min", Abbreviations.apply("ceka 30 min", d))
+        assertEquals("presao 20km", Abbreviations.apply("presao 20 km", d))
+        assertEquals("tezi 10kg", Abbreviations.apply("tezi 10 kg", d))
+        assertEquals("placa 20 eur", Abbreviations.apply("placa 20 eur", d))
     }
 
     @Test
@@ -101,8 +110,12 @@ class TextRulesTest {
             TextPolish.stripPunctuation("Cena je 1.500,25 dinara."))
         assertEquals("Danas je lep dan zar ne",
             TextPolish.stripPunctuation("Danas je lep dan, zar ne?"))
-        assertEquals("crnobeli film bez crtice",
+        // Crtica koja SPAJA dve reci prezivljava; sama nestaje.
+        assertEquals("crno-beli film bez crtice",
             TextPolish.stripPunctuation("crno-beli film — bez crtice"))
+        assertEquals("srpsko-hrvatski i e-mail",
+            TextPolish.stripPunctuation("srpsko-hrvatski i e-mail"))
+        assertEquals("ovo ono", TextPolish.stripPunctuation("ovo - ono"))
     }
 
     @Test
@@ -221,5 +234,181 @@ class PauseDetectorTest {
     @Test
     fun `sama tisina bez govora ne sece`() {
         assertEquals(emptyList<Double>(), run(listOf(tiho to 5.0)))
+    }
+}
+
+/**
+ * Veliko slovo posle tacke. Prevod `webstt.capitalize_sentences` iz macOS
+ * verzije; slucajevi su isti kao u tests/test_text.py, da se dve platforme ne
+ * raziđu.
+ */
+class VelikoSlovoTest {
+
+    private fun sredi(text: String) = TextPolish.capitalizeSentences(text)
+
+    @Test
+    fun `malo slovo posle tacke se podize`() {
+        assertEquals("Okej. Sto se tice toga.", sredi("Okej. sto se tice toga."))
+    }
+
+    @Test
+    fun `slepljena recenica dobija razmak`() {
+        assertEquals("prethodnu. Cetvrta recenica", sredi("prethodnu.Cetvrta recenica"))
+    }
+
+    @Test
+    fun `upitnik i uzvicnik`() {
+        assertEquals("Sta je ovo? Ne znam! Probaj", sredi("Sta je ovo?ne znam!probaj"))
+    }
+
+    @Test
+    fun `godina i redni broj ostaju malim slovom`() {
+        assertEquals("Bilo je 2026. godine u julu.", sredi("Bilo je 2026. godine u julu."))
+        assertEquals("Zauzeo je 5. mesto danas.", sredi("Zauzeo je 5. mesto danas."))
+    }
+
+    @Test
+    fun `skracenica i inicijal ostaju malim slovom`() {
+        assertEquals("Koristi npr. ovaj pristup.", sredi("Koristi npr. ovaj pristup."))
+        assertEquals("Jabuke, kruske itd. sve je tu.", sredi("Jabuke, kruske itd. sve je tu."))
+        assertEquals("Potpisao je M. petrovic juce.", sredi("Potpisao je M. petrovic juce."))
+    }
+
+    @Test
+    fun `ime fajla i domen ostaju celi`() {
+        assertEquals("Otvori config.json pa nastavi.", sredi("Otvori config.json pa nastavi."))
+        assertEquals("Idi na google.com i vidi.", sredi("Idi na google.com i vidi."))
+    }
+
+    @Test
+    fun `decimala i hiljade se ne diraju`() {
+        assertEquals("Verzija 3.5 kosta 5.000 dinara.", sredi("Verzija 3.5 kosta 5.000 dinara."))
+    }
+
+    @Test
+    fun `prvo slovo komada se ne dira`() {
+        // Diktat se secka na pauzama; sledeci komad ume da bude nastavak
+        // recenice, pa bi veliko slovo tu bilo greska.
+        assertEquals("nastavak iste recenice", sredi("nastavak iste recenice"))
+    }
+
+    @Test
+    fun `kvacice se podizu`() {
+        assertEquals("Gotovo je. Često se desi.", sredi("Gotovo je. često se desi."))
+    }
+
+    @Test
+    fun `novi red prezivljava`() {
+        assertEquals("Prva.\ndruga tacka", sredi("Prva.\ndruga tacka"))
+    }
+
+    @Test
+    fun `prazan tekst`() {
+        assertEquals("", sredi(""))
+    }
+}
+
+
+/**
+ * Stil „izgovoreno" brise interpunkciju, pa znak izmedju dve reci ne sme prosto
+ * da nestane. Isti slucajevi kao u tests/test_text.py.
+ */
+class SlepljeneReciTest {
+
+    private fun sredi(text: String) = TextPolish.stripPunctuation(text)
+
+    @Test
+    fun `tacka izmedju reci postaje razmak`() {
+        assertEquals("gotovo je sada nastavljam", sredi("gotovo je.sada nastavljam"))
+        assertEquals("prethodnu Cetvrta recenica", sredi("prethodnu.Cetvrta recenica"))
+    }
+
+    @Test
+    fun `upitnik uzvicnik zarez dvotacka`() {
+        assertEquals("sta je ovo ne znam", sredi("sta je ovo?ne znam"))
+        assertEquals("ne moze probaj", sredi("ne moze!probaj"))
+        assertEquals("prvo drugo", sredi("prvo,drugo"))
+        assertEquals("evo ovako", sredi("evo:ovako"))
+    }
+
+    @Test
+    fun `brojevi se ne diraju`() {
+        assertEquals("cena je 3,5 dinara", sredi("cena je 3,5 dinara"))
+        assertEquals("u 10:30 krecem", sredi("u 10:30 krecem"))
+        assertEquals("Cena je 1.500,25 dinara", sredi("Cena je 1.500,25 dinara."))
+    }
+
+    @Test
+    fun `apostrof i dalje spaja`() {
+        assertEquals("ćš ti", sredi("ć'š ti"))
+    }
+
+    @Test
+    fun `uz zadrzane zareze slepljen zarez dobija razmak posle sebe`() {
+        assertEquals("prvo, drugo", TextPolish.stripPunctuation("prvo,drugo", keepCommas = true))
+    }
+}
+
+
+/**
+ * Endpoint vrati „20%" za izgovoreno „dvadeset procenata"; brisanje `%` je
+ * pojelo jedini trag jedinice, a model to ne moze da vrati.
+ */
+class ProcenatTest {
+
+    @Test
+    fun `procenat i valutni znaci ostaju`() {
+        assertEquals("popusti je 20%", TextPolish.stripPunctuation("popusti je 20%."))
+        assertEquals("kosta 100$ i 20\u20AC", TextPolish.stripPunctuation("kosta 100$ i 20\u20AC"))
+    }
+
+    @Test
+    fun `procenat ostaje i uz zadrzane zareze`() {
+        assertEquals(
+            "popust je 20%, kaze",
+            TextPolish.stripPunctuation("popust je 20%, kaze", keepCommas = true),
+        )
+    }
+
+    @Test
+    fun `ostali simboli se i dalje brisu`() {
+        assertEquals("ovo je test jos", TextPolish.stripPunctuation("ovo je #test & jos"))
+    }
+}
+
+
+/**
+ * „jednom" je „jedno" + „m" po spisku brojeva i jedinica, pa se lomilo u
+ * „jedno m". Isti slucajevi kao u tests/test_text.py.
+ */
+class ObicneReciTest {
+
+    private fun primeni(text: String) = Abbreviations.apply(text, emptyList())
+
+    @Test
+    fun `jednom ostaje celo`() {
+        assertEquals("uradio sam to jednom", primeni("uradio sam to jednom"))
+        assertEquals("u jednom trenutku", primeni("u jednom trenutku"))
+    }
+
+    @Test
+    fun `ostale reci sa jednoslovnom oznakom`() {
+        for (rec in listOf("stos", "stom", "trim", "dvas", "deseth")) {
+            assertEquals("ovo je $rec ovde", primeni("ovo je $rec ovde"))
+        }
+    }
+
+    @Test
+    fun `razdvajanje uz duzu jedinicu ostaje`() {
+        assertEquals("pet min", primeni("petminuta"))
+        assertEquals("sto dinara", primeni("stodinara"))
+        assertEquals("tri metara", primeni("trimetara"))
+        assertEquals("pet sati", primeni("petsati"))
+    }
+
+    @Test
+    fun `cifra uz jednoslovnu oznaku i dalje radi`() {
+        assertEquals("traje 3h", primeni("traje 3 h"))
+        assertEquals("dugacko 5m", primeni("dugacko 5 m"))
     }
 }

@@ -103,16 +103,32 @@ object Abbreviations {
     )
     private val UNIT_PART = UNITS.sortedByDescending { it.length }
         .joinToString("|") { Regex.escape(it) }
+    // Uz broj napisan RECIMA jedinica mora imati bar dva slova. Inace se obicne
+    // reci raspadaju: „jednom" je „jedno" + „m", pa je postajalo „jedno m".
+    // Isto „stos" („sto" + „s"), „stom" i „trim". Govor nikad ne daje „petm" ni
+    // „trih" — prepoznavanje napise „pet metara" ili „5 m" — pa se ovim ne gubi
+    // nista, a 171 lazno poklapanje nestane. Isto i u dictate/abbrev.py.
+    private val LONG_UNIT_PART = UNITS.filter { it.length > 1 }
+        .sortedByDescending { it.length }
+        .joinToString("|") { Regex.escape(it) }
     private val GLUED_UNIT = Regex(
-        """(?<!\p{L})($NUMBER_PART)($UNIT_PART)(?!\p{L})""",
+        """(?<!\p{L})($NUMBER_PART)($LONG_UNIT_PART)(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
     private val GLUED_DIGIT = Regex(
         """(?<!\p{L})(\d+(?:[.,]\d+)?)(\s*)($UNIT_PART)(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
+    // Uz cifru se lepi SAMO kratka oznaka ("15min", "20km", "10kg"), nikad cela
+    // rec: "100dolara" i "500dinara" izgledaju kao greska, a bas to je radila
+    // ranija verzija — `normalizeSpokenNumbers` bi ih razdvojila, pa bi ih ovaj
+    // prolaz odmah zalepio nazad. Trocifrene oznake valuta ostaju sa razmakom,
+    // isto kao "5000 RSD" iz korisnickog pravila bez „<". Isto i u abbrev.py.
+    private val SYMBOLS = listOf("min", "sek", "din", "km", "kg", "m", "h", "s")
+    private val SYMBOL_PART = SYMBOLS.sortedByDescending { it.length }
+        .joinToString("|") { Regex.escape(it) }
     private val DIGIT_WITH_UNIT = Regex(
-        """(?<!\p{L})(\d+(?:[.,]\d+)?)[ \t]+($UNIT_PART)(?!\p{L})""",
+        """(?<!\p{L})(\d+(?:[.,]\d+)?)[ \t]+($SYMBOL_PART)(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
     private val MINUTE_WITH_DIGITS = Regex(

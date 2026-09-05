@@ -58,14 +58,27 @@ sledeći pritisak radi STOP umesto START i korisnik pritiska dvaput.
 se snimak čuva na disk i šalje ponovo iz menija. Prolazne greške (mreža, 429,
 5xx) se ponavljaju jednom; 400 i 403 nikad — drugi pokušaj bi dao isto.
 
+**„Neuspeo" znači i prazan prepis, ne samo izuzetak.** Web Speech ume da vrati
+prazan rezultat za uredan govor: izmereno na tri sačuvana snimka (15.7s, 3.5s i
+1.8s, vrh amplitude 0.31), svi vraćaju `""` i kao FLAC i kao sirov PCM. Ranije
+se takav segment tiho gubio, pa se ostatak diktata zalepi bez njega i izgleda
+kao da je stigao samo kraj govora. Sada `_recognize_or_keep` čuva snimak i kad
+je prepis prazan, ako je duži od 1.0s i vrh amplitude preko 0.10 (tiha soba je
+~0.01, bučna ~0.08). Ispod toga je stvarno tišina i ne čuva se, da se
+`~/Diktat-neuspeli` ne puni prazninom.
+
 **Apostrof ide sa ostalim znacima.** Endpoint ga vraća u „je l'", „ć'š", i to u
 oba oblika — pravom (`'`) i krivom (`\u2019`). Oba moraju u pravilo, zajedno sa
 jednostrukim navodnicima; jedan bez drugog ostavlja pola slučajeva.
 
 **Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
 separator (`3,5`) i dvotačku kao satnicu (`10:00`). Tačka, zarez **i dvotačka**
-brišu se **samo kad nisu između cifara**; crtica samo kad stoji sama, da
-`crno-beli` ostane celo. Svaki znak koji može da stoji između cifara mora u tu
+brišu se **samo kad nisu između cifara**; crtica i kosa crta samo kad stoje
+same, da `crno-beli` i `and/or` ostanu celi. Uslov za crtu je `\w`, ne `\d`:
+sa `\d` je pravilo godinama tvrdilo jedno a radilo drugo, jer slovo nije cifra,
+pa je `crno-beli` ipak postajao `crnobeli`. Kad dokumentacija i test tvrde
+suprotno, **test je taj koji je zabeležio stvarno ponašanje** — proveri koje je
+od to dvoje pogrešno pre nego što popraviš. Svaki znak koji može da stoji između cifara mora u tu
 grupu — inače tiho pokvari brojeve.
 
 ---
@@ -119,6 +132,27 @@ grupu — inače tiho pokvari brojeve.
 nestane), „petsto dinara i dvadeset evra" → `500 RSD i 20`. Pravilo `dinara=…`
 zato često nema šta da uhvati; hvata se `rsd=…`. Kad Google izostavi valutu,
 aplikacija nema šta da vrati.
+
+Ponovljeno 04.09.2026. preko `say -v Lana` (hrvatski glas je fonetski dovoljno
+blizak) pravo na endpoint, `lang=sr-RS`:
+
+| izgovoreno | endpoint vrati |
+|---|---|
+| sto dolara | `100` (valuta nestane) |
+| petsto dinara i dvadeset evra | `500 RSD i 20` (samo prva valuta) |
+| tri hiljade petsto dinara | `3.500 r` (valuta odsečena) |
+| dvadeset procenata | `20%` |
+| petnaest minuta | `15 minuta` |
+| dvadeset kilometara | `20 km` |
+| deset kilograma | `10 kg` |
+| deset i trideset | `10:30` |
+| dve hiljade dvadeset šeste godine | `2026 godine` (bez tačke) |
+
+Obrazac je jasan: **jedinice i vreme endpoint pogađa pouzdano, valute ne.**
+Zato se logika ne sme graditi na tome da valuta stigne; `%`, `km` i `kg` su
+pouzdani, `dinara`/`dolara`/`evra` nisu. Redni broj i godina stižu bez tačke,
+pa je dodaje model (`gemini-3.5-flash` nad „bilo je 2026 godine" vraća
+„Bilo je 2026. godine").
 
 **Google Cloud motor je obrisan.** Davao je prikaz reč-po-reč, ali je tražio
 nalog, karticu i `grpcio`. Besplatni endpoint radi za srpski (izmereno 0.93) i
@@ -401,6 +435,19 @@ Izmereno na istom zadatku: `gemini-flash-lite-latest` ~1.0s i ne dira reči;
 ga izvrši. Provera vernosti: doteran tekst sveden na mala slova bez kvačica i
 interpunkcije mora da se poklopi sa ulazom.
 
+**`gemini-3.5-flash` primetno bolje sređuje od `flash-lite`.** Izmereno na istim
+ulazima (04.09.2026):
+
+| ulaz | `gemini-3.5-flash` | `gemini-flash-lite-latest` |
+|---|---|---|
+| `da li je ovo tačno nzm još` | `Da li je ovo tačno? Ne znam još.` | `Da li je ovo tačno, nzm još.` |
+| `popusti je 20%` | `Popust je 20%.` | `Popusti je 20%.` |
+| `ovo je 3500 r` | `Ovo je 3500 RSD.` | `Ovo je 3500 r.` |
+
+Flash ispravlja i ono što lite propušta, ali na besplatnom nivou lako udari u
+429 (izmereno: tri uzastopna poziva prolaze, četvrti pada). Zato podrazumevani
+ostaje `flash-lite`; flash je izbor kad je tačnost preča od kvote.
+
 **Model ne može da ispravi reč koja je gramatički ispravna.** Izmereno: nivo
 `correct` sređuje neslaganja (`sa kolega` → `sa kolegom`, `kako sam ocekivali`
 → `očekivao`), ali `ne registrujem` umesto `ne registruje` ostaje — rečenica
@@ -426,6 +473,19 @@ sistemskim uputstvom i bez njega.
 
 **API ključ nikad ne ide u git.** macOS: `config.json` (ignorisan). Android:
 `SharedPreferences`. Ni u `config.example.json`, ni u poruci commita.
+
+**Ni kao „podrazumevana vrednost".** Ugrađeni ključ je duže vreme stajao u
+`dictate/config.py` i `Config.kt`, uz obrazloženje da nova instalacija odmah
+radi. To je dvostruka greška: svaka kopija aplikacije troši tuđi nalog, a
+korisnik nema po čemu da primeti da mu ključ fali, pa svoj nikad i ne unese.
+Uz to ključ ostaje u istoriji commita zauvek, i brisanje iz fajlova ga ne
+uklanja. Podrazumevana vrednost je `""` na obe platforme; zatečen ključ u
+`config.json` i `SharedPreferences` se ne dira.
+
+**Javni Chromium ključ u `webstt.py` i `WebStt.kt` je izuzetak.** On nije ničiji
+nalog, isti je u svakoj Chromium instalaciji i bez njega besplatni Web Speech
+endpoint ne radi. Zato u oba fajla stoji komentar da se ne obriše u nekoj
+budućoj čistki ključeva.
 
 **Provera snimka ide JEDNIM pozivom za ceo diktat.** Po segmentu je trošila 6–9
 poziva na jednu diktiranu poruku (neprekidni režim sa `segment_after_seconds: 0`
@@ -529,6 +589,54 @@ pitanje — kako je tekst prelomljen — pa tačke pobeđuju kad su izabrane. Al
 prepisuje rečenice, zato mora u `_sme_da_menja` i isključuje granicu „ne
 preformuliši"; uz njega tekst završava **novim redom** umesto razmakom, da
 sledeći diktat počne svoju tačku.
+
+**Uz broj napisan REČIMA jedinica mora imati bar dva slova.** „jednom" je po
+spiskovima „jedno" + „m", pa ga je `_SLEPLJENA_JEDINICA` lomila u „jedno m".
+Isto „stos" („sto" + „s"), „stom" i „trim". Prekidač za skraćenice tu ne pomaže:
+`normalize_spoken_numbers` radi i kad su skraćenice isključene, jer prekidač
+gasi samo korisnička pravila zamene. Jednoslovne oznake (`m`, `h`, `s`) su zato
+izbačene iz tog pravila; uz CIFRU ostaju, jer cifra ne može da napravi reč.
+Ništa se ne gubi: prepoznavanje nikad ne vrati „petm" ni „trih", nego „pet
+metara" ili „5 m". Mereno nad 2752 različite reči iz `CLAUDE.md` i `README.md`:
+pre popravke su se lomile tri (`jednom`, `JEDNOM`, `trim`), posle nijedna, a
+jedina preostala izmena je namerna (`minuta` → `min`). Isti test pokreni za
+svaku buduću jedinicu na spisku, jer se sudar sa običnom rečju ne vidi drugačije.
+
+**Uz cifru se lepi samo kratka oznaka, nikad cela reč.** „100dolara" i
+„500dinara" izgledaju kao greška. Ranije je `_CIFRA_UZ_JEDINICU` lepio svaku
+jedinicu sa spiska, pa je `normalize_spoken_numbers` razdvajala „100dolara" u
+„100 dolara", a isti prolaz bi ih odmah zalepio nazad. Sada lepe samo `min`,
+`sek`, `din`, `km`, `kg`, `m`, `h`, `s`. Troslovne oznake valuta (`eur`, `usd`)
+ostaju sa razmakom, isto kao „5000 RSD" iz korisničkog pravila bez „<".
+Provereno i da model to ionako poništava: `gemini-3.5-flash` nad „15min" vraća
+„15 minuta", nad „20km" vraća „20 km".
+
+**`%` se ne briše.** Izmereno na živom endpointu: „popust je dvadeset procenata"
+vraća se kao „popusti je 20%", pa je brisanje `%` jelo jedini trag jedinice.
+Model to ne može da nadoknadi, jer u tekstu koji dobije procenta više nema.
+`$` i `€` nikad nisu ni bili u spisku za brisanje; sada je i `%` van njega.
+Ostali simboli (`# & * + < = > @ ^ _ | ~`) se i dalje brišu.
+
+**Znak između dva slova postaje razmak, ne ništa.** Uz stil „izgovoreno" se
+interpunkcija briše, pa je „gotovo je.sada" postajalo „gotovo jesada". Zato
+`strip_punctuation` prvo pretvori `.` `,` `:` `;` `!` `?` `…` koji stoji između
+dva slova u razmak, pa tek onda briše ostatak. Apostrof i navodnici namerno
+NISU u tom pravilu: „ć'š" mora da ostane jedna reč, ne „ć š". Ovo je isti kvar
+koji uz pisani stil rešava `capitalize_sentences`, samo na drugom kraju: tamo se
+znak zadržava, ovde nestaje, a razmak treba u oba slučaja.
+
+**Veliko slovo posle tačke je naš posao, ne modelov.** Uz pisani stil model
+propusti granicu rečenice, a ume i da slepi dve („prethodnu.Četvrta"), pa
+`capitalize_sentences` dodaje razmak i podiže slovo. Tačka NE završava rečenicu
+kad iza nje stoji cifra (godina `2026.`, redni broj `5.`, verzija `3.5`), kad je
+reč pred njom skraćenica sa spiska (`npr.`, `itd.`, `tzv.`) ili inicijal (`M.`).
+Razmak se ubacuje samo ispred VELIKOG slova: malo slovo posle tačke je po
+pravilu ime fajla ili domen (`config.json`, `google.com`) koji ne sme da se
+raskine. Upitnik i uzvičnik nemaju te izuzetke, u imenima fajlova ne postoje.
+Prvo slovo komada se ne dira: diktat se seče na pauzama, pa sledeći komad ume
+da bude nastavak rečenice. Pravilo postoji na obe platforme
+(`webstt.capitalize_sentences`, `TextPolish.capitalizeSentences`), sa istim
+spiskom skraćenica i istim testovima.
 
 **Naša pravila ne smeju da spajaju redove.** `strip_punctuation` skuplja
 razmake, pa je spisak tačaka završavao u jednom redu — a crtica, koja se tada

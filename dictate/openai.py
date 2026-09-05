@@ -110,6 +110,8 @@ def post_process(text: str, cfg) -> str:
         text = "\n".join(webstt.strip_punctuation(red) for red in text.split("\n"))
     if cfg.get("lowercase", True):
         text = text.lower()
+    else:
+        text = webstt.capitalize_sentences(text)
     rules = abbrev.parse(
         cfg.get("abbreviation_rules") or abbrev.default_text()
     ) if cfg.get("abbreviations", True) else []

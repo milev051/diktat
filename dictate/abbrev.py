@@ -63,16 +63,35 @@ _JEDINICE = (
 _JEDINICA_DEO = "(?:" + "|".join(
     re.escape(reč) for reč in sorted(_JEDINICE, key=len, reverse=True)
 ) + ")"
+# Uz broj napisan RECIMA jedinica mora imati bar dva slova. Inace se obicne
+# reci raspadaju: „jednom" je „jedno" + „m", pa je postajalo „jedno m". Isto
+# „stos" („sto" + „s"), „stom" i „trim". Govor nikad ne daje „petm" ni „trih" —
+# prepoznavanje napise „pet metara" ili „5 m" — pa se jednoslovnom oznakom uz
+# rec ne gubi nista, a 171 lazno poklapanje nestane.
+_JEDINICA_DUGA_DEO = "(?:" + "|".join(
+    re.escape(reč) for reč in sorted(
+        (j for j in _JEDINICE if len(j) > 1), key=len, reverse=True
+    )
+) + ")"
 _SLEPLJENA_JEDINICA = re.compile(
-    rf"(?<!\w)(?P<broj>{_BROJ_DEO})(?P<jedinica>{_JEDINICA_DEO})(?!\w)",
+    rf"(?<!\w)(?P<broj>{_BROJ_DEO})(?P<jedinica>{_JEDINICA_DUGA_DEO})(?!\w)",
     re.IGNORECASE,
 )
 _SLEPLJENA_CIFRA = re.compile(
     rf"(?<!\w)(?P<broj>\d+(?:[.,]\d+)?)(?P<jedinica>{_JEDINICA_DEO})(?!\w)",
     re.IGNORECASE,
 )
+# Uz cifru se lepi SAMO kratka oznaka jedinice ("15min", "20km", "10kg"), nikad
+# cela rec: "100dolara" i "500dinara" izgledaju kao greska, a bas to je radila
+# ranija verzija — `normalize_spoken_numbers` bi ih razdvojila, pa bi ih ovaj
+# prolaz odmah zalepio nazad. Trocifrene oznake valuta ostaju sa razmakom, isto
+# kao "5000 RSD" iz korisnickog pravila bez „<".
+_OZNAKE = ("min", "sek", "din", "km", "kg", "m", "h", "s")
+_OZNAKA_DEO = "(?:" + "|".join(
+    re.escape(reč) for reč in sorted(_OZNAKE, key=len, reverse=True)
+) + ")"
 _CIFRA_UZ_JEDINICU = re.compile(
-    rf"(?<!\w)(?P<broj>\d+(?:[.,]\d+)?)[ \t]+(?P<jedinica>{_JEDINICA_DEO})(?!\w)",
+    rf"(?<!\w)(?P<broj>\d+(?:[.,]\d+)?)[ \t]+(?P<jedinica>{_OZNAKA_DEO})(?!\w)",
     re.IGNORECASE,
 )
 _MINUTA_UZ_CIFRU = re.compile(

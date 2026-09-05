@@ -20,7 +20,12 @@ class Interpunkcija(unittest.TestCase):
         )
 
     def test_crtica_u_reci_odlazi(self):
-        self.assertEqual(webstt.strip_punctuation("crno-beli film"), "crnobeli film")
+        # Crtica koja SPAJA dve reci prezivljava; sama nestaje.
+        self.assertEqual(webstt.strip_punctuation("crno-beli film"), "crno-beli film")
+        self.assertEqual(webstt.strip_punctuation("srpsko-hrvatski i e-mail"),
+                         "srpsko-hrvatski i e-mail")
+        self.assertEqual(webstt.strip_punctuation("ovo - ono"), "ovo ono")
+        self.assertEqual(webstt.strip_punctuation("ovo — ono"), "ovo ono")
 
     def test_crtica_koja_stoji_sama_odlazi(self):
         self.assertEqual(webstt.strip_punctuation("prvi - drugi"), "prvi drugi")
@@ -132,8 +137,26 @@ class Skracenice(unittest.TestCase):
     def test_poklapaju_se_samo_cele_reci(self):
         self.assertEqual(self.primeni("neznam nije fraza"), "neznam nije fraza")
 
-    def test_podrazumevane_valute_ostaju_tekst(self):
-        self.assertEqual(self.primeni("kosta 100 dolara"), "kosta 100dolara")
+    def test_valuta_recima_zadrzava_razmak(self):
+        # Cela rec se NE lepi uz cifru: "100dolara" izgleda kao greska.
+        self.assertEqual(self.primeni("kosta 100 dolara"), "kosta 100 dolara")
+        self.assertEqual(self.primeni("kosta 500 dinara"), "kosta 500 dinara")
+        self.assertEqual(self.primeni("placa 20 evra"), "placa 20 evra")
+        self.assertEqual(self.primeni("stigao za 3 sata"), "stigao za 3 sata")
+        self.assertEqual(self.primeni("ima 5 procenata"), "ima 5 procenata")
+        self.assertEqual(self.primeni("presao 20 kilometara"), "presao 20 kilometara")
+
+    def test_kratka_oznaka_se_i_dalje_lepi(self):
+        for ulaz, izlaz in (("ceka 30 min", "ceka 30min"),
+                            ("presao 20 km", "presao 20km"),
+                            ("tezi 10 kg", "tezi 10kg"),
+                            ("traje 3 h", "traje 3h")):
+            self.assertEqual(self.primeni(ulaz), izlaz)
+
+    def test_oznaka_valute_ostaje_sa_razmakom(self):
+        # Trocifrena oznaka je kao "5000 RSD" iz korisnickog pravila bez „<".
+        self.assertEqual(self.primeni("placa 20 eur"), "placa 20 eur")
+        self.assertEqual(self.primeni("kosta 100 usd"), "kosta 100 usd")
 
     def test_izgovoreni_brojevi_i_jedinice(self):
         self.assertEqual(self.primeni("pet minuta"), "pet min")
@@ -200,3 +223,165 @@ class UkinutGlavniPrekidac(unittest.TestCase):
 
     def test_kljuc_vise_ne_postoji(self):
         self.assertNotIn("polish", self.prevedi({"polish": True}))
+
+
+class VelikoSlovoPosleTacke(unittest.TestCase):
+    """Pisani stil znaci veliko slovo na pocetku svake recenice.
+
+    Granica ume da stigne i bez razmaka (model slepi dve recenice), pa razmak i
+    veliko slovo idu zajedno. Izuzetak je tacka koja ne zavrsava recenicu:
+    godina, redni broj, skracenica, inicijal, i tacka unutar imena fajla.
+    """
+
+    def sredi(self, tekst):
+        from dictate import webstt
+        return webstt.capitalize_sentences(tekst)
+
+    def test_malo_slovo_posle_tacke_se_podize(self):
+        self.assertEqual(self.sredi("Okej. sto se tice toga."),
+                         "Okej. Sto se tice toga.")
+
+    def test_slepljena_recenica_dobija_razmak(self):
+        self.assertEqual(self.sredi("prethodnu.Cetvrta recenica"),
+                         "prethodnu. Cetvrta recenica")
+
+    def test_upitnik_i_uzvicnik(self):
+        self.assertEqual(self.sredi("Sta je ovo?ne znam!probaj"),
+                         "Sta je ovo? Ne znam! Probaj")
+
+    def test_godina_ostaje_malim_slovom(self):
+        self.assertEqual(self.sredi("Bilo je 2026. godine u julu."),
+                         "Bilo je 2026. godine u julu.")
+
+    def test_redni_broj_ostaje_malim_slovom(self):
+        self.assertEqual(self.sredi("Zauzeo je 5. mesto na takmicenju."),
+                         "Zauzeo je 5. mesto na takmicenju.")
+
+    def test_skracenica_ostaje_malim_slovom(self):
+        for tekst in ("Koristi npr. ovaj pristup.",
+                      "Jabuke, kruske itd. sve je tu.",
+                      "Zove se dr. petrovic doduse."):
+            self.assertEqual(self.sredi(tekst), tekst)
+
+    def test_inicijal_ostaje_malim_slovom(self):
+        self.assertEqual(self.sredi("Potpisao je M. petrovic juce."),
+                         "Potpisao je M. petrovic juce.")
+
+    def test_ime_fajla_i_domen_ostaju_celi(self):
+        for tekst in ("Otvori config.json pa nastavi.",
+                      "Idi na google.com i vidi.",
+                      "Pise u nuxt.config.ts negde."):
+            self.assertEqual(self.sredi(tekst), tekst)
+
+    def test_decimala_i_hiljade_se_ne_diraju(self):
+        self.assertEqual(self.sredi("Verzija 3.5 kosta 5.000 dinara."),
+                         "Verzija 3.5 kosta 5.000 dinara.")
+
+    def test_prvo_slovo_komada_se_ne_dira(self):
+        # Diktat se secka na pauzama; sledeci komad ume da bude nastavak
+        # recenice, pa bi veliko slovo tu bilo greska.
+        self.assertEqual(self.sredi("nastavak iste recenice"),
+                         "nastavak iste recenice")
+
+    def test_novi_red_prezivljava(self):
+        self.assertEqual(self.sredi("Prva.\ndruga tacka"),
+                         "Prva.\ndruga tacka")
+
+    def test_kvacice_se_podizu(self):
+        self.assertEqual(self.sredi("Gotovo je. često se desi."),
+                         "Gotovo je. Često se desi.")
+
+    def test_prazan_tekst(self):
+        self.assertEqual(self.sredi(""), "")
+
+
+
+class SlepljeneReciBezInterpunkcije(unittest.TestCase):
+    """Stil „izgovoreno" brise interpunkciju, pa znak izmedju dve reci ne sme
+    prosto da nestane: „gotovo je.sada" bi postalo „gotovo jesada".
+    """
+
+    def sredi(self, tekst):
+        from dictate import webstt
+        return webstt.strip_punctuation(tekst)
+
+    def test_tacka_izmedju_reci_postaje_razmak(self):
+        self.assertEqual(self.sredi("gotovo je.sada nastavljam"),
+                         "gotovo je sada nastavljam")
+        self.assertEqual(self.sredi("prethodnu.Cetvrta recenica"),
+                         "prethodnu Cetvrta recenica")
+
+    def test_upitnik_uzvicnik_zarez_dvotacka(self):
+        self.assertEqual(self.sredi("sta je ovo?ne znam"), "sta je ovo ne znam")
+        self.assertEqual(self.sredi("ne moze!probaj"), "ne moze probaj")
+        self.assertEqual(self.sredi("prvo,drugo"), "prvo drugo")
+        self.assertEqual(self.sredi("evo:ovako"), "evo ovako")
+
+    def test_brojevi_se_ne_diraju(self):
+        self.assertEqual(self.sredi("cena je 3,5 dinara"), "cena je 3,5 dinara")
+        self.assertEqual(self.sredi("u 10:30 krecem"), "u 10:30 krecem")
+        self.assertEqual(self.sredi("Cena je 1.500,25 dinara."),
+                         "Cena je 1.500,25 dinara")
+
+    def test_apostrof_i_dalje_spaja(self):
+        # „ć'š" mora da ostane jedna rec, zato apostrof NIJE u tom pravilu.
+        self.assertEqual(self.sredi("ć'š ti"), "ćš ti")
+        self.assertEqual(self.sredi("je l' ovako"), "je l ovako")
+
+    def test_uobicajen_razmak_ostaje_jedan(self):
+        self.assertEqual(self.sredi("obicna recenica. druga recenica"),
+                         "obicna recenica druga recenica")
+
+
+class ProcenatPrezivljava(unittest.TestCase):
+    """Endpoint vrati „20%" za izgovoreno „dvadeset procenata".
+
+    Brisanje `%` je pojelo jedini trag jedinice, a model to ne moze da vrati:
+    izmereno, `gemini-3.5-flash` nad „popusti je 20" vrati „Popust je 20."
+    """
+
+    def sredi(self, tekst):
+        from dictate import webstt
+        return webstt.strip_punctuation(tekst)
+
+    def test_procenat_ostaje(self):
+        self.assertEqual(self.sredi("popusti je 20%."), "popusti je 20%")
+        self.assertEqual(self.sredi("porez je 20% na sve"), "porez je 20% na sve")
+
+    def test_valutni_znaci_ostaju(self):
+        self.assertEqual(self.sredi("kosta 100$ i 20€"), "kosta 100$ i 20€")
+
+    def test_ostali_simboli_se_i_dalje_brisu(self):
+        self.assertEqual(self.sredi("ovo je #test & jos"), "ovo je test jos")
+
+
+
+class ObicneReciSeNeRazdvajaju(unittest.TestCase):
+    """„jednom" je „jedno" + „m" po spisku brojeva i jedinica, pa se lomilo u
+    „jedno m". Uz broj napisan recima jedinica mora imati bar dva slova.
+    """
+
+    def primeni(self, tekst):
+        from dictate import abbrev
+        return abbrev.apply(tekst, [])
+
+    def test_jednom_ostaje_celo(self):
+        self.assertEqual(self.primeni("uradio sam to jednom"), "uradio sam to jednom")
+        self.assertEqual(self.primeni("u jednom trenutku"), "u jednom trenutku")
+        self.assertEqual(self.primeni("idemo jednom nedeljno"), "idemo jednom nedeljno")
+
+    def test_ostale_reci_sa_jednoslovnom_oznakom(self):
+        for rec in ("stos", "stom", "trim", "dvas", "deseth"):
+            self.assertEqual(self.primeni(f"ovo je {rec} ovde"), f"ovo je {rec} ovde")
+
+    def test_razdvajanje_uz_duzu_jedinicu_ostaje(self):
+        self.assertEqual(self.primeni("petminuta"), "pet min")
+        self.assertEqual(self.primeni("stodinara"), "sto dinara")
+        self.assertEqual(self.primeni("trimetara"), "tri metara")
+        self.assertEqual(self.primeni("petsati"), "pet sati")
+        self.assertEqual(self.primeni("dvadesetkilometara"), "dvadeset kilometara")
+
+    def test_cifra_uz_jednoslovnu_oznaku_i_dalje_radi(self):
+        # Cifra ne moze da napravi rec, pa tu razdvajanje ostaje bezbedno.
+        self.assertEqual(self.primeni("traje 3 h"), "traje 3h")
+        self.assertEqual(self.primeni("dugacko 5 m"), "dugacko 5m")

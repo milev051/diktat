@@ -770,16 +770,44 @@ class DictateApp(rumps.App):
         # Razmak na kraju je uvek: bez njega se recenice slepe pri nadovezivanju.
         return text + " "
 
+    # Ispod ovog vrha amplitude nema govora: tiha soba je ~0.01, bucna ~0.08.
+    # Prazan prepis tise od toga je stvarno tisina, ne izgubljen deo diktata.
+    GOVOR_PEAK = 0.10
+    GOVOR_SEKUNDI = 1.0
+
+    def _bilo_je_govora(self, pcm: bytes) -> bool:
+        """Gruba provera da snimak nije puka tisina."""
+        return (
+            self._seconds(pcm) >= self.GOVOR_SEKUNDI
+            and audio.peak(pcm) >= self.GOVOR_PEAK
+        )
+
+    def _keep_failed(self, pcm: bytes) -> None:
+        saved = self._pending_store.save(pcm)
+        if saved is not None:
+            print(f"[diktat] snimak sacuvan za ponovni pokusaj: {saved}")
+            self._history_dirty = True
+
     def _recognize_or_keep(self, pcm: bytes) -> str:
-        """Ako prepoznavanje padne, snimak ide na disk pa moze da se ponovi."""
+        """Snimak ide na disk i kad poziv padne, i kad prepis dodje prazan.
+
+        Endpoint ume da vrati prazan rezultat i za uredan govor. Ranije se takav
+        segment tiho gubio: ostatak diktata se zalepi, a taj deo nestane bez
+        traga, pa izgleda kao da je zalepljen samo kraj. Sada se snimak cuva u
+        `~/Diktat-neuspeli` i moze da se ponovi sa `./run.sh replay`.
+        """
         try:
-            return self._recognize(pcm)
+            text = self._recognize(pcm)
         except Exception:
-            saved = self._pending_store.save(pcm)
-            if saved is not None:
-                print(f"[diktat] snimak sacuvan za ponovni pokusaj: {saved}")
-                self._history_dirty = True
+            self._keep_failed(pcm)
             raise
+        if not text and self._bilo_je_govora(pcm):
+            print(
+                f"[diktat] prazan prepis za {self._seconds(pcm):.1f}s govora "
+                f"— snimak sacuvan"
+            )
+            self._keep_failed(pcm)
+        return text
 
     def _recognize(self, pcm: bytes) -> str:
         if not pcm:
@@ -955,6 +983,10 @@ class DictateApp(rumps.App):
             out = webstt.strip_punctuation(out)
         if self.cfg.get("lowercase", True):
             out = out.lower()
+        else:
+            # Pisani stil znaci i veliko slovo na pocetku recenice: model ga
+            # ume propustiti, a granica ume da ostane i bez razmaka.
+            out = webstt.capitalize_sentences(out)
         return oznaka + out
 
     def _skracenice(self, text: str) -> str:

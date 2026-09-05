@@ -11,6 +11,9 @@ object TextPolish {
      * ih slepo brisanje spojilo u 35 i 1000. Crtica i simboli se uklanjaju,
      * osim brojčanih separatora (1/2, 10-20).
      */
+    // `%` NIJE u spiskovima ispod: endpoint ga vrati za izgovoreno „procenata"
+    // (izmereno: „popust je dvadeset procenata" -> „popusti je 20%"), pa bi
+    // brisanje pojelo jedini trag jedinice. Isto vazi za `$` i `€`.
     private val PUNCT = Regex(
         // Znaci su pisani kao \uXXXX namerno: krivi navodnici i crte se lako
         // izgube pri kopiranju izmedju alata, a onda pravilo tiho oslabi.
@@ -18,8 +21,8 @@ object TextPolish {
             """|[.,:](?!\d)""" +                             // ili bez cifre iza
             // Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
             """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]""" +
-            """|(?<!\d)[-\u2013\u2014/]|[-\u2013\u2014/](?!\d)""" +
-            """|[#%&*+<=>@\\^_`|~]"""
+            """|(?<!\w)[-\u2013\u2014/]|[-\u2013\u2014/](?!\w)""" +
+            """|[#&*+<=>@\\^_`|~]"""
     )
 
     /** Isto uklanjanje, ali običan zarez ostaje radi opcije „samo zarezi“. */
@@ -27,8 +30,8 @@ object TextPolish {
         """(?<!\d)[.:]""" +
             """|[.:](?!\d)""" +
             """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]""" +
-            """|(?<!\d)[-\u2013\u2014/]|[-\u2013\u2014/](?!\d)""" +
-            """|[#%&*+<=>@\\^_`|~]"""
+            """|(?<!\w)[-\u2013\u2014/]|[-\u2013\u2014/](?!\w)""" +
+            """|[#&*+<=>@\\^_`|~]"""
     )
 
     private val COMMA_BEFORE_I = Regex("""(?iu),[ \t]+(?=i\b)""")
@@ -57,8 +60,20 @@ object TextPolish {
         return out
     }
 
+    // Znak koji stoji IZMEDJU DVA SLOVA, bez razmaka, drzi dve reci razdvojene:
+    // brisanje bi ih slepilo („gotovo je.sada" -> „gotovo jesada"). Zato prvo
+    // postaje razmak, pa se tek onda ostatak brise. Apostrof i navodnici
+    // namerno NISU ovde: „ć'š" mora da ostane jedna rec, ne „ć š".
+    // Isto pravilo kao `_LEPAK` u dictate/webstt.py.
+    private val GLUE = Regex("""(?<=\p{L})[.:;!?\u2026]+(?=\p{L})""")
+    // Zarez ide zasebno: uz „zadrzi zareze" slepljeno „rec,rec" treba da postane
+    // „rec, rec", a ne „rec rec".
+    private val GLUE_COMMA = Regex("""(?<=\p{L}),+(?=\p{L})""")
+
     fun stripPunctuation(text: String, keepCommas: Boolean = false): String {
-        var cleaned = (if (keepCommas) PUNCT_EXCEPT_COMMA else PUNCT).replace(text, "")
+        var razdvojen = GLUE.replace(text, " ")
+        razdvojen = GLUE_COMMA.replace(razdvojen, if (keepCommas) ", " else " ")
+        var cleaned = (if (keepCommas) PUNCT_EXCEPT_COMMA else PUNCT).replace(razdvojen, "")
         if (keepCommas) {
             // Model ponekad napiše „..., i ...“ ili „i, ...“. Za željeni
             // razgovorni stil veznik „i“ ostaje bez zareza sa obe strane.
@@ -75,6 +90,53 @@ object TextPolish {
     }
 
     /** č ć ž š đ -> c c z s dj. Opciono; podrazumevano iskljuceno. */
+    // Reci koje se zavrsavaju tackom a NE zavrsavaju recenicu. Isti spisak kao
+    // u dictate/webstt.py; menja se na oba mesta.
+    private val SKRACENICE = setOf(
+        "br", "cca", "dr", "god", "inz", "inž", "isl", "itd", "mr", "npr",
+        "odn", "prof", "sl", "str", "tel", "tzv", "tj", "ul",
+    )
+
+    // Slepljena granica: ".Cetvrta" umesto ". Cetvrta". Posle tacke se trazi
+    // VELIKO slovo, jer malo slovo tu je po pravilu domen ili ime fajla
+    // ("config.json", "google.com") koje ne sme da se raskine. Upitnik i
+    // uzvicnik u njima ne postoje, pa posle njih razmak ide bez tog uslova.
+    private val GLUED = Regex("""([.!?])(?=[\p{L}])""")
+
+    // Granica recenice sa razmakom: rec, znak, razmak, pa slovo koje se podize.
+    private val BOUNDARY = Regex("""([^\s.!?]*)([.!?])([ \t]+)([\p{L}])""")
+
+    /** Da li `znak` posle reci `rec` zaista zavrsava recenicu. */
+    private fun endsSentence(rec: String, znak: String): Boolean {
+        if (znak != ".") return true          // upitnik i uzvicnik uvek zavrsavaju
+        if (rec.isEmpty()) return true
+        if (rec.last().isDigit()) return false        // godina, redni broj, verzija
+        if (rec.length == 1) return false             // inicijal
+        return rec.lowercase() !in SKRACENICE
+    }
+
+    /**
+     * Razmak i veliko slovo posle tacke, upitnika i uzvicnika.
+     *
+     * Radi samo uz pisani stil: uz „izgovoreno" se interpunkcija ionako brise,
+     * pa granice recenice nema. Prvo slovo komada se NE dira — diktat se secka
+     * na pauzama, pa sledeci komad ume da bude nastavak recenice.
+     */
+    fun capitalizeSentences(text: String): String {
+        if (text.isEmpty()) return text
+        var out = GLUED.replace(text) { m ->
+            val znak = m.groupValues[1]
+            val slovo = text[m.range.last + 1]
+            if (znak == "." && !slovo.isUpperCase()) znak else "$znak "
+        }
+        out = BOUNDARY.replace(out) { m ->
+            val (rec, znak, razmak, slovo) = m.destructured
+            if (!endsSentence(rec, znak)) m.value
+            else rec + znak + razmak + slovo.uppercase()
+        }
+        return out
+    }
+
     fun toAscii(text: String): String = buildString {
         for (ch in text) append(DIACRITICS[ch] ?: ch)
     }
@@ -114,7 +176,13 @@ object TextPolish {
         if (cfg.stripPunctuation) {
             text = stripPunctuation(text, keepCommas = cfg.polishCommas)
         }
-        if (cfg.lowercase) text = text.lowercase()
+        if (cfg.lowercase) {
+            text = text.lowercase()
+        } else {
+            // Pisani stil znaci i veliko slovo na pocetku recenice: model ga
+            // ume propustiti, a granica ume da ostane i bez razmaka.
+            text = capitalizeSentences(text)
+        }
         text = Abbreviations.apply(
             text,
             if (cfg.abbreviations) Abbreviations.parse(cfg.abbreviationRules) else emptyList(),

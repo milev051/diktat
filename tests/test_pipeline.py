@@ -181,7 +181,7 @@ class PravilaNadPasusima(unittest.TestCase):
 
     def test_brojevi_ostaju_celi(self):
         app = napravi()
-        self.assertEqual(app._rules_over_paragraphs("U 10:30, za 3,5 dinara."), "u 10:30 za 3,5dinara")
+        self.assertEqual(app._rules_over_paragraphs("U 10:30, za 3,5 dinara."), "u 10:30 za 3,5 dinara")
 
 
 if __name__ == "__main__":
@@ -201,8 +201,10 @@ class ZavrsnaObrada(unittest.TestCase):
         self.assertEqual(app._after_model("Juče je bio čas."), "Juče je bio čas.")
 
     def test_hiljade_se_spajaju(self):
+        # Tacka hiljada nestaje, ali valuta recima zadrzava razmak: "5000dinara"
+        # izgleda kao greska.
         app = napravi()
-        self.assertEqual(app._after_model("Cena je 5.000 dinara."), "cena je 5000dinara")
+        self.assertEqual(app._after_model("Cena je 5.000 dinara."), "cena je 5000 dinara")
 
 
 class StilPresudjuje(unittest.TestCase):
@@ -286,7 +288,7 @@ class SpisakTacaka(unittest.TestCase):
     def test_crtica_usred_reda_odlazi(self):
         # Kada je uklanjanje interpunkcije ukljuceno, odlazi i crtica u reci.
         app = napravi(text_style="spoken")
-        self.assertEqual(app._rules_over_paragraphs("crno-beli film - lep"), "crnobeli film lep")
+        self.assertEqual(app._rules_over_paragraphs("crno-beli film - lep"), "crno-beli film lep")
 
     def test_mala_slova_i_interpunkcija_su_nezavisni(self):
         app = napravi(lowercase=False, strip_punctuation=True)
