@@ -437,3 +437,40 @@ class JedanZahtevPoDiktatu(unittest.TestCase):
     def test_google_sece_na_pauzama(self):
         # Prazan spisak = nije uzet put "ceo diktat", nego uobicajeni.
         self.assertEqual(self.put("google"), [])
+
+
+class GranicaTrajanja(unittest.TestCase):
+    """Koliko sme da traje jedan pritisak, po izvoru transkripcije."""
+
+    def limit(self, **izmene):
+        return napravi(polish_api_key="x", **izmene)._limit_seconds()
+
+    def test_gemini_live_staje_posle_dva_minuta(self):
+        # Jedini izvor koji salje zvuk DOK snimas (~2,5 MB/min): zaboravljen
+        # mikrofon tu curi podatke sve vreme, a ne tek na kraju.
+        self.assertEqual(self.limit(transcription_provider="gemini_live"), 120.0)
+
+    def test_granica_za_live_ne_zavisi_od_neprekidnog(self):
+        # Ne stiti od predugackog ZAHTEVA nego od zaboravljenog mikrofona.
+        self.assertEqual(
+            self.limit(transcription_provider="gemini_live", continuous=False), 120.0
+        )
+
+    def test_ostali_izvori_zadrzavaju_svoje_granice(self):
+        self.assertEqual(self.limit(transcription_provider="google"), 3600.0)
+        self.assertEqual(
+            self.limit(transcription_provider="google", continuous=False), 30.0
+        )
+
+    def test_neispravna_vrednost_pada_na_dva_minuta(self):
+        self.assertEqual(
+            self.limit(transcription_provider="gemini_live",
+                       gemini_live_max_seconds="nije broj"), 120.0
+        )
+
+    def test_vrednost_se_drzi_u_granicama(self):
+        for uneto, ocekivano in ((5, 30.0), (99999, 3600.0), (300, 300.0)):
+            self.assertEqual(
+                self.limit(transcription_provider="gemini_live",
+                           gemini_live_max_seconds=uneto), ocekivano, uneto
+            )

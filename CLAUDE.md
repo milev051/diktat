@@ -49,6 +49,21 @@ proizvodilo krhotine koje se loše prepoznaju — menjaj prvo.
 100 MB. Zato Android `Recorder` izbacuje komade kroz red, a potrošač drži samo
 tekući segment i pušta ga čim ga pošalje.
 
+**Gemini Live ima svoju, kratku granicu (120s).** Ostali izvori šalju zvuk tek
+na kraju, pa zaboravljen mikrofon kod njih košta samo vreme dok neko ne
+primeti. Live šalje **dok snimaš**, ~2,5 MB po minutu, pa zaboravljen diktat
+tamo curi i mobilni internet sve vreme. Granica važi **bez obzira na
+neprekidni režim**: ona ne štiti od predugačkog zahteva nego od zaboravljenog
+mikrofona, pa ne sme da zavisi od tog prekidača. Menja se u `config.json`
+(`gemini_live_max_seconds`) odnosno u `SharedPreferences`; na ekranu ne stoji,
+kao ni ostala polja koja se nameste jednom.
+
+**Granica se računa na JEDNOM mestu.** Ista računica je na Androidu bila
+prepisana u tajmeru i u piluli, pa je pilula mogla da pokazuje jednu granicu
+dok se snimanje seklo na drugoj. Sada je u `Granica.sekundi`, izdvojeno od
+`Config` baš zato što je `Context` u JVM testovima prazan kalup — test nad
+`Config`-om bi tiho prolazio na praznom.
+
 **Snimanje uvek staje na granici.** Slučajno pokrenut diktat bi inače snimao
 satima i poslao ogromnu količinu podataka. Posle prekida se **traži nov
 pritisak** — a prekidač se mora vratiti u mirovanje (`listener.reset()`), inače

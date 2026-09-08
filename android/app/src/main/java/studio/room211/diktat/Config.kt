@@ -174,6 +174,18 @@ class Config(context: Context) {
     /** Sigurnosna granica i za neprekidni rezim — da zaboravljen diktat stane. */
     val continuousMaxSeconds get() = prefs.getInt("continuous_max_seconds", 3600)
 
+    /**
+     * Granica bas za Gemini Live, kratka i namerno drugacija od ostalih.
+     *
+     * Live je jedini izvor koji salje zvuk DOK snimas (~2,5 MB po minutu), pa
+     * zaboravljen diktat tu curi podatke sve vreme, a ne tek na kraju. Kod
+     * Google-a i OpenAI-ja zaboravljen diktat kosta samo vreme dok neko ne
+     * primeti; ovde kosta i mobilni internet. Posle granice se trazi nov
+     * pritisak, kao i inace.
+     */
+    val geminiLiveMaxSeconds: Int
+        get() = prefs.getInt("gemini_live_max_seconds", 120).coerceIn(30, 3600)
+
     /** Uvek ukljuceno: ako sazimanje ne uspe, salje se sirov zvuk kao i pre. */
     val compressAudio = true
 

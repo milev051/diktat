@@ -27,7 +27,11 @@ DEFAULTS = {
     "openai_api_key": "",          # opciono; koristi se samo uz OpenAI provajder
     "openai_output_script": "latin",  # OpenAI desktop output is always Latin
     "openai_long_recording": True, # OpenAI dugi diktat, uz sigurnosni limit
-    "openai_max_seconds": 3600,    # najviše 60 minuta po jednom OpenAI diktatu
+    "openai_max_seconds": 3600,
+    # Live salje zvuk DOK snimas, ~2,5 MB po minutu; zaboravljen diktat tu ne
+    # trosi samo vreme nego i podatke, sve dok neko ne primeti. Zato je granica
+    # kratka i ne stoji na ekranu, kao ni ostala polja koja se nameste jednom.
+    "gemini_live_max_seconds": 120,    # najviše 60 minuta po jednom OpenAI diktatu
     "recorded_seconds": 0.0,       # ukupno vreme uhvaćenog zvuka na ovom računaru
     # Maskiranje psovki je uklonjeno kao podesavanje: uvek `pFilter=0`.
     # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci

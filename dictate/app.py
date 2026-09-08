@@ -640,9 +640,14 @@ class DictateApp(rumps.App):
     def _limit_seconds(self) -> float:
         """Koliko sme da traje JEDAN pritisak tastera."""
         if geministt.enabled(self.cfg):
-            # Transcribe prima do sat vremena po zahtevu; granica od 30s je
-            # ogranicenje Web Speech endpointa i ovde nema sta da radi.
-            return float(self.cfg.get("continuous_max_seconds", 3600))
+            # Live je jedini izvor koji salje zvuk DOK snimas (~2,5 MB/min), pa
+            # zaboravljen diktat tu curi podatke sve vreme, a ne tek na kraju.
+            # Zato kratka granica: posle nje se trazi nov pritisak.
+            try:
+                limit = int(self.cfg.get("gemini_live_max_seconds", 120))
+            except (TypeError, ValueError):
+                limit = 120
+            return float(min(3600, max(30, limit)))
         if self.cfg.get("transcription_provider", "google") == "openai":
             if self._openai_long_recording():
                 try:

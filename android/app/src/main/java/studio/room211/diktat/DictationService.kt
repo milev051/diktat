@@ -681,15 +681,26 @@ class DictationService : Service() {
 
     private fun elapsed() = ((System.currentTimeMillis() - startedAt) / 1000).toInt()
 
+    /**
+     * Koliko sme da traje JEDAN pritisak.
+     *
+     * Racunica je bila prepisana na dva mesta, u tajmeru i u piluli, pa je
+     * pilula mogla da pokazuje jednu granicu dok se snimanje seklo na drugoj.
+     * Sada je na jednom mestu.
+     */
+    private fun limitSeconds(): Int = Granica.sekundi(
+        provider = cfg.transcriptionProvider,
+        dugoSnimanje = cfg.longRecording,
+        geminiLive = cfg.geminiLiveMaxSeconds,
+        openAi = cfg.openAiMaxSeconds,
+        neprekidno = cfg.continuousMaxSeconds,
+        kratko = cfg.maxSeconds,
+    )
+
     private fun tick() {
         if (!isRecording) return
         val sec = elapsed()
-        val limit = if (cfg.longRecording) {
-            if (cfg.transcriptionProvider == "openai") cfg.openAiMaxSeconds
-            else cfg.continuousMaxSeconds
-        } else {
-            cfg.maxSeconds
-        }
+        val limit = limitSeconds()
         if (sec >= limit) {
             // Bez granice bi slucajno pokrenut diktat mogao da snima satima.
             // Nastavak trazi nov pritisak.
@@ -811,12 +822,7 @@ class DictationService : Service() {
      */
     private fun updatePill(seconds: Int, busy: Boolean) {
         val view = pillCounter ?: return
-        val limit = if (cfg.longRecording) {
-            if (cfg.transcriptionProvider == "openai") cfg.openAiMaxSeconds
-            else cfg.continuousMaxSeconds
-        } else {
-            cfg.maxSeconds
-        }
+        val limit = limitSeconds()
         view.text = if (seconds >= 60) {
             "%d:%02d".format(seconds / 60, seconds % 60)
         } else {

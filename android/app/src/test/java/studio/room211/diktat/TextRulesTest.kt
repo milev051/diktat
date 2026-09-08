@@ -489,3 +489,42 @@ class PravilnoTest {
         assertEquals(pocetno, Pravilno.priGasenju(zapamceno))
     }
 }
+
+/**
+ * Granica trajanja po izvoru. Isti slucajevi kao `_limit_seconds` u
+ * tests/test_pipeline.py na Mac strani.
+ */
+class GranicaTest {
+
+    private fun sekundi(provider: String, dugo: Boolean = true) = Granica.sekundi(
+        provider = provider, dugoSnimanje = dugo,
+        geminiLive = 120, openAi = 3600, neprekidno = 3600, kratko = 30,
+    )
+
+    @Test
+    fun `gemini live staje posle dva minuta`() {
+        // Jedini izvor koji salje zvuk DOK snimas (~2,5 MB/min): zaboravljen
+        // mikrofon tu curi podatke sve vreme, a ne tek na kraju.
+        assertEquals(120, sekundi("gemini_live"))
+    }
+
+    @Test
+    fun `granica za live vazi i bez dugog snimanja`() {
+        // Ne stiti od predugackog ZAHTEVA nego od zaboravljenog mikrofona, pa
+        // ne sme da zavisi od tog prekidaca.
+        assertEquals(120, sekundi("gemini_live", dugo = false))
+    }
+
+    @Test
+    fun `ostali izvori zadrzavaju svoje granice`() {
+        assertEquals(3600, sekundi("google"))
+        assertEquals(3600, sekundi("openai"))
+        assertEquals(30, sekundi("google", dugo = false))
+        assertEquals(30, sekundi("openai", dugo = false))
+    }
+
+    @Test
+    fun `podrazumevano je dva minuta`() {
+        assertEquals(120, Granica.GEMINI_LIVE_PODRAZUMEVANO)
+    }
+}
