@@ -478,19 +478,62 @@ class MainActivity : AppCompatActivity() {
         // Ovo radi nas kod, bez modela i bez kljuca — zato je odvojeno od AI
         // kartice i radi i kad je AI iskljucen.
         val (card, box) = card(this, "Tekst")
-        box.addView(switch(this, "Sva slova mala", cfg.lowercase) {
-            cfg.lowercase = it
-        })
-        box.addView(switch(this, "Ukloni interpunkciju (brojevi ostaju)", cfg.stripPunctuation) {
-            cfg.stripPunctuation = it
-        })
-        box.addView(switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
-            cfg.asciiDiacritics = it
-        })
 
-        box.addView(switch(this, "Skraćuj česte fraze", cfg.abbreviations) {
-            cfg.abbreviations = it
-        })
+        // `isChecked` iz koda okida istog slusaoca kao i prst, pa bi bez ove
+        // zastavice sinhronizacija prepisivala podesavanja koja upravo cita.
+        var sinhronizujem = false
+        lateinit var swPravilno: com.google.android.material.materialswitch.MaterialSwitch
+        lateinit var swMala: com.google.android.material.materialswitch.MaterialSwitch
+        lateinit var swInterpunkcija: com.google.android.material.materialswitch.MaterialSwitch
+        lateinit var swKvacice: com.google.android.material.materialswitch.MaterialSwitch
+        lateinit var swSkracenice: com.google.android.material.materialswitch.MaterialSwitch
+
+        // Kvacica na „Pravilno" se IZVODI iz ta cetiri, ne pamti se zasebno:
+        // inace bi rucno gasenje jednog od njih ostavilo nad-prekidac da laze.
+        fun osvezi() {
+            sinhronizujem = true
+            swPravilno.isChecked = cfg.pravilno
+            swMala.isChecked = cfg.lowercase
+            swInterpunkcija.isChecked = cfg.stripPunctuation
+            swKvacice.isChecked = cfg.asciiDiacritics
+            swSkracenice.isChecked = cfg.abbreviations
+            sinhronizujem = false
+        }
+
+        // Nad-prekidac iznad cetiri. Nije peto podesavanje nego precica: cetiri
+        // klika za prelazak izmedju „kako sam izgovorio" i „pravopisno" su
+        // cetiri prilike da se jedan zaboravi, pa tekst izadje na pola puta.
+        swPravilno = switch(this, "Pravilno (gasi sva četiri ispod)", cfg.pravilno) {
+            if (!sinhronizujem) {
+                cfg.pravilno = it
+                osvezi()
+            }
+        }
+        box.addView(swPravilno)
+        box.addView(
+            body(
+                this,
+                "Isto što radi dugme pored brojača dok snimaš. Isključivanje vraća " +
+                    "ono što je bilo uključeno pre, ne podrazumevano.",
+            )
+        )
+
+        swMala = switch(this, "Sva slova mala", cfg.lowercase) {
+            if (!sinhronizujem) { cfg.lowercase = it; osvezi() }
+        }
+        box.addView(swMala)
+        swInterpunkcija = switch(this, "Ukloni interpunkciju (brojevi ostaju)", cfg.stripPunctuation) {
+            if (!sinhronizujem) { cfg.stripPunctuation = it; osvezi() }
+        }
+        box.addView(swInterpunkcija)
+        swKvacice = switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
+            if (!sinhronizujem) { cfg.asciiDiacritics = it; osvezi() }
+        }
+        box.addView(swKvacice)
+        swSkracenice = switch(this, "Skraćuj česte fraze", cfg.abbreviations) {
+            if (!sinhronizujem) { cfg.abbreviations = it; osvezi() }
+        }
+        box.addView(swSkracenice)
         box.addView(
             body(
                 this,

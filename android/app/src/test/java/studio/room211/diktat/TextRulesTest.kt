@@ -412,3 +412,80 @@ class ObicneReciTest {
         assertEquals("dugacko 5m", primeni("dugacko 5 m"))
     }
 }
+
+/**
+ * „Pravilno" je precica nad cetiri prekidaca, ne peto podesavanje. Isti
+ * slucajevi kao u tests/test_text.py na Mac strani.
+ */
+class PravilnoTest {
+
+    private val sveUkljuceno = Pravilno.Stanje(
+        malaSlova = true, bezInterpunkcije = true,
+        bezKvacica = true, skracenice = true,
+    )
+
+    @Test
+    fun `sve ukljuceno nije pravilno`() {
+        assertEquals(false, sveUkljuceno.pravilno)
+    }
+
+    @Test
+    fun `sve iskljuceno jeste pravilno`() {
+        assertEquals(true, Pravilno.SVE_UGASENO.pravilno)
+    }
+
+    @Test
+    fun `jedan ukljucen vise nije pravilno`() {
+        // Nad-prekidac se IZVODI iz cetiri; rucno paljenje jednog ga mora
+        // oboriti, inace bi prekidac u podesavanjima lagao.
+        assertEquals(false, Pravilno.SVE_UGASENO.copy(malaSlova = true).pravilno)
+        assertEquals(false, Pravilno.SVE_UGASENO.copy(bezInterpunkcije = true).pravilno)
+        assertEquals(false, Pravilno.SVE_UGASENO.copy(bezKvacica = true).pravilno)
+        assertEquals(false, Pravilno.SVE_UGASENO.copy(skracenice = true).pravilno)
+    }
+
+    @Test
+    fun `ukljucivanje pamti zatecen izbor`() {
+        val zapamceno = Pravilno.priUkljucivanju(sveUkljuceno)
+        assertEquals(sveUkljuceno, zapamceno)
+    }
+
+    @Test
+    fun `ukljucivanje nad vec pravilnim ne pamti nista`() {
+        // Pamti se samo pri PRELASKU; inace bi drugi poziv zapamtio vec ugasena
+        // stanja i povratak ne bi vratio nista.
+        assertEquals(null, Pravilno.priUkljucivanju(Pravilno.SVE_UGASENO))
+    }
+
+    @Test
+    fun `gasenje vraca ono sto je bilo`() {
+        // Ne podrazumevano: `bezKvacica` je podrazumevano iskljucen, pa bi
+        // povratak na podrazumevano tiho ukinuo izbor onome ko ga drzi upaljenog.
+        val bilo = Pravilno.Stanje(
+            malaSlova = true, bezInterpunkcije = false,
+            bezKvacica = true, skracenice = false,
+        )
+        assertEquals(bilo, Pravilno.priGasenju(bilo))
+    }
+
+    @Test
+    fun `gasenje bez pamcenja vraca podrazumevano`() {
+        val vraceno = Pravilno.priGasenju(null)
+        assertEquals(Pravilno.PODRAZUMEVANO, vraceno)
+        assertEquals(true, vraceno.malaSlova)
+        assertEquals(true, vraceno.bezInterpunkcije)
+        assertEquals(false, vraceno.bezKvacica)
+        assertEquals(true, vraceno.skracenice)
+    }
+
+    @Test
+    fun `pun krug ukljuci pa iskljuci vraca isto`() {
+        val pocetno = Pravilno.Stanje(
+            malaSlova = true, bezInterpunkcije = true,
+            bezKvacica = true, skracenice = true,
+        )
+        val zapamceno = Pravilno.priUkljucivanju(pocetno)
+        assertEquals(true, Pravilno.SVE_UGASENO.pravilno)
+        assertEquals(pocetno, Pravilno.priGasenju(zapamceno))
+    }
+}

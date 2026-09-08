@@ -566,6 +566,31 @@ mikrofon je upravo ono što ih je spajalo.
 `audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera
 snimka udvostručuje saobraćaj — otud odvojen prekidač, a ne stalno ponašanje.
 
+**„Pravilno" je prečica nad četiri prekidača, ne peto podešavanje.** Mala
+slova, brisanje interpunkcije, skidanje kvačica i skraćenice — svaki od njih
+udaljava tekst od pravopisa, pa „pravilno" znači: sva četiri ugašena. Četiri
+klika za prelazak između dva stanja su četiri prilike da se jedan zaboravi, pa
+tekst izađe na pola puta. Kvačica se **izvodi** iz ta četiri, nikad ne pamti
+zasebno: inače bi ručno gašenje jednog ostavilo nad-prekidač da laže.
+
+**Gašenje vraća ono što je bilo, ne podrazumevano.** `ascii_diacritics` je
+podrazumevano isključen, pa bi povratak na podrazumevano tiho ukinuo izbor
+onome ko ga drži upaljenog. Zapamti se samo pri **prelasku**; drugi poziv nad
+već pravilnim stanjem ne pamti ništa, jer bi zapamtio sve ugašeno i povratak ne
+bi vratio ništa. Odluke stoje u `Pravilno.kt` i `config.pravilno` /
+`config.postavi_pravilno`, odvojene od `SharedPreferences` i `config.json` baš
+zato što `Context` u JVM testovima vraća podrazumevane vrednosti, pa bi test
+nad `Config`-om tiho prolazio na praznom.
+
+**Dugme na piluli sme da se klikne jer prozor nije fokusabilan.** Pilula je
+`FLAG_NOT_FOCUSABLE`, pa dodir stiže dugmetu a fokus ostaje u polju u koje
+tekst treba da se upiše. To je ista zastavica zbog koje pilula uopšte postoji u
+tom obliku; da je nema, klik na dugme bi oduzeo fokus i prepoznat tekst ne bi
+imao gde da ode. Natpis nosi stanje (`Aa` pravopisno, `aa` kako si izgovorio):
+pilula se gleda krajičkom oka usred diktata, gde dva slova kažu više nego bilo
+koji simbol. Cena je što dugme širi prozor, a prozor guta dodire ispod sebe —
+zato je usko (46dp) i stoji levo od brojača, uz samu ivicu.
+
 **Izgled teksta ima dva stanja, ne tri prekidača.** „Sredi tekst", „sve malim
 slovima" i „bez interpunkcije" su mogli da budu uključeni istovremeno, a ishod
 je zavisio od redosleda u kodu. Sada je `text_style`: `spoken` (podrazumevano)

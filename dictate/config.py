@@ -200,6 +200,51 @@ def _migrate(cfg: dict, saved=None) -> dict:
     return cfg
 
 
+# Cetiri prekidaca koja zajedno odlucuju da li tekst izlazi „pravilno".
+# Svaki od njih UDALJAVA tekst od pravopisa, pa „pravilno" znaci: sva cetiri
+# ugasena. Redosled je isti kao u meniju i u Config.kt na Androidu.
+PRAVILNO_KLJUCEVI = ("lowercase", "strip_punctuation", "ascii_diacritics", "abbreviations")
+
+# Gde se pamti zatecen izbor dok je „pravilno" upaljeno.
+_PRE_PRAVILNO = "pravilno_pre"
+
+
+def pravilno(cfg) -> bool:
+    """Da li tekst izlazi pravopisno uredjen: sva cetiri prekidaca ugasena."""
+    return not any(bool(cfg.get(k, False)) for k in PRAVILNO_KLJUCEVI)
+
+
+def postavi_pravilno(cfg, upaljeno: bool) -> None:
+    """Upali ili ugasi sva cetiri odjednom.
+
+    Gasenje NE vraca fiksne podrazumevane vrednosti nego bas ono sto je
+    korisnik imao pre nego sto je upalio „pravilno". Razlika je stvarna:
+    `ascii_diacritics` je podrazumevano iskljucen, pa bi povratak na
+    podrazumevano tiho ukinuo izbor onome ko ga drzi upaljenog. Cetiri
+    prekidaca su i dalje tu i smeju da se menjaju pojedinacno; ovo je samo
+    precica za dva stanja izmedju kojih se najcesce skace.
+    """
+    if upaljeno:
+        if not pravilno(cfg):
+            # Zapamti se samo pri PRELASKU, ne pri svakom pozivu: inace bi
+            # drugi klik zapamtio vec ugasena stanja i povratak ne bi vratio
+            # nista.
+            cfg[_PRE_PRAVILNO] = {k: bool(cfg.get(k, False)) for k in PRAVILNO_KLJUCEVI}
+        for k in PRAVILNO_KLJUCEVI:
+            cfg[k] = False
+        return
+
+    staro = cfg.get(_PRE_PRAVILNO) or {}
+    for k in PRAVILNO_KLJUCEVI:
+        if k in staro:
+            cfg[k] = bool(staro[k])
+        else:
+            # Nista zapamceno (prvo pokretanje ili rucno menjanje): vrati
+            # podrazumevano, da gasenje uvek nesto uradi.
+            cfg[k] = bool(DEFAULTS[k])
+    cfg.pop(_PRE_PRAVILNO, None)
+
+
 def style(cfg) -> str:
     """spoken | written — jedini izvor istine o izgledu teksta."""
     return "written" if cfg.get("text_style") == "written" else "spoken"

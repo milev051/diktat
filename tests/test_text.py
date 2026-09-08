@@ -385,3 +385,86 @@ class ObicneReciSeNeRazdvajaju(unittest.TestCase):
         # Cifra ne moze da napravi rec, pa tu razdvajanje ostaje bezbedno.
         self.assertEqual(self.primeni("traje 3 h"), "traje 3h")
         self.assertEqual(self.primeni("dugacko 5 m"), "dugacko 5m")
+
+
+class PravilnoNadPrekidac(unittest.TestCase):
+    """„Pravilno" je precica nad cetiri prekidaca, ne peto podesavanje.
+
+    Svaki od ta cetiri UDALJAVA tekst od pravopisa, pa „pravilno" znaci: sva
+    cetiri ugasena.
+    """
+
+    def cfg(self, **izmene):
+        osnova = {
+            "lowercase": True, "strip_punctuation": True,
+            "ascii_diacritics": True, "abbreviations": True,
+        }
+        osnova.update(izmene)
+        return osnova
+
+    def test_sve_ukljuceno_nije_pravilno(self):
+        from dictate import config
+        self.assertFalse(config.pravilno(self.cfg()))
+
+    def test_sve_iskljuceno_jeste_pravilno(self):
+        from dictate import config
+        self.assertTrue(config.pravilno(self.cfg(
+            lowercase=False, strip_punctuation=False,
+            ascii_diacritics=False, abbreviations=False,
+        )))
+
+    def test_jedan_ukljucen_vise_nije_pravilno(self):
+        # Nad-prekidac se IZVODI iz cetiri; rucno paljenje jednog ga mora oboriti,
+        # inace bi kvacica u meniju lagala.
+        from dictate import config
+        for kljuc in config.PRAVILNO_KLJUCEVI:
+            c = self.cfg(lowercase=False, strip_punctuation=False,
+                         ascii_diacritics=False, abbreviations=False)
+            c[kljuc] = True
+            self.assertFalse(config.pravilno(c), kljuc)
+
+    def test_ukljucivanje_gasi_sva_cetiri(self):
+        from dictate import config
+        c = self.cfg()
+        config.postavi_pravilno(c, True)
+        for kljuc in config.PRAVILNO_KLJUCEVI:
+            self.assertFalse(c[kljuc], kljuc)
+
+    def test_iskljucivanje_vraca_ono_sto_je_bilo(self):
+        # Ne podrazumevano: `ascii_diacritics` je podrazumevano iskljucen, pa bi
+        # povratak na podrazumevano tiho ukinuo izbor onome ko ga drzi upaljenog.
+        from dictate import config
+        c = self.cfg(ascii_diacritics=True, abbreviations=False)
+        config.postavi_pravilno(c, True)
+        config.postavi_pravilno(c, False)
+        self.assertTrue(c["ascii_diacritics"])
+        self.assertFalse(c["abbreviations"])
+        self.assertTrue(c["lowercase"])
+
+    def test_dvaput_ukljuceno_ne_gubi_pamcenje(self):
+        # Pamti se samo pri PRELASKU; inace bi drugi poziv zapamtio vec ugasena
+        # stanja i povratak ne bi vratio nista.
+        from dictate import config
+        c = self.cfg(ascii_diacritics=True)
+        config.postavi_pravilno(c, True)
+        config.postavi_pravilno(c, True)
+        config.postavi_pravilno(c, False)
+        self.assertTrue(c["ascii_diacritics"])
+
+    def test_bez_pamcenja_vraca_podrazumevano(self):
+        from dictate import config
+        c = self.cfg(lowercase=False, strip_punctuation=False,
+                     ascii_diacritics=False, abbreviations=False)
+        config.postavi_pravilno(c, False)
+        self.assertTrue(c["lowercase"])
+        self.assertTrue(c["strip_punctuation"])
+        self.assertTrue(c["abbreviations"])
+        self.assertFalse(c["ascii_diacritics"])
+
+    def test_pravilan_tekst_prolazi_kroz_pravila_nedirnut(self):
+        # Prava provera: uz „pravilno" nasa pravila ne smeju nista da oduzmu.
+        from tests.test_pipeline import napravi
+        app = napravi(lowercase=False, strip_punctuation=False,
+                      ascii_diacritics=False, abbreviations=False)
+        ulaz = "Ovo je rečenica. Druga rečenica, sa zarezom!"
+        self.assertEqual(app._apply_rules(ulaz), ulaz)

@@ -186,6 +186,63 @@ class Config(context: Context) {
         set(v) = prefs.edit().putBoolean("abbreviations", v).apply()
 
     /**
+     * „Pravilno": sva cetiri prekidaca za izgled teksta odjednom.
+     *
+     * Nije peto podesavanje nego precica. Svaki od ta cetiri UDALJAVA tekst od
+     * pravopisa (mala slova, bez interpunkcije, bez kvacica, skracenice), pa
+     * „pravilno" znaci: sva cetiri ugasena. Cetiri klika za prelazak izmedju
+     * dva stanja su cetiri prilike da se jedan zaboravi, pa tekst izadje na
+     * pola puta.
+     *
+     * Gasenje NE vraca podrazumevane vrednosti nego bas ono sto je bilo pre
+     * ukljucivanja. Razlika je stvarna: `ascii_diacritics` je podrazumevano
+     * iskljucen, pa bi povratak na podrazumevano tiho ukinuo izbor onome ko ga
+     * drzi upaljenog.
+     *
+     * Stanje je TRAJNO. Dugme na piluli menja bas ovo, pa izbor ostaje i za
+     * sledeci diktat, dok se ne vrati rukom.
+     */
+    /** Cetiri prekidaca kao jedno stanje; odluke su u `Pravilno`. */
+    private var stanjeTeksta: Pravilno.Stanje
+        get() = Pravilno.Stanje(lowercase, stripPunctuation, asciiDiacritics, abbreviations)
+        set(v) {
+            lowercase = v.malaSlova
+            stripPunctuation = v.bezInterpunkcije
+            asciiDiacritics = v.bezKvacica
+            abbreviations = v.skracenice
+        }
+
+    var pravilno: Boolean
+        get() = stanjeTeksta.pravilno
+        set(v) {
+            if (v) {
+                Pravilno.priUkljucivanju(stanjeTeksta)?.let { zapamti ->
+                    prefs.edit()
+                        .putBoolean("pravilno_pre_lowercase", zapamti.malaSlova)
+                        .putBoolean("pravilno_pre_strip", zapamti.bezInterpunkcije)
+                        .putBoolean("pravilno_pre_ascii", zapamti.bezKvacica)
+                        .putBoolean("pravilno_pre_abbrev", zapamti.skracenice)
+                        .putBoolean("pravilno_pamceno", true)
+                        .apply()
+                }
+                stanjeTeksta = Pravilno.SVE_UGASENO
+                return
+            }
+            val zapamceno = if (prefs.getBoolean("pravilno_pamceno", false)) {
+                Pravilno.Stanje(
+                    prefs.getBoolean("pravilno_pre_lowercase", true),
+                    prefs.getBoolean("pravilno_pre_strip", true),
+                    prefs.getBoolean("pravilno_pre_ascii", false),
+                    prefs.getBoolean("pravilno_pre_abbrev", true),
+                )
+            } else {
+                null
+            }
+            stanjeTeksta = Pravilno.priGasenju(zapamceno)
+            prefs.edit().putBoolean("pravilno_pamceno", false).apply()
+        }
+
+    /**
      * Pravila, jedno po redu, oblik `fraza=skracenica`.
      *
      * Uz pravila se pamti i kako su podrazumevana izgledala kad su sacuvana.

@@ -235,6 +235,14 @@ class DictateApp(rumps.App):
             "Ukloni interpunkciju (brojevi ostaju)",
             callback=lambda _: self._toggle_local_text("strip_punctuation"),
         )
+        # Nad-prekidac iznad ta cetiri. Nije peto podesavanje nego precica:
+        # cetiri klika za prelazak izmedju „kako sam izgovorio" i „pravopisno"
+        # su cetiri prilike da se jedan zaboravi, pa tekst izadje na pola puta.
+        self.item_pravilno = rumps.MenuItem(
+            "Pravilno (gasi sva četiri ispod)", callback=self._toggle_pravilno
+        )
+        tekst_menu.add(self.item_pravilno)
+        tekst_menu.add(rumps.separator)
         for stavka in (
             self.item_lowercase, self.item_punctuation, self.item_ascii,
             self.item_abbrev,
@@ -468,6 +476,9 @@ class DictateApp(rumps.App):
         self.item_abbrev.state = 1 if self.cfg.get("abbreviations", True) else 0
         self.item_lowercase.state = 1 if self.cfg.get("lowercase", True) else 0
         self.item_punctuation.state = 1 if self.cfg.get("strip_punctuation", True) else 0
+        # Kvacica na „Pravilno" se izvodi iz ta cetiri, ne pamti se zasebno:
+        # inace bi rucno gasenje jednog od njih ostavilo nad-prekidac da laze.
+        self.item_pravilno.state = 1 if config.pravilno(self.cfg) else 0
 
         # Alati rade cim postoji kljuc; izabran alat je sam po sebi "ukljuceno".
         radi = polish.available(self.cfg)
@@ -1648,6 +1659,13 @@ class DictateApp(rumps.App):
 
     def _set_toggle(self, _):
         self._set_mode("toggle")
+
+    def _toggle_pravilno(self, _):
+        """Sva cetiri odjednom; gasenje vraca ono sto je bilo, ne podrazumevano."""
+        config.postavi_pravilno(self.cfg, not config.pravilno(self.cfg))
+        config.save(self.cfg)
+        self._sync_menu_marks()
+        self._keep_menu_open()
 
     def _toggle_local_text(self, key):
         self.cfg[key] = not bool(self.cfg.get(key, True))

@@ -15,6 +15,8 @@ import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.WindowManager
+import android.view.View
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import kotlin.concurrent.thread
@@ -64,7 +66,9 @@ class DictationService : Service() {
         }
     }
     private var recorder: Recorder? = null
-    private var pill: TextView? = null
+    private var pill: View? = null
+    private var pillCounter: TextView? = null
+    private var pillToggle: TextView? = null
     private var windows: WindowManager? = null
     private var startedAt = 0L
     private var busy = false
@@ -701,7 +705,8 @@ class DictationService : Service() {
 
     private fun showPill() {
         if (pill != null) return
-        val view = TextView(this).apply {
+
+        val brojac = TextView(this).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -713,6 +718,39 @@ class DictationService : Service() {
             }
             text = "00"
         }
+
+        // Dugme za „pravilno", LEVO od brojaca. Menja sva cetiri prekidaca za
+        // izgled teksta odjednom i to stanje OSTAJE za sledeci diktat.
+        //
+        // Sam natpis nosi stanje: „Aa" znaci pravopisno, „aa" znaci kako si
+        // izgovorio. Ikonica bi ovde bila gora — pilula je siroka par
+        // centimetara i gleda se krajickom oka usred diktata, pa dva slova
+        // kazu vise nego bilo koji simbol.
+        val prekidac = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            gravity = Gravity.CENTER
+            // Sirok dodir: prst ide na dugme dok govoris, ne gledajuci.
+            minWidth = dp(46)
+            minHeight = dp(44)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            isClickable = true
+            setOnClickListener { togglePravilno() }
+        }
+
+        val red = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(prekidac)
+            addView(
+                brojac,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { leftMargin = dp(8) },
+            )
+        }
+
+        val view: View = red
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -730,8 +768,39 @@ class DictationService : Service() {
             y = dp(14)
         }
         runCatching { windows?.addView(view, params) }
-            .onSuccess { pill = view }
+            .onSuccess {
+                pill = view
+                pillCounter = brojac
+                pillToggle = prekidac
+                updateToggle()
+            }
             .onFailure { toast("Nema dozvolu za prikaz preko drugih aplikacija") }
+    }
+
+    /**
+     * Klik na dugme dok snimanje traje.
+     *
+     * Prozor je `FLAG_NOT_FOCUSABLE`, pa dodir stize dugmetu a fokus ostaje u
+     * polju u koje tekst treba da se upise. Bez toga bi klik na dugme oduzeo
+     * fokus i prepoznat tekst ne bi imao gde da ode — ista zamka zbog koje
+     * pilula uopste ima tu zastavicu.
+     */
+    private fun togglePravilno() {
+        cfg.pravilno = !cfg.pravilno
+        updateToggle()
+        toast(if (cfg.pravilno) "Pravilno: uključeno" else "Pravilno: isključeno")
+    }
+
+    private fun updateToggle() {
+        val dugme = pillToggle ?: return
+        val ukljuceno = cfg.pravilno
+        dugme.text = if (ukljuceno) "Aa" else "aa"
+        dugme.setTextColor(if (ukljuceno) Color.parseColor("#10331C") else Color.WHITE)
+        dugme.background = GradientDrawable().apply {
+            cornerRadius = dp(22).toFloat()
+            setColor(Color.parseColor(if (ukljuceno) "#FFFFFF" else "#33000000"))
+            setStroke(dp(2), Color.parseColor("#66FFFFFF"))
+        }
     }
 
     /**
@@ -741,7 +810,7 @@ class DictationService : Service() {
      * koliko je ostalo — a bas to je jedini podatak koji pilula nosi.
      */
     private fun updatePill(seconds: Int, busy: Boolean) {
-        val view = pill ?: return
+        val view = pillCounter ?: return
         val limit = if (cfg.longRecording) {
             if (cfg.transcriptionProvider == "openai") cfg.openAiMaxSeconds
             else cfg.continuousMaxSeconds
@@ -769,6 +838,8 @@ class DictationService : Service() {
     private fun hidePill() {
         pill?.let { runCatching { windows?.removeView(it) } }
         pill = null
+        pillCounter = null
+        pillToggle = null
     }
 
     override fun onDestroy() {
