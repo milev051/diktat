@@ -299,9 +299,6 @@ object OpenAiTranscription {
                 }
                 cfg.addTraffic(
                     body.size.toLong(), reply.toByteArray().size.toLong(), seconds,
-                    provider = "openai",
-                    model = MODEL,
-                    operation = "transkripcija",
                 )
                 return reply
             } catch (exc: OpenAiException) {

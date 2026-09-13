@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -40,11 +39,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cfg: Config
     private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
-    private lateinit var utilityLine: TextView
     private lateinit var polishLine: TextView
     private lateinit var previewOut: TextView
     private lateinit var historyRows: LinearLayout
-    private lateinit var pendingRows: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Boje se preuzimaju sa pozadine telefona (Material You).
@@ -71,7 +68,6 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(istorija())
-        root.addView(neuspeliSnimci())
         // Grupisano po pitanju na koje odgovaras: snimanje glasa, ispravka
         // teksta i osnovni izgled teksta su odvojene celine.
         root.addView(dozvole())
@@ -80,7 +76,6 @@ class MainActivity : AppCompatActivity() {
         root.addView(apiKeys())
         root.addView(tekst())
         root.addView(potrosnja())
-        root.addView(procenaKoristi())
         root.addView(proba())
 
         val scroll = ScrollView(this).apply {
@@ -119,9 +114,7 @@ class MainActivity : AppCompatActivity() {
             "Pristupačnost nije uključena — tekst će završiti u clipboard-u."
         }
         showTraffic()
-        showUtility()
         showHistory()
-        showPending()
         polishLine.text = "Poziva modelu danas: ${cfg.polishCountToday}"
     }
 
@@ -168,73 +161,6 @@ class MainActivity : AppCompatActivity() {
             ClipData.newPlainText("Diktat", text)
         )
         Toast.makeText(this, "Kopirano u clipboard.", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun neuspeliSnimci(): ViewGroup {
-        val (card, box) = card(this, "Sačuvani audio")
-        box.addView(
-            body(
-                this,
-                "Ako transkripcija ne uspe, audio ostaje lokalno kao WAV. " +
-                    "Možeš da ga pošalješ ponovo kasnije; briše se tek kada uspe.",
-            )
-        )
-        pendingRows = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        box.addView(pendingRows)
-        box.addView(button(this, "Osveži sačuvane snimke") { showPending() })
-        showPending()
-        return card
-    }
-
-    private fun showPending() {
-        if (!::pendingRows.isInitialized) return
-        pendingRows.removeAllViews()
-        val store = PendingStore(this, cfg.sampleRate)
-        val files = store.list()
-        if (files.isEmpty()) {
-            pendingRows.addView(body(this, "Nema neuspelih snimaka."))
-            return
-        }
-        pendingRows.addView(body(this, "${files.size} sačuvanih snimaka — izaberi ponovni pokušaj ili obriši."))
-        files.asReversed().forEach { file ->
-            val seconds = store.seconds(file)
-            pendingRows.addView(
-                body(this, "${file.name.substringBeforeLast('.')} — " +
-                    "${String.format(java.util.Locale.US, "%.1f", seconds)} s · " +
-                    if (store.provider(file) == "openai") "OpenAI" else "Google")
-            )
-            val actions = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-            }
-            val retry = button(this, "Ponovi") {
-                startForegroundService(
-                    Intent(this, DictationService::class.java)
-                        .setAction(DictationService.ACTION_RETRY_PENDING)
-                        .putExtra(DictationService.EXTRA_PENDING_NAME, file.name)
-                )
-                Toast.makeText(this, "Ponovni pokušaj je pokrenut.", Toast.LENGTH_SHORT).show()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    .apply { marginEnd = dp(4) }
-                minHeight = dp(42)
-            }
-            val remove = button(this, "Obriši") {
-                store.remove(file)
-                showPending()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    .apply { marginStart = dp(4) }
-                minHeight = dp(42)
-            }
-            actions.addView(retry)
-            actions.addView(remove)
-            pendingRows.addView(actions)
-        }
     }
 
     private fun dozvole(): ViewGroup {
@@ -322,10 +248,23 @@ class MainActivity : AppCompatActivity() {
                 ) { cfg.openAiOutputScript = it },
             )
         }
+        val geminiRecording = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(switch(
+                this@MainActivity,
+                "Prikazuj prepis uživo tokom snimanja",
+                cfg.geminiLivePreview,
+            ) { cfg.geminiLivePreview = it })
+            addView(body(
+                this@MainActivity,
+                "Međurezultat se prikazuje uz tajmer. U polje ulazi samo konačan tekst.",
+            ))
+        }
         val showProviderOptions: (String) -> Unit = { provider ->
             googleRecording.visibility =
                 if (provider == "google" || provider == "gemini_live") View.VISIBLE else View.GONE
             openAiRecording.visibility = if (provider == "openai") View.VISIBLE else View.GONE
+            geminiRecording.visibility = if (provider == "gemini_live") View.VISIBLE else View.GONE
         }
 
         box.addView(body(this, "Provider transkripcije"))
@@ -355,6 +294,7 @@ class MainActivity : AppCompatActivity() {
             )
         )
         box.addView(googleRecording)
+        box.addView(geminiRecording)
         box.addView(openAiRecording)
         showProviderOptions(cfg.transcriptionProvider)
 
@@ -385,8 +325,8 @@ class MainActivity : AppCompatActivity() {
         box.addView(
             body(
                 this,
-                "Ovaj izbor važi za zareze, podelu na pasuse, tačke, sređivanje, " +
-                    "ponavljanja i prevod. Ne menja model transkripcije.",
+                "Ovaj izbor važi za zareze, podelu na pasuse, tačke, sređivanje " +
+                    "i ponavljanja. Ne menja model transkripcije.",
             )
         )
         box.addView(switch(this, "Sredi tekst (tačke i velika slova)", cfg.polishTidy) {
@@ -408,15 +348,6 @@ class MainActivity : AppCompatActivity() {
         box.addView(switch(this, "Izbaci ponavljanja", cfg.polishDedupe) {
             cfg.polishDedupe = it
         })
-
-        val (jezik, _) = field(this, "Jezik izlaza (prazno = bez prevoda)", cfg.outputLanguage) {
-            cfg.outputLanguage = it
-        }
-        box.addView(jezik)
-        box.addView(
-            body(this, "Slobodan opis: \u201Emakedonski\u201C, \u201Eengleski " +
-                "formalno\u201C, pa i \u201Epola makedonski pola srpski\u201C.")
-        )
 
         polishLine = body(this, "")
         box.addView(polishLine)
@@ -565,115 +496,6 @@ class MainActivity : AppCompatActivity() {
         return card
     }
 
-    private fun procenaKoristi(): ViewGroup {
-        val (card, box) = card(this, "Procena koristi — 10 dana")
-        box.addView(
-            body(
-                this,
-                "Pokreni period i aplikacija će beležiti diktate, karaktere i vreme " +
-                    "snimanja po danima, kao i uspešne pozive po provajderu i modelu. " +
-                    "Potrošnju API-ja unosiš ručno kada je vidiš.",
-            )
-        )
-        utilityLine = body(this, "")
-        box.addView(utilityLine)
-
-        val (spentLayout, spentEdit) = field(
-            this,
-            "Potrošeno u periodu (RSD)",
-            value = cfg.utilitySpent().toString(),
-        )
-        spentEdit.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        box.addView(spentLayout)
-        box.addView(button(this, "Sačuvaj potrošnju") {
-            val amount = spentEdit.text?.toString()?.trim()?.replace(',', '.')?.toDoubleOrNull()
-            if (amount == null || amount < 0) {
-                Toast.makeText(this, "Unesi iznos, na primer 12,50.", Toast.LENGTH_SHORT).show()
-            } else {
-                cfg.setUtilitySpent(amount)
-                showUtility()
-            }
-        })
-
-        val (speedLayout, speedEdit) = field(
-            this,
-            "Tvoja brzina kucanja (karaktera/min)",
-            value = cfg.utilityReport().typingCpm.toString(),
-        )
-        speedEdit.inputType = InputType.TYPE_CLASS_NUMBER
-        box.addView(speedLayout)
-        box.addView(button(this, "Sačuvaj brzinu kucanja") {
-            val speed = speedEdit.text?.toString()?.trim()?.toIntOrNull()
-            if (speed == null || speed <= 0) {
-                Toast.makeText(this, "Unesi pozitivan ceo broj.", Toast.LENGTH_SHORT).show()
-            } else {
-                cfg.setUtilityTypingCpm(speed)
-                showUtility()
-            }
-        })
-
-        box.addView(button(this, "Pokreni novu procenu (briše staru)") {
-            cfg.startUtilityEvaluation()
-            spentEdit.setText("0")
-            speedEdit.setText("180")
-            showUtility()
-        })
-        box.addView(button(this, "Obriši procenu") {
-            cfg.resetUtilityEvaluation()
-            spentEdit.setText("0")
-            speedEdit.setText("180")
-            showUtility()
-        })
-        showUtility()
-        return card
-    }
-
-    private fun showUtility() {
-        if (!::utilityLine.isInitialized) return
-        val report = cfg.utilityReport()
-        if (!report.started) {
-            utilityLine.text = "Procena nije pokrenuta."
-            return
-        }
-        val avgDays = report.elapsedDays.coerceAtLeast(1)
-        val lines = mutableListOf(
-            "Period: ${report.startDate} — ${report.endDate}",
-            "Dan ${report.elapsedDays}/10; preostalo: ${report.remainingDays} dana",
-            "Ukupno: ${report.dictations} diktata, ${report.characters} karaktera, " +
-                "${report.seconds / 60.0} min snimanja",
-            "Prosek dnevno: ${"%.1f".format(report.dictations / avgDays.toDouble())} diktata, " +
-                "${"%.0f".format(report.characters / avgDays.toDouble())} karaktera",
-            "Procena vremena za kucanje: ${"%.2f".format(report.typedMinutes / 60.0)} h " +
-                "(${report.typingCpm} karaktera/min)",
-            "Uneto kao trošak: ${"%.2f".format(report.spent)} RSD",
-        )
-        if (report.dictations > 0) {
-            lines += "Trošak po diktatu: ${"%.2f".format(report.costPerDictation)} RSD"
-        }
-        if (report.characters > 0) {
-            lines += "Trošak na 1.000 karaktera: " +
-                "${"%.2f".format(report.costPerThousandCharacters)} RSD"
-        }
-        if (report.modelUsage.isNotEmpty()) {
-            lines += ""
-            lines += "Korišćeni modeli:"
-            lines += report.modelUsage.map { usage ->
-                val time = if (usage.seconds > 0.0) {
-                    ", ${"%.1f".format(usage.seconds / 60.0)} min zvuka"
-                } else ""
-                val operation = usage.operation.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
-                "${usage.provider} / ${usage.model}$operation: ${usage.calls} poziva$time"
-            }
-        }
-        lines += ""
-        lines += "Dnevno:"
-        lines += report.days.map {
-            "${it.date}: ${it.dictations} diktata, ${it.characters} karaktera, " +
-                "${"%.1f".format(it.seconds / 60.0)} min"
-        }
-        utilityLine.text = lines.joinToString("\n")
-    }
-
     private fun proba(): ViewGroup {
         val (card, box) = card(this, "Proba diktata")
         val (test, testEdit) = field(this, "Ovde probaj diktat", lines = 6)
@@ -692,14 +514,29 @@ class MainActivity : AppCompatActivity() {
             "Još nije poslat nijedan diktat."
         } else {
             val prosek = if (count > 0) human((sent + received) / count) else "—"
-            "%d diktata\nukupno snimljeno: %d s   (u uploadima: %d s)\n" +
-                "↑ %s poslato   ↓ %s primljeno\nprosečno %s po diktatu"
-                .format(
-                    count, cfg.recordedSeconds, cfg.secondsSpoken,
+            // Zagrade nisu ukras: bez njih `.format` hvata samo POSLEDNJI niz u
+            // sabiranju, pa je prvi red ostajao sa sirovim „%d" na ekranu, a
+            // drugi je punio pogrešnim vrednostima.
+            ("%s diktata\nukupno snimljeno: %s   (u uploadima: %s)\n" +
+                "↑ %s poslato   ↓ %s primljeno\nprosečno %s po diktatu").format(
+                    count, trajanje(cfg.recordedSeconds), trajanje(cfg.secondsSpoken),
                     human(sent), human(received),
                     prosek,
                 )
         }
+    }
+
+    /** Sekunde u „2 h 15 min 30 s"; nule se ne ispisuju, kao i na Mac-u. */
+    private fun trajanje(seconds: Long): String {
+        val ukupno = maxOf(0L, seconds)
+        val sati = ukupno / 3600
+        val minuti = (ukupno % 3600) / 60
+        val sekunde = ukupno % 60
+        val delovi = mutableListOf<String>()
+        if (sati > 0) delovi += "$sati h"
+        if (minuti > 0) delovi += "$minuti min"
+        if (sekunde > 0 || delovi.isEmpty()) delovi += "$sekunde s"
+        return delovi.joinToString(" ")
     }
 
     private fun human(bytes: Long): String = when {

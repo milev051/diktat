@@ -8,6 +8,7 @@ import AppKit
 import Quartz
 
 KVK_ANSI_V = 0x09
+KVK_DOWN_ARROW = 0x7D
 PASTE_SETTLE = 0.12    # da OS stigne da registruje da je Cmd pusten
 TYPE_CHUNK = 20
 SYNTHETIC_TAIL = 0.15  # koliko jos drzimo zastavicu da event tap stigne da vidi
@@ -75,6 +76,16 @@ def insert(text: str, method="auto", restore_clipboard=True) -> None:
     _paste(text, restore_clipboard=restore_clipboard)
 
 
+def insert_live(text: str) -> None:
+    """Dodaj potvrđenu celinu na kraj aktivnog polja dok korisnik diktira.
+
+    Korisnik može da klikne raniju reč i ispravi je. Pre sledeće celine kursor
+    vraćamo na kraj, da nova rečenica ne upadne usred te ispravke.
+    """
+    if text:
+        _type_unicode(text, move_to_end=True)
+
+
 # ----------------------------------------------------------------------
 
 
@@ -122,10 +133,16 @@ def komadi(text: str, velicina: int = TYPE_CHUNK) -> list:
     return delovi
 
 
-def _type_unicode(text: str) -> None:
+def _type_unicode(text: str, move_to_end=False) -> None:
     """Kuca tekst direktno, bez diranja clipboard-a. Sporije, ali cistije."""
     with _synthetic():
         src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+        if move_to_end:
+            for is_down in (True, False):
+                evt = Quartz.CGEventCreateKeyboardEvent(src, KVK_DOWN_ARROW, is_down)
+                Quartz.CGEventSetFlags(evt, Quartz.kCGEventFlagMaskCommand)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, evt)
+            time.sleep(0.015)
         for piece in komadi(text):
             for is_down in (True, False):
                 evt = Quartz.CGEventCreateKeyboardEvent(src, 0, is_down)

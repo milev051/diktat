@@ -91,13 +91,8 @@ class SttService : RecognitionService() {
                     putFloatArray(SpeechRecognizer.CONFIDENCE_SCORES, floatArrayOf(1f))
                 })
             } catch (exc: Exception) {
-                if (pcm.size >= 6_400) {
-                    // Snimak je vidljiv u aplikaciji u kartici „Sačuvani
-                    // audio“. Ovde ne prikazuj dodatni Toast: tastatura već
-                    // prikazuje grešku, a raniji Toast je pravio duplo
-                    // obaveštenje i često izgledao kao da OpenAI puca više puta.
-                    PendingStore(this, cfg.sampleRate).save(pcm, cfg.transcriptionProvider)
-                }
+                // Bez Toast-a: tastatura vec prikazuje gresku, a dodatna
+                // poruka je izgledala kao da isti poziv puca vise puta.
                 runCatching { listener.error(SpeechRecognizer.ERROR_NETWORK) }
             }
         }

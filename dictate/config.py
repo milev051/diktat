@@ -31,7 +31,11 @@ DEFAULTS = {
     # Live salje zvuk DOK snimas, ~2,5 MB po minutu; zaboravljen diktat tu ne
     # trosi samo vreme nego i podatke, sve dok neko ne primeti. Zato je granica
     # kratka i ne stoji na ekranu, kao ni ostala polja koja se nameste jednom.
-    "gemini_live_max_seconds": 120,    # najviše 60 minuta po jednom OpenAI diktatu
+    "gemini_live_max_seconds": 120,    # sigurnosna granica jednog Gemini diktata
+    "gemini_live_insert": False,       # potvrđene celine odmah u aktivno polje na Mac-u
+    # Okvir sa prepisom dok govoriš. Direktan upis stiže tek kad Gemini potvrdi
+    # celinu, pa bez ovoga između dve potvrde nema znaka da aplikacija čuje.
+    "live_preview": True,
     "recorded_seconds": 0.0,       # ukupno vreme uhvaćenog zvuka na ovom računaru
     # Maskiranje psovki je uklonjeno kao podesavanje: uvek `pFilter=0`.
     # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci
@@ -55,6 +59,9 @@ DEFAULTS = {
 
     # --- Hotkey ---
     "hotkey": "alt_r",            # desni Option; cmd_r | ctrl_r | f13 ...
+    # „§" (levo od jedinice) kao drugi prekidac. Nije modifikator nego znak, pa
+    # se dok je ukljucen guta — inace bi ostavljao „§" u tekstu.
+    "hotkey_section": True,
     "mode": "toggle",             # nacin aktivacije: "hold" | "toggle"
     "continuous": True,           # bez granice; sece na svakoj pauzi
     "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni
@@ -89,14 +96,10 @@ DEFAULTS = {
     "groq_max_completion_tokens": 2048,
     # Skracenice i nazivi koje endpoint stalno gresi; idu modelu uz snimak.
     "vocabulary": "AI, API, Gemini, Android, iOS, macOS, Google, GitHub, endpoint, FLAC, APK",
-    # Slobodan opis: "makedonski", "pola makedonski pola srpski", "engleski
-    # formalno"… Prazno = bez prevoda.
-    "output_language": "",      # skrati i pojednostavi, bez gubitka sadrzaja
 
     # --- Debug ---
     "debug": False,               # snimaj zvuk i tekst radi poredjenja
     "debug_dir": "~/Diktat-debug",
-    "pending_dir": "~/Diktat-neuspeli",  # snimci koje prepoznavanje nije primilo
 }
 
 
@@ -115,6 +118,9 @@ def load() -> dict:
 def _migrate(cfg: dict, saved=None) -> dict:
     """Preuzmi vrednosti iz starih naziva i izbaci kljuceve kojih vise nema."""
     saved = cfg if saved is None else saved
+    if "gemini_live_insert" not in saved and saved.get("gemini_live_preview"):
+        cfg["gemini_live_insert"] = True
+    cfg.pop("gemini_live_preview", None)
     if "language_codes" in cfg:
         codes = cfg.pop("language_codes") or []
         if codes:
@@ -176,7 +182,6 @@ def _migrate(cfg: dict, saved=None) -> dict:
             cfg["polish_paragraphs"] = False
             cfg["polish_bullets"] = False
             cfg["polish_dedupe"] = False
-            cfg["output_language"] = ""
             if cfg.get("text_style") == "written":
                 cfg["text_style"] = "spoken"
 
@@ -199,6 +204,10 @@ def _migrate(cfg: dict, saved=None) -> dict:
                   "polish_emoji", "polish_emoji_rate", "polish_emoji_recent",
                   "join_thousands", "trailing_space", "capitalize_first",
                   "polish_level", "polish_concise", "profanity_filter",
+                  # Prevod i lokalno cuvanje neuspelih snimaka su uklonjeni:
+                  # zatecen kljuc bi ostao u config.json i lagao da opcija
+                  # postoji.
+                  "output_language", "pending_dir",
                   "spoken_numbers_to_digits"):
         cfg.pop(mrtvo, None)
     return cfg
@@ -247,6 +256,44 @@ def postavi_pravilno(cfg, upaljeno: bool) -> None:
             # podrazumevano, da gasenje uvek nesto uradi.
             cfg[k] = bool(DEFAULTS[k])
     cfg.pop(_PRE_PRAVILNO, None)
+
+
+# Alati AI obrade teksta. Prekidac "AI obrada" nije peto podesavanje nego
+# precica nad njima, isto kao „Pravilno": u modelu i dalje vazi da izabran alat
+# sam po sebi znaci „ukljuceno", pa ne postoji drugi izvor istine koji bi mogao
+# da laze.
+AI_ALATI = ("polish_paragraphs", "polish_bullets", "polish_dedupe")
+_PRE_AI = "ai_pre"
+
+
+def ai_obrada(cfg) -> bool:
+    """Da li je izabran ijedan alat koji model radi nad tekstom."""
+    return style(cfg) == "written" or any(bool(cfg.get(k, False)) for k in AI_ALATI)
+
+
+def postavi_ai_obradu(cfg, upaljeno: bool) -> None:
+    """Upali ili ugasi celu grupu; gasenje pamti zatecen izbor."""
+    if upaljeno:
+        if ai_obrada(cfg):
+            return
+        staro = cfg.pop(_PRE_AI, None) or {}
+        if staro:
+            for k in AI_ALATI:
+                cfg[k] = bool(staro.get(k, DEFAULTS[k]))
+            cfg["text_style"] = staro.get("text_style", "spoken")
+        else:
+            # Nista zapamceno: upali ono sto je podrazumevano, da paljenje
+            # uvek nesto uradi.
+            for k in AI_ALATI:
+                cfg[k] = bool(DEFAULTS[k])
+        return
+
+    if ai_obrada(cfg):
+        cfg[_PRE_AI] = {k: bool(cfg.get(k, DEFAULTS[k])) for k in AI_ALATI}
+        cfg[_PRE_AI]["text_style"] = style(cfg)
+    for k in AI_ALATI:
+        cfg[k] = False
+    cfg["text_style"] = "spoken"
 
 
 def style(cfg) -> str:

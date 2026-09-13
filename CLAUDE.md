@@ -64,23 +64,41 @@ dok se snimanje seklo na drugoj. Sada je u `Granica.sekundi`, izdvojeno od
 `Config` baš zato što je `Context` u JVM testovima prazan kalup — test nad
 `Config`-om bi tiho prolazio na praznom.
 
+**`§` je jedini taster koji gutamo, i samo dok je izabran.** Ostali prekidači su
+modifikatori i ne ostavljaju znak, pa se ne diraju; `§` je običan znak, pa bi
+pri svakom diktatu upisao „§" u tekst. Gutanje ide preko `darwin_intercept`,
+koje event tap pretvara iz `ListenOnly` u **aktivan** tap: od tog trenutka svaki
+pritisak tastera prolazi kroz naš proces. Zato se aktivan tap pravi samo kad je
+opcija upaljena, a promena prekidača traži ponovno otvaranje osluškivanja
+(`_restart_hotkey`) — vrsta tapa se bira pri otvaranju i ne može da se promeni u
+letu. Ako macOS ikad ugasi tap zato što je odgovor kasnio, hotkey prestaje da
+radi do sledećeg pokretanja; zato u intercept-u ne sme da uđe ništa sporo.
+
+Uz modifikator se ne guta ništa: Shift+§ je „±", a Cmd+§ je tuđa prečica.
+Modifikatori se prate u `_mods` (pynput ne šalje stanje uz sam znak), pa se
+skidaju **pre** poređenja pri puštanju tastera. Sam taster se prepoznaje po
+`vk == 10` (`kVK_ISO_Section`), ne po znaku: znak zavisi od rasporeda.
+
 **Snimanje uvek staje na granici.** Slučajno pokrenut diktat bi inače snimao
 satima i poslao ogromnu količinu podataka. Posle prekida se **traži nov
 pritisak** — a prekidač se mora vratiti u mirovanje (`listener.reset()`), inače
 sledeći pritisak radi STOP umesto START i korisnik pritiska dvaput.
 
-**Neuspeo diktat se ne sme izgubiti.** Endpoint može da zakaže bez najave, pa
-se snimak čuva na disk i šalje ponovo iz menija. Prolazne greške (mreža, 429,
-5xx) se ponavljaju jednom; 400 i 403 nikad — drugi pokušaj bi dao isto.
+**Snimljen glas se nigde ne upisuje.** Ni na Mac-u ni na telefonu: ni pri
+otkazu poziva, ni kao privremena kopija Live strima, ni u kešu. Zvuk postoji
+samo u radnoj memoriji dok traje prepoznavanje. Ranije je neuspeo diktat
+završavao u `~/Diktat-neuspeli` (Android: `PendingStore`) i slao se ponovo iz
+menija; to je uklonjeno na izričit zahtev — snimak glasa koji leži na disku je
+veća cena od izgubljenog diktata. Ostaje samo automatsko ponavljanje prolaznih
+grešaka (mreža, 429, 5xx); 400 i 403 nikad, drugi pokušaj bi dao isto.
 
-**„Neuspeo" znači i prazan prepis, ne samo izuzetak.** Web Speech ume da vrati
-prazan rezultat za uredan govor: izmereno na tri sačuvana snimka (15.7s, 3.5s i
-1.8s, vrh amplitude 0.31), svi vraćaju `""` i kao FLAC i kao sirov PCM. Ranije
-se takav segment tiho gubio, pa se ostatak diktata zalepi bez njega i izgleda
-kao da je stigao samo kraj govora. Sada `_recognize_or_keep` čuva snimak i kad
-je prepis prazan, ako je duži od 1.0s i vrh amplitude preko 0.10 (tiha soba je
-~0.01, bučna ~0.08). Ispod toga je stvarno tišina i ne čuva se, da se
-`~/Diktat-neuspeli` ne puni prazninom.
+**Prazan prepis se i dalje prijavljuje.** Web Speech ume da vrati prazan
+rezultat za uredan govor: izmereno na tri snimka (15.7s, 3.5s i 1.8s, vrh
+amplitude 0.31), svi vraćaju `""` i kao FLAC i kao sirov PCM. Takav segment ne
+sme tiho da nestane, jer se ostatak diktata zalepi bez njega i izgleda kao da je
+stigao samo kraj govora. `_recognize_or_keep` zato ispisuje koliko je sekundi
+govora ostalo bez prepisa, ako je duži od 1.0s i vrh amplitude preko 0.10 (tiha
+soba je ~0.01, bučna ~0.08). Ispod toga je stvarno tišina i ne prijavljuje se.
 
 **Apostrof ide sa ostalim znacima.** Endpoint ga vraća u „je l'", „ć'š", i to u
 oba oblika — pravom (`'`) i krivom (`\u2019`). Oba moraju u pravilo, zajedno sa
@@ -113,8 +131,7 @@ grupu — inače tiho pokvari brojeve.
 | Skraćenice: `<` bez `trim()` posle skidanja | `dinara=< RSD` ostavi razmak iz same zamene | `substring(1).trim()` |
 | Skraćenice: ista fraza navedena dvaput | stari red iznad novog tiho pojede reč | dedupe, **poslednji pobeđuje** |
 | Ime fajla samo od vremena | dva zapisa u istoj sekundi se prepišu | milisekunde **plus brojač** |
-| …ali onda sortiranje **po imenu** | brojač razbije azbučni redosled, briše se pogrešan fajl | sortiraj po `st_mtime_ns` |
-| `self._pending` iskorišćeno dvaput | brojač i prodavnica se sudarili, pad u `_tick` | `_pending_store` odvojeno |
+| Isto ime iskorišćeno za dve stvari (`self._pending`) | brojač i prodavnica se sudarili, pad u `_tick` | zasebno ime po nameni |
 | Emoji regex preko para surogata u Kotlinu | `[\uD83C-\uDBFF][\uDC00-\uDFFF]` ne uhvati ništa | Java regex radi nad kodnim tačkama — piši `\x{1F000}` |
 | `dict` sa `rumps.MenuItem` kao ključem | `TypeError: unhashable type` pri pokretanju | lista parova |
 | Zabrana sređivanja samo u promptu | model svejedno vrati velika slova i interpunkciju kad prepisuje | posle poziva ponovo kroz naša pravila |
@@ -132,7 +149,7 @@ grupu — inače tiho pokvari brojeve.
 | Android: `EditText` u `ScrollView` | spoljni skrol pojede pokret, polje se ne skroluje | `requestDisallowInterceptTouchEvent` |
 | …ali **bezuslovno** preuzimanje pokreta | veliko polje zaglavi celu stranicu, donje sekcije nedostupne | preuzmi samo ako `layout.height > vidljiva visina` |
 | Live: zvuk poslat tek posle Stop-a | čekanje raste sa dužinom diktata — 15.6s na 64.7s zvuka | strimuj u toku snimanja; čekanje padne na 0.0s |
-| …a strim provučen kroz ponavljanje | komadi sa mikrofona se čitaju jednom, drugi pokušaj šalje prazno | bez ponavljanja; snimak na disk pa u `~/Diktat-neuspeli` |
+| …a strim provučen kroz ponavljanje | komadi sa mikrofona se čitaju jednom, drugi pokušaj šalje prazno | bez ponavljanja; neuspeo Live diktat propada |
 | Krnji komad poslat kao svoj okvir | mikrofon ne isporučuje na granici od 100ms — prepoznavanje se lomi po sredini reči | nosi ostatak u sledeći prolaz |
 | Live API: prekid čitanja na `generationComplete` | ta zastavica stiže posle **svake** izgovorene celine, ne na kraju diktata — od 17s govora stigne samo prva rečenica | čitaj dok ne **utihne** (kratak timeout), skupljaj sve `inputTranscription` |
 | …a zvuk poslat bez repa tišine | poslednja celina ostane na međurezultatu i nikad se ne finalizuje — izmereno 2 od 3 | dodaj ~2s tišine pre `audioStreamEnd` |
@@ -190,16 +207,43 @@ oko 800s zvuka (25 tokena po sekundi), što diktat ne može da dostigne. Ne
 vraćaj običnu varijantu bez izričitog zahteva — `_migrate` zatečeno `"gemini"`
 obara na `"google"`.
 
-**Obrada ide POSLE snimanja, ne u toku.** Cela sesija je jedan WebSocket poziv
-nad gotovim snimkom (`_transcribe_whole`): poveži se, pošalji zvuk, uzmi prepis,
-zatvori. Model tako vidi ceo diktat umesto krhotina odsečenih na pauzama — isti
-razlog iz kog formalni režim zove model jednom, na kraju. „Live" je ime modela,
-ne prikaz reč-po-reč; taj bi tražio da se ceo tok snimanja preokrene u streaming.
+**Mac direktan unos je opcioni.** Zvuk već ide tokom snimanja; kada je
+`gemini_live_insert` uključen, zasebna nit čita `inputTranscription` paralelno
+sa slanjem zvuka. Samo potvrđene celine idu u red za unos, istim tiketom do
+kraja sesije. Međurezultat se nikad ne kuca: model može da ga promeni i time
+bi obrisao korisnikovu ručnu ispravku. Pre svakog dela kursor ide na kraj
+aktivnog polja. Lokalna pravila se primenjuju po celini; AI tekstualni prolaz
+se preskače jer bi na kraju duplirao ili zamenio korisnikove ispravke.
+
+**Međurezultat se prikazuje, ali se NE kuca.** Direktan upis u polje čeka
+potvrđenu celinu, a ona stiže tek na pauzi — između dve potvrde korisnik nema
+nikakav znak da aplikacija čuje, pa upis deluje neresponzivno. Zato postoji
+`overlay.LivePanel`: okvir pri dnu ekrana koji prima `on_update` (potvrđeno +
+međurezultat) i pokazuje rep od 400 znakova. Kucati međurezultat se ne sme —
+model ga menja, pa bi izmena obrisala ručnu ispravku; to je ceo razlog zašto
+okvir postoji umesto „samo kucaj sve što stigne".
+
+Okvir je `NonactivatingPanel` koji propušta klik, kao i pilula: da fokus ostane
+u polju u koje tekst treba da ode. Radna nit samo ostavlja tekst u
+`_live_text`, a crta ga `_tick` sa glavne niti — AppKit se iz radnih niti ne
+dira.
+
+**Okvir se gasi u trenutku Stop-a, ne kad rep istekne.** Za korisnika je diktat
+gotov kad pusti taster; čekanje na `tail_seconds` pa još na zatvaranje toka je
+izgledalo kao da prikaz visi. Zato `_on_stop` i `_on_cancel` dižu `_live_off`
+(to su niti tastera, pa samo dižu zastavicu), a `_tick` skloni okvir u sledećem
+otkucaju od 50ms. Zastavica mora da važi i **posle** sklanjanja: reader još radi
+i pošalje poslednju potvrđenu celinu, koja ide u polje ali okvir više ne vraća
+na ekran. Skida je tek `_on_start`.
+
+**Android prikaz uživo je odvojen.** `gemini_live_preview` čita iste Live
+poruke paralelno sa slanjem zvuka i pokazuje ih u neaktivirajućem overlay-u.
+U polje se ubacuje samo konačan prepis po Stop-u.
 
 Uz njega se **gasi druga provera snimka** (`_own_audio_model`): `audio_check` i
 Groq postoje zato što besplatni Web Speech greši, a slati isti zvuk još jednom
-slabijem modelu je dupli saobraćaj za lošiji rezultat. AI obrada teksta (prevod,
-tačke, pasusi) ostaje netaknuta.
+slabijem modelu je dupli saobraćaj za lošiji rezultat. AI obrada teksta (tačke,
+pasusi) ostaje netaknuta.
 
 **Zvuk se strimuje DOK snimanje traje, ne posle Stop-a.** Izmereno na 64.7s
 zvuka: slanje posle Stop-a ostavlja **15.6s** čekanja, slanje u toku **0.0s** —
@@ -225,9 +269,10 @@ ranije mreža trebala tek na kraju.
 
 **Mana strimovanja: nema drugog pokušaja.** Komadi sa mikrofona se čitaju samo
 jednom, pa `recognize_live_stream` namerno NE ide kroz `_sa_ponavljanjem` —
-drugi pokušaj nema šta da pošalje. Zato `_transcribe_live` usput piše zvuk na
-privremeni disk (ne u listu — sat vremena je preko 100 MB) i pri otkazu ga
-sačuva u `~/Diktat-neuspeli`, odakle se ponavlja rukom (`./run.sh replay`).
+drugi pokušaj nema šta da pošalje, i takav diktat propada. Privremena kopija na
+disku je postojala baš zbog toga i uklonjena je zajedno sa čuvanjem neuspelih
+snimaka; ako zatreba ponovljena greška, koristi `./run.sh replay <wav>` nad
+snimkom koji si sam napravio.
 
 **Posle strimovanja, sve što se još čeka je NAŠA pauza.** Izmereno na snimcima
 koji staju usred govora (8.5s i 26.6s): poslednji prepis stigne **0.5s** posle
@@ -374,8 +419,7 @@ pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
 ./run.sh tests           # testovi logike, bez mikrofona i mreze
 ./run.sh doctor          # dozvole, mikrofon, endpoint
 ./run.sh test 20         # snimi 20s SA PAUZAMA i ispiši šta je čuo
-./run.sh replay          # pusti poslednji neuspeo snimak kroz isti put
-./run.sh replay ~/x.wav  # ili odredjen snimak
+./run.sh replay ~/x.wav  # pusti postojeći WAV kroz isti put
 ```
 
 **`test` i `replay` idu kroz IZABRANI izvor**, isti izbor koji radi i
@@ -388,10 +432,10 @@ posle prve izgovorene celine, a snimak od 5s ima samo jednu — prolazio je ured
 Zato `./run.sh test 20` izričito traži da praviš pauze, a ispis nosi i **broj
 reči na sekundu zvuka**: kratak prepis za dug snimak znači da se nešto izgubilo.
 
-**`replay` je najbrži put do ponovljene greške.** Neuspeli diktati se ionako
-čuvaju u `~/Diktat-neuspeli`, pa se ista greška posmatra bez mikrofona i bez
-slučajnosti. Snimci se mogu i spajati sa tišinom između, da se dobije diktat sa
-više celina.
+**`replay` je najbrži put do ponovljene greške.** Nad istim WAV fajlom se greška
+posmatra bez mikrofona i bez slučajnosti; putanja se navodi ručno, jer
+aplikacija zvuk nigde ne čuva. Snimci se mogu i spajati sa tišinom između, da se
+dobije diktat sa više celina.
 
 **Android** — release je skupljen R8-om, pa komponente iz manifesta moraju
 ostati u `proguard-rules.pro`; inače ih R8 preimenuje i sistem ih ne nađe.
@@ -418,11 +462,17 @@ se, nova se pokupe tiho.
 
 ---
 
-**Glavnog prekidača AI obrade više nema.** Izabran alat sam po sebi znači da se
-AI koristi; prekidač je bio korak koji ništa nije odlučivao, a umeo je da stoji
+**Glavni prekidač AI obrade ne postoji u modelu, samo kao prečica.** Izabran
+alat sam po sebi znači da se AI koristi; pravi prekidač je umeo da stoji
 isključen dok su alati izabrani. Bez ključa nema ničega — to je jedini uslov.
 Zatečeno `polish: false` pri prvom čitanju **gasi i alate**, da se AI nikom ne
 upali sam od sebe.
+
+Prekidač „Uključi AI obradu" u prozoru podešavanja je zato izveden iz alata,
+isto kao „Pravilno": `config.ai_obrada` čita da li je ijedan izabran, a
+`config.postavi_ai_obradu` gasi sve i **pamti zatečen izbor** (`ai_pre`), pa ga
+paljenje vraća. Ne uvodi novi ključ koji bi mogao da laže, a sklanja pet redova
+sa ekrana jednim klikom.
 
 **Alati AI obrade su nezavisni; uputstvo se sklapa od izabranih.** Sređivanje
 (interpunkcija, velika slova, kvačice) je samo jedan od njih. Kad ono nije
@@ -581,12 +631,20 @@ mikrofon je upravo ono što ih je spajalo.
 `audio/flac` (provereno); sirov PCM ne. base64 uveća zvuk za trećinu, pa provera
 snimka udvostručuje saobraćaj — otud odvojen prekidač, a ne stalno ponašanje.
 
+**Grupa se pali i gasi prekidačem koji je IZVEDEN iz svojih stavki.** Tako rade
+i „Uključi AI obradu" i „Uključi lokalna pravila": stanje se čita iz samih
+alata (`config.ai_obrada`, `config.pravilno`), gašenje pamti zatečen izbor
+(`ai_pre`, `pravilno_pre`), a stavke se tada i sklanjaju sa ekrana. Zaseban
+upisan prekidač bi mogao da se raziđe sa stavkama i da laže.
+
 **„Pravilno" je prečica nad četiri prekidača, ne peto podešavanje.** Mala
 slova, brisanje interpunkcije, skidanje kvačica i skraćenice — svaki od njih
 udaljava tekst od pravopisa, pa „pravilno" znači: sva četiri ugašena. Četiri
 klika za prelazak između dva stanja su četiri prilike da se jedan zaboravi, pa
 tekst izađe na pola puta. Kvačica se **izvodi** iz ta četiri, nikad ne pamti
-zasebno: inače bi ručno gašenje jednog ostavilo nad-prekidač da laže.
+zasebno: inače bi ručno gašenje jednog ostavilo nad-prekidač da laže. U prozoru
+podešavanja isti prekidač nosi ime „Uključi lokalna pravila" i prikazan je
+obrnuto (uključeno = pravila rade), jer se grupa tako i sklanja.
 
 **Gašenje vraća ono što je bilo, ne podrazumevano.** `ascii_diacritics` je
 podrazumevano isključen, pa bi povratak na podrazumevano tiho ukinuo izbor
@@ -690,15 +748,11 @@ uputstvo daje 4–5 tačaka sa najdužom od 20–21 reči; izričita granica
 diktat se pri tom ne cepa — jedna rečenica ostaje jedna tačka. Kad model treba
 nešto da deli ili broji, mora da dobije **broj**, ne opis.
 
-**Svaki alat koji skida ili prepisuje reči mora u `_sme_da_menja`.** Tačke,
-prevod i izbacivanje ponavljanja tu spadaju — inače provera vernosti obori ceo
-izlaz jer se reči razlikuju od ulaza. Isti alati isključuju granicu „ne
-preformuliši", koja bi im protivrečila.
-
-**Jezik izlaza je slobodan opis, ne spisak.** Korisnik ume da traži „pola
-makedonski pola srpski" — spisak jezika to ne pokriva, a model razume iz opisa.
-Prevod mora da uđe u `_sme_da_menja`, inače provera vernosti obori ceo izlaz
-(prevod po prirodi menja svaku reč), i isključuje granicu „ne preformuliši".
+**Svaki alat koji skida ili prepisuje reči mora u `_sme_da_menja`.** Tačke i
+izbacivanje ponavljanja tu spadaju — inače provera vernosti obori ceo izlaz jer
+se reči razlikuju od ulaza. Isti alati isključuju granicu „ne preformuliši",
+koja bi im protivrečila. (Prevod je bio treći takav alat; uklonjen je zajedno sa
+poljem „Jezik izlaza".)
 
 **AI prepoznavanje i AI obrada su odvojene sekcije.** Prvo šalje ZVUK i traje
 ~10s na 20s diktata; drugo šalje samo tekst i vraća se za sekundu. Držati ih
@@ -735,15 +789,39 @@ važi i za polja koja se popune jednom (`vocabulary`, `polish_model`): ostaju u
 `config.json` odnosno `SharedPreferences`, ali ne i na ekranu.
 
 **Ono što se ne koristi — izlazi.** Uklonjeni su emotikoni (cela logika, uz
-testove), izbor ulaznog jezika, ponavljanje neuspelih diktata iz menija, debug
-prekidač, otvaranje `config.json` i stavka sa statusom: menu-bar ikonica već
-pokazuje stanje. „Spoji hiljade" i „razmak na kraju" su uvek uključeni, pa nisu
+testove), izbor ulaznog jezika, ponavljanje neuspelih diktata iz menija,
+otvaranje `config.json` i stavka sa statusom: menu-bar ikonica već pokazuje
+stanje. U istom duhu su 13.09.2026. uklonjeni: **jezik izlaza** (prevod, na obe
+platforme, uz `PREVOD` uputstvo i `output_language`), **lokalno čuvanje
+neuspelih snimaka** (`dictate/pending.py`, `PendingStore.kt`, `pending_dir`),
+**desetodnevna procena koristi** (`dictate/utility.py`, `Utility*` u
+`Config.kt`, obe kartice) i **dijagnostika u prozoru podešavanja** (prekidač
+`debug` i otvaranje loga; sam ključ ostaje u `config.json` za razvoj). „Spoji hiljade" i „razmak na kraju" su uvek uključeni, pa nisu
 podešavanja nego ponašanje. Podešavanje koje stoji **sivo** je gore od
 nepostojećeg: „ispravi greške" se sada ne vidi dok stil nije „Sređeno".
 
 **Meni je grupisan po pitanju na koje odgovaraš**, ne po tome kad je šta
 nastalo: Snimanje (kako), Tekst (kako izgleda), AI (šta model radi). Pre toga je
 bilo 12 stavki u ravnom spisku i 11 kartica; sada 5 podmenija i 8 kartica.
+
+**Klik na ikonicu otvara podešavanja, drugi klik ih sklanja.** Padajući meni je
+bio međukorak do prozora u kome je ionako sve; zato `_StatusClickDelegate`
+skida meni sa statusne stavke (`item.setMenu_(None)`) i zove `_toggle_settings`.
+Dok se snima, isti klik je rezervno „Zaustavi snimanje".
+
+**Prozor podešavanja ima svoja četiri pravila** (`dictate/settings_window.py`):
+
+| pravilo | zašto |
+|---|---|
+| dokument je `isFlipped` | AppKit računa od dna, pa je kartica kraća od prozora padala na dno i ostavljala praznu polovinu iznad sebe |
+| sadržaj u koloni od 520 px, obe margine gipke | preko celog ekrana bi redovi bili dugački po metar, a polja za ključeve rastegnuta |
+| nepotrebno se **sklanja**, ne sivi | sivo podešavanje izgleda kao greška; zato red pamti uslov (`vidljivo`) i kartica se pri svakoj izmeni ponovo slaže, da sklonjen red ne ostavi rupu |
+| dozvola se traži samo kad fali | „Otvori Accessibility" nad odobrenom dozvolom ne radi ništa; stanje se čita iz `hotkey.accessibility_granted` i `audio.microphone_granted` |
+| `NSApplicationActivationPolicyRegular` dok je otvoren | menu-bar aplikacija je `Accessory`, pa joj se prozor ponaša kao panel iznad tuđeg — bez svog mesta u Dock-u, Cmd+Tab-u i punom ekranu; po zatvaranju se vraća na `Accessory` |
+
+Raspored se ne upisuje kao fiksna visina dokumenta. Ranije je stajala konstanta
+(`DOCUMENT_HEIGHT = 2450`) koja se razilazila sa sadržajem pri svakoj izmeni;
+sada je visina zbir redova koji se trenutno vide.
 
 ## Endpoint
 

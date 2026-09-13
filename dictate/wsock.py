@@ -18,6 +18,7 @@ import os
 import socket
 import ssl
 import struct
+import threading
 from urllib.parse import urlsplit
 
 # Fiksna konstanta iz RFC 6455; služi samo za proveru odgovora na rukovanje.
@@ -42,6 +43,10 @@ class WebSocketError(Exception):
         self.retryable = retryable
 
 
+class WebSocketTimeout(WebSocketError):
+    """Kratko čekanje bez novih podataka; veza je i dalje otvorena."""
+
+
 class WebSocket:
     """Sinhroni klijent. Koristi se kao kontekst, da se utičnica uvek zatvori."""
 
@@ -52,6 +57,9 @@ class WebSocket:
         self._sock = None
         self._buf = b""
         self._closed = False
+        self._send_lock = threading.Lock()
+        self._fragments = []
+        self._fragment_opcode = None
         # Razlog zatvaranja stize u CLOSE okviru i JEDINI je trag zasto je
         # sesija pala ("API key not valid", "quota exceeded"). Bez ovoga bi
         # pozivalac video samo prazno citanje i prijavio "zatvoreno bez razloga".
@@ -131,7 +139,10 @@ class WebSocket:
     def _send_frame(self, opcode, payload):
         if self._sock is None:
             raise WebSocketError("Veza nije otvorena", retryable=False)
-        self._send_all(encode_frame(opcode, payload))
+        # Live prikaz čita i šalje u različitim nitima; PONG iz čitača ne sme
+        # da se umeša u sred audio okvira koji šalje druga nit.
+        with self._send_lock:
+            self._send_all(encode_frame(opcode, payload))
 
     def _send_all(self, data):
         try:
@@ -157,8 +168,6 @@ class WebSocket:
         Ping se odgovara u hodu — server ume da ga pošalje usred toka, a bez
         pong-a nas posle nekog vremena isključi.
         """
-        delovi = []
-        opcode_poruke = None
         while True:
             fin, opcode, payload = self._recv_frame()
             if opcode == OP_CLOSE:
@@ -173,41 +182,60 @@ class WebSocket:
             if opcode == OP_PONG:
                 continue
             if opcode == OP_CONT:
-                if opcode_poruke is None:
+                if self._fragment_opcode is None:
                     raise WebSocketError("Nastavak okvira bez početka", retryable=False)
             else:
-                opcode_poruke = opcode
-            delovi.append(payload)
+                self._fragment_opcode = opcode
+            self._fragments.append(payload)
             if fin:
                 # Live API ume da isti JSON pošalje i kao tekstualni i kao
                 # binarni okvir, pa se oba dekodiraju isto.
-                return b"".join(delovi).decode("utf-8", "replace")
+                tekst = b"".join(self._fragments).decode("utf-8", "replace")
+                self._fragments = []
+                self._fragment_opcode = None
+                return tekst
 
     def _recv_frame(self):
-        prva = self._read_exact(2)
-        fin = bool(prva[0] & 0x80)
-        opcode = prva[0] & 0x0F
-        maskirano = bool(prva[1] & 0x80)
-        duzina = prva[1] & 0x7F
+        # Ne troši zaglavlje dok ne stigne ceo okvir. Kratak timeout tokom
+        # prikaza uživo može da padne usred payload-a; sledeći poziv tada mora
+        # da nastavi isti okvir, ne da njegove bajtove protumači kao zaglavlje.
+        self._read_at_least(2)
+        fin = bool(self._buf[0] & 0x80)
+        opcode = self._buf[0] & 0x0F
+        maskirano = bool(self._buf[1] & 0x80)
+        duzina = self._buf[1] & 0x7F
+        offset = 2
         if duzina == 126:
-            duzina = struct.unpack("!H", self._read_exact(2))[0]
+            self._read_at_least(offset + 2)
+            duzina = struct.unpack("!H", self._buf[offset:offset + 2])[0]
+            offset += 2
         elif duzina == 127:
-            duzina = struct.unpack("!Q", self._read_exact(8))[0]
+            self._read_at_least(offset + 8)
+            duzina = struct.unpack("!Q", self._buf[offset:offset + 8])[0]
+            offset += 8
         if maskirano:
             # Server nikad ne maskira; ako maskira, protokol je prekršen.
-            kljuc = self._read_exact(4)
-            payload = _mask(self._read_exact(duzina), kljuc)
+            self._read_at_least(offset + 4)
+            kljuc = self._buf[offset:offset + 4]
+            offset += 4
+            self._read_at_least(offset + duzina)
+            payload = _mask(self._buf[offset:offset + duzina], kljuc)
         else:
-            payload = self._read_exact(duzina)
+            self._read_at_least(offset + duzina)
+            payload = self._buf[offset:offset + duzina]
+        self._buf = self._buf[offset + duzina:]
         return fin, opcode, payload
 
     # ------------------------------------------------------------ utičnica
 
     def _read_exact(self, n):
-        while len(self._buf) < n:
-            self._napuni()
+        self._read_at_least(n)
         data, self._buf = self._buf[:n], self._buf[n:]
         return data
+
+    def _read_at_least(self, n):
+        while len(self._buf) < n:
+            self._napuni()
 
     def _read_until(self, kraj):
         while kraj not in self._buf:
@@ -230,8 +258,9 @@ class WebSocket:
     def _napuni(self):
         try:
             komad = self._sock.recv(65536)
-        except socket.timeout as exc:
-            raise WebSocketError("Isteklo vreme čekanja odgovora") from exc
+        except (socket.timeout, BlockingIOError, ssl.SSLWantReadError,
+                ssl.SSLWantWriteError) as exc:
+            raise WebSocketTimeout("Isteklo vreme čekanja odgovora") from exc
         except OSError as exc:
             raise WebSocketError(f"Prekinuta veza: {exc}") from exc
         if not komad:

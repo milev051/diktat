@@ -9,7 +9,7 @@ from dictate import polish
 def cfg(**kw):
     osnovno = {
         "polish_api_key": "x", "text_style": "written",
-        "polish_paragraphs": True, "output_language": "",
+        "polish_paragraphs": True,
     }
     osnovno.update(kw)
     return osnovno
@@ -22,7 +22,7 @@ class Uputstvo(unittest.TestCase):
 
     def test_bez_sredjivanja_zabranjuje_interpunkciju(self):
         # Bez ove granice model sredi tekst svejedno — to je izmereno.
-        u = polish._uputstvo(cfg(text_style="spoken", output_language="engleski"))
+        u = polish._uputstvo(cfg(text_style="spoken"))
         self.assertIn(polish.NE_SREDJUJ, u)
         self.assertNotIn(polish.SREDI, u)
 
@@ -30,10 +30,10 @@ class Uputstvo(unittest.TestCase):
         u = polish._uputstvo(cfg(polish_paragraphs=False))
         self.assertIn(polish.NE_PASUSI, u)
 
-    def test_zabrana_skracivanja_stoji_dok_nema_prevoda(self):
+    def test_zabrana_skracivanja_otpada_uz_alat_koji_prepisuje(self):
         self.assertIn(polish.NE_SKRACUJ, polish._uputstvo(cfg()))
         self.assertNotIn(
-            polish.NE_SKRACUJ, polish._uputstvo(cfg(output_language="engleski"))
+            polish.NE_SKRACUJ, polish._uputstvo(cfg(polish_bullets=True))
         )
 
     def test_bez_alata_nema_poziva(self):
@@ -67,8 +67,8 @@ class ProveraVernosti(unittest.TestCase):
         c = cfg(text_style="spoken")
         self.assertEqual(polish._proveri("bio je dobar", "Bio je dobar.", c), "Bio je dobar.")
 
-    def test_prevod_sme_da_menja_reci(self):
-        c = cfg(output_language="engleski")
+    def test_izbacivanje_ponavljanja_sme_da_menja_reci(self):
+        c = cfg(polish_dedupe=True)
         self.assertEqual(polish._proveri("pa ovaj bio je dobar", "bio je dobar", c), "bio je dobar")
 
 
@@ -102,34 +102,27 @@ class PosleSlusanjaNastavak(unittest.TestCase):
         self.assertIn(polish.PASUSI, u)
 
     def test_ostali_alati_ostaju(self):
-        c = cfg(output_language="engleski")
+        c = cfg(polish_dedupe=True)
         self.assertEqual(
-            sorted(polish.tools(c, vec_sredjeno=True)), ["paragraphs", "translate"]
+            sorted(polish.tools(c, vec_sredjeno=True)), ["dedupe", "paragraphs"]
         )
 
 
-class Prevod(unittest.TestCase):
-    """Slobodan opis jezika; prazno = bez prevoda."""
+class BezPrevoda(unittest.TestCase):
+    """Prevod je uklonjen: zatecen opis jezika ne sme da ozivi alat."""
 
-    def test_prazno_ne_pravi_alat(self):
-        self.assertNotIn("translate", polish.tools(cfg(output_language="")))
+    def test_zatecen_kljuc_ne_pravi_alat(self):
+        self.assertNotIn("translate", polish.tools(cfg(output_language="makedonski")))
 
-    def test_opis_ulazi_u_uputstvo(self):
+    def test_zatecen_kljuc_ne_pravi_poziv(self):
+        c = cfg(text_style="spoken", polish_paragraphs=False,
+                output_language="makedonski")
+        self.assertEqual(polish.tools(c), [])
+        self.assertEqual(polish.polish("tekst", c), "tekst")
+
+    def test_opis_jezika_ne_ulazi_u_uputstvo(self):
         u = polish._uputstvo(cfg(output_language="pola makedonski pola srpski"))
-        self.assertIn("pola makedonski pola srpski", u)
-
-    def test_prevod_sam_dovoljan_za_poziv(self):
-        c = cfg(text_style="spoken", polish_paragraphs=False, output_language="makedonski")
-        self.assertEqual(polish.tools(c), ["translate"])
-
-    def test_uz_prevod_nema_zabrane_preformulisanja(self):
-        # "ne preformulisi" i prevod se iskljucuju — druge reci su ceo posao.
-        u = polish._uputstvo(cfg(output_language="engleski"))
-        self.assertNotIn(polish.NE_SKRACUJ, u)
-
-    def test_provera_vernosti_ne_obara_prevod(self):
-        c = cfg(text_style="spoken", output_language="makedonski")
-        self.assertEqual(polish._proveri("bio sam tamo", "бев таму", c), "бев таму")
+        self.assertNotIn("makedonski", u)
 
 
 class Tacke(unittest.TestCase):

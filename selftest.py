@@ -6,8 +6,7 @@ a cela aplikacija ne, problem je u dozvolama za taster ili u ubacivanju teksta.
 
     ./run.sh test              # 5 sekundi
     ./run.sh test 20           # 20 sekundi, pravi pauze da proveris duzi diktat
-    ./run.sh replay            # pusti POSLEDNJI neuspeo snimak kroz isti put
-    ./run.sh replay ~/x.wav    # pusti odredjen snimak
+    ./run.sh replay ~/x.wav    # pusti postojeci WAV kroz isti put
 
 Ranije je ovaj alat uvek zvao Google, sta god da je bilo izabrano u meniju — pa
 je greska u drugom izvoru mogla da prodje neprimeceno. Zato sada ide kroz isti
@@ -92,26 +91,17 @@ def snimi(cfg, seconds):
     return b"".join(frames)
 
 
-def poslednji_snimak(cfg):
-    folder = Path(cfg.get("pending_dir", "~/Diktat-neuspeli")).expanduser()
-    snimci = sorted(folder.glob("*.wav"), key=lambda p: p.stat().st_mtime_ns)
-    return snimci[-1] if snimci else None
-
-
 def replay(argv):
-    """Pusti sacuvan snimak kroz isti put — bez ponovnog diktiranja.
+    """Pusti postojeci WAV kroz isti put — bez ponovnog diktiranja.
 
-    Neuspeli diktati se ionako cuvaju na disk, pa je ovo najbrzi nacin da se
-    ista greska ponovi i posmatra: nema mikrofona, nema slucajnosti.
+    Aplikacija vise nigde ne cuva zvuk, pa se putanja uvek navodi rukom. Korist
+    je ista: ista greska se ponavlja bez mikrofona i bez slucajnosti.
     """
     cfg = config.load()
-    if argv:
-        putanja = Path(argv[0]).expanduser()
-    else:
-        putanja = poslednji_snimak(cfg)
-        if putanja is None:
-            print("Nema sacuvanih snimaka u", cfg.get("pending_dir"))
-            return 1
+    if not argv:
+        print("Navedi WAV fajl:  ./run.sh replay ~/snimak.wav")
+        return 1
+    putanja = Path(argv[0]).expanduser()
     if not putanja.exists():
         print("Nema fajla:", putanja)
         return 1

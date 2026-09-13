@@ -73,7 +73,6 @@ object Groq {
             val reply = response(conn)
             cfg.addTraffic(
                 payload.size.toLong(), reply.toByteArray().size.toLong(), 0.0, false,
-                "groq", DEFAULT_TEXT_MODEL, "obrada teksta",
             )
             val content = JSONObject(reply).getJSONArray("choices")
                 .getJSONObject(0).getJSONObject("message").optString("content")

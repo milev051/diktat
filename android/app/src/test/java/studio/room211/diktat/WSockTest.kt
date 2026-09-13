@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.InputStream
+import java.net.SocketTimeoutException
 
 /**
  * Okviri WebSocket-a se racunaju bit po bit, pa se i proveravaju tako.
@@ -107,5 +109,36 @@ class WSockTest {
     @Test
     fun razlicitKljucDajeRazlicitAccept() {
         assertNotEquals(WSock.accept("aaaa"), WSock.accept("bbbb"))
+    }
+
+    @Test
+    fun timeoutUsredOkviraNeGubiPocetak() {
+        val payload = "{\"a\":1}".toByteArray()
+        val frame = byteArrayOf(0x81.toByte(), payload.size.toByte()) + payload
+        val socket = WSock("ws://primer/x")
+        val fake = object : InputStream() {
+            var step = 0
+            override fun read(): Int = -1
+            override fun read(buffer: ByteArray, off: Int, len: Int): Int = when (step++) {
+                0 -> {
+                    frame.copyInto(buffer, off, 0, 4)
+                    4
+                }
+                1 -> throw SocketTimeoutException()
+                2 -> {
+                    frame.copyInto(buffer, off, 4, frame.size)
+                    frame.size - 4
+                }
+                else -> -1
+            }
+        }
+        WSock::class.java.getDeclaredField("input").apply { isAccessible = true }
+            .set(socket, fake)
+        try {
+            socket.recvText()
+            throw AssertionError("Ocekivan timeout")
+        } catch (_: WSock.WSTimeout) {
+        }
+        assertEquals("{\"a\":1}", socket.recvText())
     }
 }

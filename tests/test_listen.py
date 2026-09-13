@@ -100,3 +100,4 @@ class Sazimanje(unittest.TestCase):
         # ADTS tok pocinje sinhro-recju 0xFFF.
         self.assertEqual(aac[0], 0xFF)
         self.assertEqual(aac[1] & 0xF0, 0xF0)
+

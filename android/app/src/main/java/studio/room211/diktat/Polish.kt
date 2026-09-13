@@ -67,13 +67,6 @@ object Polish {
             "zaredom, ostavi je jednom. Ponavljanje koje nosi značenje " +
             "(\u201Evrlo, vrlo dugo\u201C) ostavi kako jeste."
 
-    // Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
-    // pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
-    private const val PREVOD =
-        "Konačan tekst napiši na: %s. Drži se tog opisa doslovno — ako traži " +
-            "mešavinu jezika ili neobičan stil, tako i uradi. Značenje mora da ostane " +
-            "isto: ne dodaj i ne izbacuj sadržaj."
-
     private const val NE_SKRACUJ = "ne preformulišaj i ne skraćuj rečenice"
     private const val NE_SREDJUJ =
         "ne diraj interpunkciju, velika slova i kvačice — u tom pogledu ostavi " +
@@ -116,14 +109,13 @@ object Polish {
     /** Broj izabranih alata; nula znaci da modelu nema sta da se posalje. */
     fun toolCount(cfg: Config) = listOf(
         cfg.polishTidy || cfg.polishCommas, cfg.polishParagraphs || cfg.polishBullets,
-        cfg.polishDedupe, cfg.outputLanguage.isNotBlank(),
+        cfg.polishDedupe,
     ).count { it }
 
     /** Menja li ijedan izabrani alat same reci. */
     private fun smeDaMenja(cfg: Config) =
         cfg.polishBullets ||                       // tacke prepisuju recenice
             cfg.polishDedupe ||                    // brisanje ponavljanja skida reci
-            cfg.outputLanguage.isNotBlank() ||     // prevod menja svaku rec
             cfg.polishTidy
 
     private val NEREC = Regex("""[^\p{L}\p{N}\s]""")
@@ -172,13 +164,9 @@ object Polish {
         if (cfg.polishBullets) zadaci.add(TACKE)
         else if (cfg.polishParagraphs) zadaci.add(PASUSI)
         else granice.add(NE_PASUSI)
-        val prevod = cfg.outputLanguage.trim()
-        // Uz prevod i uz tacke je "ne preformulisi" besmisleno — prepisivanje
-        // recenica je ceo posao.
-        if (prevod.isEmpty() && !cfg.polishBullets && !cfg.polishDedupe) {
-            granice.add(NE_SKRACUJ)
-        }
-        if (prevod.isNotEmpty()) zadaci.add(PREVOD.format(prevod))
+        // Uz tacke je "ne preformulisi" besmisleno — prepisivanje recenica je
+        // ceo posao.
+        if (!cfg.polishBullets && !cfg.polishDedupe) granice.add(NE_SKRACUJ)
 
         val posao = if (zadaci.size == 1) {
             "Tvoj posao:\n" + zadaci[0]
@@ -251,9 +239,6 @@ object Polish {
             cfg.addTraffic(
                 payload.size.toLong(), reply.toByteArray().size.toLong(), 0.0,
                 countDictation = false,
-                provider = "gemini",
-                model = model,
-                operation = "obrada teksta",
             )
             val kandidat = JSONObject(reply).getJSONArray("candidates").getJSONObject(0)
             val parts = kandidat.optJSONObject("content")?.optJSONArray("parts")

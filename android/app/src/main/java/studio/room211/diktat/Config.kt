@@ -2,48 +2,7 @@ package studio.room211.diktat
 
 import android.content.Context
 import org.json.JSONArray
-import org.json.JSONObject
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 import kotlin.math.roundToLong
-
-data class UtilityDay(
-    val date: String,
-    val dictations: Int,
-    val characters: Int,
-    val seconds: Long,
-)
-
-data class ModelUsage(
-    val provider: String,
-    val model: String,
-    val operation: String,
-    val calls: Int,
-    val seconds: Double,
-    val bytesSent: Long,
-    val bytesReceived: Long,
-)
-
-data class UtilityReport(
-    val started: Boolean,
-    val startDate: String = "",
-    val endDate: String = "",
-    val elapsedDays: Int = 0,
-    val remainingDays: Int = 0,
-    val spent: Double = 0.0,
-    val typingCpm: Int = 180,
-    val days: List<UtilityDay> = emptyList(),
-    val dictations: Int = 0,
-    val characters: Int = 0,
-    val seconds: Long = 0,
-    val typedMinutes: Double = 0.0,
-    val modelUsage: List<ModelUsage> = emptyList(),
-) {
-    val costPerDictation: Double
-        get() = if (dictations > 0) spent / dictations else 0.0
-    val costPerThousandCharacters: Double
-        get() = if (characters > 0) spent * 1000.0 / characters else 0.0
-}
 
 /** Podesavanja, ista imena i podrazumevane vrednosti kao u macOS verziji. */
 class Config(context: Context) {
@@ -58,7 +17,6 @@ class Config(context: Context) {
         // kljuc znacio da svaka instalacija trosi tudji nalog, i da kljuc
         // zauvek ostane u istoriji commita. Korisnik ga unosi u aplikaciji;
         // cuva se u SharedPreferences-u i nadogradnja ga ne dira.
-        private val UTILITY_LOCK = Any()
     }
 
     var language: String
@@ -186,6 +144,10 @@ class Config(context: Context) {
     val geminiLiveMaxSeconds: Int
         get() = prefs.getInt("gemini_live_max_seconds", 120).coerceIn(30, 3600)
 
+    var geminiLivePreview: Boolean
+        get() = prefs.getBoolean("gemini_live_preview", false)
+        set(v) = prefs.edit().putBoolean("gemini_live_preview", v).apply()
+
     /** Uvek ukljuceno: ako sazimanje ne uspe, salje se sirov zvuk kao i pre. */
     val compressAudio = true
 
@@ -306,7 +268,6 @@ class Config(context: Context) {
         val json = JSONArray()
         values.forEach(json::put)
         prefs.edit().putString("history", json.toString()).apply()
-        addUtilityText(clean)
     }
 
     fun clearHistory() {
@@ -340,7 +301,6 @@ class Config(context: Context) {
                     .putBoolean("polish_bullets", false)
                     .putBoolean("polish_commas", false)
                     .putBoolean("polish_dedupe", false)
-                    .putString("output_language", "")
                     .putString("text_style", "spoken")
                     .remove("polish")
                     .apply()
@@ -369,10 +329,6 @@ class Config(context: Context) {
      * Spisak jezika ne bi bio dovoljan — korisnik ume da trazi i "pola
      * makedonski pola srpski", sto model razume iz opisa.
      */
-    var outputLanguage: String
-        get() = prefs.getString("output_language", "") ?: ""
-        set(v) = prefs.edit().putString("output_language", v).apply()
-
     // --- Groq GPT-OSS obrada teksta ---
     var groqApiKey: String
         get() = prefs.getString("groq_api_key", "")!!
@@ -429,189 +385,12 @@ class Config(context: Context) {
     val secondsSpoken: Long get() = prefs.getLong("seconds_spoken", 0)
     val recordedSeconds: Long get() = prefs.getLong("recorded_millis", 0) / 1000
 
-    private fun utilityStart(): LocalDate? = runCatching {
-        prefs.getString("utility_start_date", null)?.let(LocalDate::parse)
-    }.getOrNull()
-
-    private fun utilityJson(): JSONObject = runCatching {
-        JSONObject(prefs.getString("utility_daily", "{}") ?: "{}")
-    }.getOrDefault(JSONObject())
-
-    private fun utilityInPeriod(today: LocalDate, start: LocalDate): Boolean =
-        today >= start && today < start.plusDays(10)
-
-    fun startUtilityEvaluation() {
-        synchronized(UTILITY_LOCK) {
-            prefs.edit()
-                .putString("utility_start_date", LocalDate.now().toString())
-                .putString("utility_daily", "{}")
-                .putString("utility_models", "{}")
-                .putFloat("utility_spent", 0f)
-                .putInt("utility_typing_cpm", 180)
-                .apply()
-        }
-    }
-
-    fun resetUtilityEvaluation() {
-        synchronized(UTILITY_LOCK) {
-            prefs.edit()
-                .remove("utility_start_date")
-                .remove("utility_daily")
-                .remove("utility_models")
-                .remove("utility_spent")
-                .remove("utility_typing_cpm")
-                .apply()
-        }
-    }
-
-    fun utilitySpent(): Double = prefs.getFloat("utility_spent", 0f).toDouble()
-
-    fun setUtilitySpent(value: Double) {
-        synchronized(UTILITY_LOCK) {
-            prefs.edit().putFloat("utility_spent", value.coerceAtLeast(0.0).toFloat()).apply()
-        }
-    }
-
-    fun utilityTypingCpm(): Int = prefs.getInt("utility_typing_cpm", 180).coerceAtLeast(1)
-
-    fun setUtilityTypingCpm(value: Int) {
-        synchronized(UTILITY_LOCK) {
-            prefs.edit().putInt("utility_typing_cpm", value.coerceAtLeast(1)).apply()
-        }
-    }
-
-    fun addUtilityAudio(seconds: Double) {
-        if (seconds <= 0) return
-        synchronized(UTILITY_LOCK) {
-            val start = utilityStart() ?: return
-            val today = LocalDate.now()
-            if (!utilityInPeriod(today, start)) return
-            val root = utilityJson()
-            val key = today.toString()
-            val row = root.optJSONObject(key) ?: JSONObject()
-            row.put("seconds", row.optDouble("seconds", 0.0) + seconds)
-            root.put(key, row)
-            prefs.edit().putString("utility_daily", root.toString()).apply()
-        }
-    }
-
-    fun addUtilityText(text: String) {
-        val clean = text.trim()
-        if (clean.isEmpty()) return
-        synchronized(UTILITY_LOCK) {
-            val start = utilityStart() ?: return
-            val today = LocalDate.now()
-            if (!utilityInPeriod(today, start)) return
-            val root = utilityJson()
-            val key = today.toString()
-            val row = root.optJSONObject(key) ?: JSONObject()
-            val characters = clean.codePointCount(0, clean.length)
-            row.put("dictations", row.optInt("dictations", 0) + 1)
-            row.put("characters", row.optInt("characters", 0) + characters)
-            root.put(key, row)
-            prefs.edit().putString("utility_daily", root.toString()).apply()
-        }
-    }
-
-    /** Zabeleži uspešan poziv po provajderu, modelu i nameni. */
-    private fun addUtilityModel(
-        provider: String,
-        model: String,
-        operation: String,
-        sent: Long,
-        received: Long,
-        seconds: Double,
-    ) {
-        if (provider.isBlank() || model.isBlank()) return
-        synchronized(UTILITY_LOCK) {
-            val start = utilityStart() ?: return
-            val today = LocalDate.now()
-            if (!utilityInPeriod(today, start)) return
-            val root = runCatching {
-                JSONObject(prefs.getString("utility_models", "{}") ?: "{}")
-            }.getOrDefault(JSONObject())
-            val key = listOf(provider.trim(), model.trim(), operation.trim())
-                .joinToString("|")
-            val row = root.optJSONObject(key) ?: JSONObject()
-            row.put("provider", provider.trim())
-            row.put("model", model.trim())
-            row.put("operation", operation.trim())
-            row.put("calls", row.optInt("calls", 0) + 1)
-            row.put("seconds", row.optDouble("seconds", 0.0) + seconds.coerceAtLeast(0.0))
-            row.put("sent", row.optLong("sent", 0) + sent.coerceAtLeast(0))
-            row.put("received", row.optLong("received", 0) + received.coerceAtLeast(0))
-            root.put(key, row)
-            prefs.edit().putString("utility_models", root.toString()).apply()
-        }
-    }
-
-    fun utilityReport(): UtilityReport {
-        synchronized(UTILITY_LOCK) {
-            val start = utilityStart() ?: return UtilityReport(started = false)
-            val today = LocalDate.now()
-            val elapsed = ChronoUnit.DAYS.between(start, today).toInt()
-                .coerceIn(0, 9) + 1
-            val last = minOf(today, start.plusDays(9))
-            val root = utilityJson()
-            val days = mutableListOf<UtilityDay>()
-            var cursor = start
-            while (!cursor.isAfter(last)) {
-                val row = root.optJSONObject(cursor.toString())
-                days += UtilityDay(
-                    date = cursor.toString(),
-                    dictations = row?.optInt("dictations", 0) ?: 0,
-                    characters = row?.optInt("characters", 0) ?: 0,
-                    seconds = (row?.optDouble("seconds", 0.0) ?: 0.0).toLong(),
-                )
-                cursor = cursor.plusDays(1)
-            }
-            val dictations = days.sumOf { it.dictations }
-            val characters = days.sumOf { it.characters }
-            val seconds = days.sumOf { it.seconds }
-            val cpm = utilityTypingCpm()
-            val models = mutableListOf<ModelUsage>()
-            val modelRoot = runCatching {
-                JSONObject(prefs.getString("utility_models", "{}") ?: "{}")
-            }.getOrDefault(JSONObject())
-            modelRoot.keys().forEach { key ->
-                val row = modelRoot.optJSONObject(key) ?: return@forEach
-                models += ModelUsage(
-                    provider = row.optString("provider"),
-                    model = row.optString("model"),
-                    operation = row.optString("operation"),
-                    calls = row.optInt("calls", 0),
-                    seconds = row.optDouble("seconds", 0.0),
-                    bytesSent = row.optLong("sent", 0),
-                    bytesReceived = row.optLong("received", 0),
-                )
-            }
-            return UtilityReport(
-                started = true,
-                startDate = start.toString(),
-                endDate = start.plusDays(9).toString(),
-                elapsedDays = elapsed,
-                remainingDays = (10 - elapsed).coerceAtLeast(0),
-                spent = utilitySpent(),
-                typingCpm = cpm,
-                days = days,
-                dictations = dictations,
-                characters = characters,
-                seconds = seconds,
-                typedMinutes = characters.toDouble() / cpm,
-                modelUsage = models.sortedWith(
-                    compareBy<ModelUsage> { it.provider }.thenBy { it.model }
-                ),
-            )
-        }
-    }
-
     fun addRecordedSeconds(seconds: Double) {
         if (seconds <= 0) return
         prefs.edit().putLong(
             "recorded_millis",
             prefs.getLong("recorded_millis", 0) + (seconds * 1000).roundToLong(),
         ).apply()
-        addUtilityAudio(seconds)
     }
 
     fun addTraffic(
@@ -619,9 +398,6 @@ class Config(context: Context) {
         received: Long,
         seconds: Double,
         countDictation: Boolean = true,
-        provider: String = "",
-        model: String = "",
-        operation: String = "",
     ) {
         prefs.edit()
             .putLong("bytes_sent", bytesSent + sent)
@@ -630,7 +406,6 @@ class Config(context: Context) {
             .putInt("dictation_count", dictationCount + if (countDictation) 1 else 0)
             .putLong("seconds_spoken", secondsSpoken + seconds.toLong())
             .apply()
-        addUtilityModel(provider, model, operation, sent, received, seconds)
     }
 
     fun resetTraffic() {

@@ -30,7 +30,8 @@ class WSock(
     private var timeoutMs: Int = 30_000,
 ) : AutoCloseable {
 
-    class WSException(message: String, val retryable: Boolean = true) : Exception(message)
+    open class WSException(message: String, val retryable: Boolean = true) : Exception(message)
+    class WSTimeout : WSException("Isteklo vreme cekanja odgovora")
 
     /** Razlog zatvaranja iz CLOSE okvira; jedini trag zasto je sesija pala. */
     var closeCode: Int? = null
@@ -42,6 +43,10 @@ class WSock(
     private var input: InputStream? = null
     private var output: OutputStream? = null
     private var closed = false
+    private val sendLock = Any()
+    private var frameBuffer = ByteArray(0)
+    private val fragments = java.io.ByteArrayOutputStream()
+    private var fragmentStarted = false
 
     fun connect(): WSock {
         val uri = URI(url)
@@ -117,7 +122,7 @@ class WSock(
 
     private fun sendFrame(opcode: Int, payload: ByteArray) {
         if (socket == null) throw WSException("Veza nije otvorena", retryable = false)
-        sendAll(encodeFrame(opcode, payload))
+        synchronized(sendLock) { sendAll(encodeFrame(opcode, payload)) }
     }
 
     private fun sendAll(data: ByteArray) {
@@ -133,8 +138,6 @@ class WSock(
 
     /** Sledeca poruka kao tekst; `null` znaci da je druga strana zatvorila. */
     fun recvText(): String? {
-        val delovi = java.io.ByteArrayOutputStream()
-        var zapoceto = false
         while (true) {
             val (fin, opcode, payload) = recvFrame()
             when (opcode) {
@@ -149,39 +152,71 @@ class WSock(
                 }
                 OP_PING -> { sendFrame(OP_PONG, payload); continue }
                 OP_PONG -> continue
-                OP_CONT -> if (!zapoceto) {
+                OP_CONT -> if (!fragmentStarted) {
                     throw WSException("Nastavak okvira bez pocetka", retryable = false)
                 }
-                else -> zapoceto = true
+                else -> fragmentStarted = true
             }
-            delovi.write(payload)
+            fragments.write(payload)
             // Live API isti JSON ume da posalje i kao tekstualni i kao binarni
             // okvir, pa se oba dekodiraju isto.
-            if (fin) return String(delovi.toByteArray(), Charsets.UTF_8)
+            if (fin) {
+                val text = String(fragments.toByteArray(), Charsets.UTF_8)
+                fragments.reset()
+                fragmentStarted = false
+                return text
+            }
         }
     }
 
     private fun recvFrame(): Triple<Boolean, Int, ByteArray> {
-        val prva = readExact(2)
-        val fin = (prva[0].toInt() and 0x80) != 0
-        val opcode = prva[0].toInt() and 0x0F
-        val maskirano = (prva[1].toInt() and 0x80) != 0
-        var duzina = (prva[1].toInt() and 0x7F).toLong()
+        // Kratak timeout može pasti usred okvira. Bajtove trošimo tek kada
+        // stigne ceo okvir, da sledeće čitanje nastavi na pravom mestu.
+        readFrameBytes(2)
+        val fin = (frameBuffer[0].toInt() and 0x80) != 0
+        val opcode = frameBuffer[0].toInt() and 0x0F
+        val maskirano = (frameBuffer[1].toInt() and 0x80) != 0
+        var duzina = (frameBuffer[1].toInt() and 0x7F).toLong()
+        var offset = 2
         if (duzina == 126L) {
-            val d = readExact(2)
-            duzina = (((d[0].toInt() and 0xFF) shl 8) or (d[1].toInt() and 0xFF)).toLong()
+            readFrameBytes(offset + 2)
+            duzina = (((frameBuffer[offset].toInt() and 0xFF) shl 8) or
+                (frameBuffer[offset + 1].toInt() and 0xFF)).toLong()
+            offset += 2
         } else if (duzina == 127L) {
-            val d = readExact(8)
+            readFrameBytes(offset + 8)
             duzina = 0
-            for (b in d) duzina = (duzina shl 8) or (b.toLong() and 0xFF)
+            for (i in offset until offset + 8) {
+                duzina = (duzina shl 8) or (frameBuffer[i].toLong() and 0xFF)
+            }
+            offset += 8
         }
         if (duzina > MAX_FRAME) throw WSException("Okvir je prevelik: $duzina", retryable = false)
+        val maskOffset = if (maskirano) 4 else 0
+        readFrameBytes(offset + maskOffset + duzina.toInt())
         // Server nikad ne maskira; ako maskira, protokol je prekrsen.
-        return if (maskirano) {
-            val kljuc = readExact(4)
-            Triple(fin, opcode, mask(readExact(duzina.toInt()), kljuc))
+        val payload = if (maskirano) {
+            val key = frameBuffer.copyOfRange(offset, offset + 4)
+            mask(frameBuffer.copyOfRange(offset + 4, offset + 4 + duzina.toInt()), key)
         } else {
-            Triple(fin, opcode, readExact(duzina.toInt()))
+            frameBuffer.copyOfRange(offset, offset + duzina.toInt())
+        }
+        frameBuffer = frameBuffer.copyOfRange(offset + maskOffset + duzina.toInt(), frameBuffer.size)
+        return Triple(fin, opcode, payload)
+    }
+
+    private fun readFrameBytes(n: Int) {
+        while (frameBuffer.size < n) {
+            val chunk = ByteArray(maxOf(4096, n - frameBuffer.size))
+            val count = try {
+                input!!.read(chunk)
+            } catch (e: SocketTimeoutException) {
+                throw WSTimeout()
+            } catch (e: Exception) {
+                throw WSException("Prekinuta veza: ${e.message}")
+            }
+            if (count < 0) throw WSException("Veza zatvorena pre kraja poruke")
+            if (count > 0) frameBuffer += chunk.copyOf(count)
         }
     }
 

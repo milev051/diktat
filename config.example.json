@@ -1,5 +1,6 @@
 {
   "transcription_provider": "google",
+  "gemini_live_insert": false,
   "language": "sr-RS",
   "api_key": "",
   "openai_api_key": "",
@@ -39,6 +40,5 @@
   "groq_reasoning_effort": "medium",
   "groq_max_completion_tokens": 2048,
   "debug": false,
-  "debug_dir": "~/Diktat-debug",
-  "pending_dir": "~/Diktat-neuspeli"
+  "debug_dir": "~/Diktat-debug"
 }

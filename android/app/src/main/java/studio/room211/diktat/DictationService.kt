@@ -35,8 +35,6 @@ class DictationService : Service() {
 
     companion object {
         const val ACTION_TOGGLE = "studio.room211.diktat.TOGGLE"
-        const val ACTION_RETRY_PENDING = "studio.room211.diktat.RETRY_PENDING"
-        const val EXTRA_PENDING_NAME = "pending_name"
         private const val CHANNEL = "diktat"
         private const val NOTIFICATION_ID = 1
         // OpenAI prima ceo uobičajeni diktat jednim pozivom. Tek veoma dug
@@ -69,6 +67,7 @@ class DictationService : Service() {
     private var pill: View? = null
     private var pillCounter: TextView? = null
     private var pillToggle: TextView? = null
+    private var pillPreview: TextView? = null
     private var windows: WindowManager? = null
     private var startedAt = 0L
     private var busy = false
@@ -103,7 +102,6 @@ class DictationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_TOGGLE -> if (isRecording) stopRecording() else startRecording()
-            ACTION_RETRY_PENDING -> retryPending(intent.getStringExtra(EXTRA_PENDING_NAME))
         }
         return START_NOT_STICKY
     }
@@ -236,8 +234,8 @@ class DictationService : Service() {
      * model tako vidi celinu umesto krhotina odsecenih na pauzama.
      *
      * Komadi sa mikrofona se citaju samo jednom, pa drugi pokusaj nema sta da
-     * posalje. Zato se zvuk usput pise na privremeni fajl (ne u memoriju — sat
-     * vremena je preko 100 MB) i pri otkazu zavrsi u PendingStore.
+     * posalje: neuspeo Live diktat propada. Kopija se namerno nigde ne pise —
+     * zvuk ne sme da ostane na uredjaju posle diktata.
      */
     private fun geminiLiveLoop() {
         val rec = recorder ?: return
@@ -246,19 +244,22 @@ class DictationService : Service() {
         pending.incrementAndGet()
         synchronized(formalParts) { pendingBy[mojaSesija] = (pendingBy[mojaSesija] ?: 0) + 1 }
 
-        val kopija = java.io.File(cacheDir, "live-$mojaSesija-${System.nanoTime()}.pcm")
         var totalBytes = 0L
         var tekst = ""
         var problem: String? = null
-        val izlaz = runCatching { java.io.BufferedOutputStream(kopija.outputStream()) }.getOrNull()
 
         try {
             var zavrseno = false
-            val sirov = GeminiStt.recognizeStream(cfg) {
+            val preview: ((String) -> Unit)? = if (cfg.geminiLivePreview) { raw ->
+                val text = GeminiStt.postProcess(raw, cfg).trim().takeLast(450)
+                handler.post {
+                    if (session == mojaSesija) pillPreview?.text = text.ifBlank { "Slušam…" }
+                }
+            } else null
+            val sirov = GeminiStt.recognizeStream(cfg, onUpdate = preview) {
                 val chunk = rec.nextChunk()
                 when {
                     chunk != null -> {
-                        runCatching { izlaz?.write(chunk) }
                         totalBytes += chunk.size
                         chunk
                     }
@@ -268,7 +269,6 @@ class DictationService : Service() {
                         val rest = rec.stop()
                         recorder = null
                         if (rest.isNotEmpty()) {
-                            runCatching { izlaz?.write(rest) }
                             totalBytes += rest.size
                             rest
                         } else {
@@ -282,17 +282,7 @@ class DictationService : Service() {
             if (tekst.isBlank()) problem = "Ništa nije prepoznato"
         } catch (e: Exception) {
             problem = e.message ?: "Gemini Transcribe Live nije uspeo"
-            runCatching { izlaz?.flush() }
-            val pcm = runCatching { kopija.readBytes() }.getOrElse { ByteArray(0) }
-            if (pcm.isNotEmpty() &&
-                PendingStore(this, cfg.sampleRate)
-                    .save(pcm, cfg.transcriptionProvider) != null
-            ) {
-                problem = "$problem — snimak sačuvan za ponovni pokušaj"
-            }
         } finally {
-            runCatching { izlaz?.close() }
-            kopija.delete()
             if (recorder === rec) {
                 runCatching { rec.stop() }
                 recorder = null
@@ -384,9 +374,8 @@ class DictationService : Service() {
     ) {
         val pieces = mutableListOf<String>()
         var problem: String? = null
-        var failedFileIndex: Int? = null
         try {
-            for ((index, file) in files.withIndex()) {
+            for (file in files) {
                 val pcm = runCatching { file.readBytes() }.getOrElse {
                     throw OpenAiTranscription.OpenAiException("Ne mogu da pročitam audio snimak.")
                 }
@@ -396,11 +385,9 @@ class DictationService : Service() {
                     ).trim()
                     if (piece.isNotBlank()) pieces += piece
                 } catch (exc: Exception) {
-                    // Ako je prethodni segment uspeo, njega ne bacamo; korisnik
-                    // dobija jasan problem i neuspešni deo ostaje za ponovni
-                    // pokušaj. Ako nije uspeo nijedan, deliver samo prikazuje
-                    // grešku i tekst ostaje netaknut.
-                    failedFileIndex = index
+                    // Ako je prethodni segment uspeo, njega ne bacamo: korisnik
+                    // dobija delimican tekst i jasan problem. Ako nije uspeo
+                    // nijedan, deliver prikazuje samo grešku.
                     problem = exc.message ?: "OpenAI transkripcija nije uspela"
                     break
                 }
@@ -408,93 +395,10 @@ class DictationService : Service() {
         } catch (exc: Exception) {
             problem = exc.message ?: "OpenAI transkripcija nije uspela"
         }
-        var savedForRetry = false
-        if (problem != null) {
-            // Cuvamo pali segment i sve posle njega; raniji su vec isporuceni.
-            val pendingStore = PendingStore(this, cfg.sampleRate)
-            // Prethodni segmenti su vec isporuceni; za ponovni pokusaj cuvamo
-            // samo onaj koji je pao i sve sto je ostalo iza njega.
-            val firstUnsent = failedFileIndex ?: 0
-            for (file in files.drop(firstUnsent)) {
-                runCatching { file.readBytes() }
-                    .getOrNull()
-                    ?.let {
-                        savedForRetry = pendingStore.save(it, cfg.transcriptionProvider) != null ||
-                            savedForRetry
-                    }
-            }
-        }
         files.forEach { it.delete() }
         val joined = pieces.joinToString(" ").trim()
         val text = if (joined.isNotBlank() && cfg.trailingSpace) "$joined " else joined
-        if (problem != null && text.isNotBlank()) {
-            problem += if (savedForRetry) {
-                " — neuspeo deo je sačuvan za ponovni pokušaj"
-            } else {
-                " — audio nije mogao da se sačuva"
-            }
-        } else if (problem != null) {
-            problem += if (savedForRetry) {
-                " — snimak je sačuvan za ponovni pokušaj"
-            } else {
-                " — audio nije mogao da se sačuva"
-            }
-        }
         handler.post { deliver(text, problem, ticket, last = true, sesija = sesija) }
-    }
-
-    /** Ponovo posalji jedan lokalno sacuvan WAV/PCM i ukloni ga tek po uspehu. */
-    private fun retryPending(name: String?) {
-        if (name.isNullOrBlank()) return
-        if (isRecording || busy || polishing) {
-            toast("Sačekaj da se trenutni diktat završi")
-            return
-        }
-        cfg = Config(this)
-        val store = PendingStore(this, cfg.sampleRate)
-        val file = store.find(name)
-        if (file == null) {
-            toast("Taj sačuvani snimak više ne postoji")
-            stopSelf()
-            return
-        }
-        thread {
-            try {
-                val pcm = store.load(file)
-                if (pcm.size < 6_400) throw OpenAiTranscription.OpenAiException(
-                    "Snimak je prekratak za ponovno slanje"
-                )
-                // Ponovi preko provajdera koji je prvobitno pao. Ako je snimak
-                // iz stare verzije i nema metapodatak, koristi trenutni izbor.
-                val provider = store.provider(file) ?: cfg.transcriptionProvider
-                val result = (when (provider) {
-                    "openai" -> OpenAiTranscription.postProcess(
-                        OpenAiTranscription.recognize(pcm, cfg), cfg,
-                    )
-                    "gemini_live" -> GeminiStt.postProcess(
-                        GeminiStt.recognize(pcm, cfg), cfg,
-                    )
-                    else -> TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
-                }).trim()
-                if (result.isBlank()) throw Exception("Model nije vratio tekst")
-                store.remove(file)
-                insertNow(if (cfg.trailingSpace) "$result " else result)
-                handler.post {
-                    toast("Sačuvani snimak je uspešno ponovljen preko " +
-                        if (provider == "openai") "OpenAI-ja" else "Google-a")
-                    stopSelf()
-                }
-            } catch (exc: Exception) {
-                handler.post {
-                    toast(
-                        "Ponovna obrada nije uspela: " +
-                            (exc.message ?: "nepoznata greška") +
-                            ". Snimak ostaje sačuvan."
-                    )
-                    stopSelf()
-                }
-            }
-        }
     }
 
     private fun recognizeAndDeliver(
@@ -524,17 +428,6 @@ class DictationService : Service() {
             else TextPolish.apply(sirov, cfg)
         } catch (exc: Exception) {
             problem = exc.message ?: "greška u prepoznavanju"
-            // Snimak se cuva da izgovoreno ne propadne.
-            val saved = if (pcm.size >= 6_400) {
-                PendingStore(this, cfg.sampleRate).save(pcm, cfg.transcriptionProvider) != null
-            } else {
-                false
-            }
-            problem += if (saved) {
-                " — snimak je sačuvan za ponovni pokušaj"
-            } else {
-                " — audio je prekratak za ponovno slanje"
-            }
         }
         handler.post { deliver(text, problem, ticket, last, sesija) }
     }
@@ -761,7 +654,30 @@ class DictationService : Service() {
             )
         }
 
-        val view: View = red
+        val preview = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            maxWidth = resources.displayMetrics.widthPixels - dp(28)
+            maxLines = 6
+            text = "Slušam…"
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.parseColor("#E61F2933"))
+            }
+            visibility = if (GeminiStt.enabled(cfg) && cfg.geminiLivePreview) {
+                View.VISIBLE
+            } else View.GONE
+        }
+        val view: View = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END
+            addView(red)
+            addView(preview, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) })
+        }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -783,6 +699,7 @@ class DictationService : Service() {
                 pill = view
                 pillCounter = brojac
                 pillToggle = prekidac
+                pillPreview = preview
                 updateToggle()
             }
             .onFailure { toast("Nema dozvolu za prikaz preko drugih aplikacija") }
@@ -846,6 +763,7 @@ class DictationService : Service() {
         pill = null
         pillCounter = null
         pillToggle = null
+        pillPreview = null
     }
 
     override fun onDestroy() {

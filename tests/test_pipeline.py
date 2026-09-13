@@ -5,9 +5,12 @@ proverava sama logika, bez ekrana i bez mikrofona.
 """
 
 import threading
+import queue
+import time
 import unittest
 
 from dictate import app as app_mod
+from dictate import insert
 
 
 def napravi(**kw):
@@ -111,6 +114,37 @@ class DvaDiktataOdjednom(unittest.TestCase):
         import threading as t
         app._session_lock = t.Lock()
         self.assertNotEqual(app._nova_sesija(), app._nova_sesija())
+
+
+class DirektanGeminiUnos(unittest.TestCase):
+    def test_potvrdjeni_delovi_idu_odmah_i_ne_dupliraju_se_na_kraju(self):
+        app = napravi(audio_check=False, polish_paragraphs=False)
+        app._insert_q = queue.Queue()
+        app._pending = 2
+        app._pending_by = {1: 1, 2: 1}
+        app._maybe_polish = lambda: None
+        app._settle_phase = lambda: None
+        app._remember = lambda _: None
+        written = []
+        old_live, old_insert = insert.insert_live, insert.insert
+        insert.insert_live = lambda text: written.append(text)
+        insert.insert = lambda text, **kw: written.append(text)
+        try:
+            threading.Thread(target=app._insert_worker, daemon=True).start()
+            app._deliver_live_part(2, "drugi ", 2)
+            time.sleep(0.02)
+            self.assertEqual(written, [])
+            app._deliver(1, "prvi ", 1)
+            deadline = time.monotonic() + 1
+            while len(written) < 2 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(written, ["prvi ", "drugi "])
+            app._deliver(2, "", 2)
+            time.sleep(0.02)
+            self.assertEqual(written, ["prvi ", "drugi "])
+            self.assertEqual(app._pending, 0)
+        finally:
+            insert.insert_live, insert.insert = old_live, old_insert
 
 
 class KadaSeCekaKraj(unittest.TestCase):
@@ -474,3 +508,92 @@ class GranicaTrajanja(unittest.TestCase):
                 self.limit(transcription_provider="gemini_live",
                            gemini_live_max_seconds=uneto), ocekivano, uneto
             )
+
+
+class PrikazUzivo(unittest.TestCase):
+    """Okvir sa prepisom dok govoriš; u polje ide samo potvrđena celina."""
+
+    class _Recorder:
+        cancelled = False
+        session = 1
+        ticket = 1
+        live_insert = False
+        released = False
+
+    def test_medjurezultat_ide_samo_u_okvir(self):
+        app = napravi(live_preview=True)
+        app._live_text = ""
+        app._live_text_dirty = False
+        app._live_preview(self._Recorder(), "ovo je MEĐUrezultat")
+        # Prikaz prolazi kroz ista pravila kao i prepis koji se ubacuje
+        # (ovde: mala slova; kvačice se skidaju samo ako je to izabrano).
+        self.assertEqual(app._live_text, "ovo je međurezultat")
+        self.assertTrue(app._live_text_dirty)
+
+    def test_otkazan_diktat_ne_crta(self):
+        app = napravi(live_preview=True)
+        app._live_text = ""
+        app._live_text_dirty = False
+        recorder = self._Recorder()
+        recorder.cancelled = True
+        app._live_preview(recorder, "ovo se ne prikazuje")
+        self.assertEqual(app._live_text, "")
+        self.assertFalse(app._live_text_dirty)
+
+    def test_prekidac_gasi_prikaz(self):
+        self.assertTrue(napravi(live_preview=True)._live_preview_on())
+        self.assertFalse(napravi(live_preview=False)._live_preview_on())
+
+
+class GasenjePrikaza(unittest.TestCase):
+    """Okvir nestaje u trenutku zaustavljanja, ne kad rep istekne."""
+
+    class _Panel:
+        def __init__(self):
+            self.visible = False
+            self.text = ""
+
+        def show(self, text=""):
+            self.visible = True
+            self.text = text
+
+        def set_text(self, text):
+            self.text = text
+
+        def hide(self):
+            self.visible = False
+
+    def _app(self):
+        app = napravi(live_preview=True)
+        app.live_panel = self._Panel()
+        app._live_text = "prva celina"
+        app._live_text_dirty = True
+        app._live_off = False
+        app._recorder = object()
+        app._starting = 0
+        return app
+
+    def test_crta_dok_snima(self):
+        app = self._app()
+        app._tick_live_panel()
+        self.assertTrue(app.live_panel.visible)
+        self.assertEqual(app.live_panel.text, "prva celina")
+
+    def test_zaustavljanje_gasi_odmah(self):
+        app = self._app()
+        app._tick_live_panel()
+        # Mikrofon jos drzi rep (recorder postoji), ali je STOP vec pritisnut.
+        app._live_off = True
+        app._tick_live_panel()
+        self.assertFalse(app.live_panel.visible)
+
+    def test_celina_posle_stopa_ne_vraca_okvir(self):
+        app = self._app()
+        app._tick_live_panel()
+        app._live_off = True
+        app._tick_live_panel()
+        # Reader jos radi i salje poslednju potvrdjenu celinu.
+        app._live_text = "poslednja celina"
+        app._live_text_dirty = True
+        app._tick_live_panel()
+        self.assertFalse(app.live_panel.visible)

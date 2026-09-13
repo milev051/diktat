@@ -16,6 +16,11 @@ snimanje teče dalje, pa tekst stiže usput. Sigurnosna granica ostaje jedan sat
 Kada se izabere OpenAI, ova opcija nestaje i na njenom mestu se prikazuju
 **OpenAI dugi diktat** i izbor pisma.
 
+Uz **Gemini 3.5 Transcribe Live** možeš uključiti **Prikazuj prepis uživo tokom
+snimanja**. Trenutni tekst se prikazuje uz tajmer bez preuzimanja fokusa;
+lokalna pravila se vide odmah. U aktivno polje se upisuje konačan tekst nakon
+zaustavljanja.
+
 U običnom režimu staje na 30s — i zato što endpoint odbija duže zahteve, i da slučajno
 pokrenut diktat ne snima satima. Nastavak traži nov pritisak.
 
@@ -121,10 +126,9 @@ uklanjaju. Oba prekidača rade i posle AI obrade.
 ## Ako prepoznavanje zakaže
 
 Prolazne greške (mreža, timeout, 429, 5xx) automatski se pokušavaju do šest puta
-ukupno. Ako i šesti pokušaj padne, **snimak se čuva** — sekcija *Sačuvani audio*
-pokazuje koliko ih ima i šalje ih ponovo. Pamti se i provajder prvog pokušaja,
-pa se snimak ne šalje slučajno drugom servisu ako u međuvremenu promeniš izbor.
-Drži se poslednja 3.
+ukupno. Ako i šesti pokušaj padne, diktat propada i prikazuje se greška —
+**zvuk se ne čuva na telefonu**. Ranija sekcija *Sačuvani audio* i ponovno
+slanje su uklonjeni: snimljen glas ne ostaje na uređaju posle diktata.
 
 ## Gemini 3.5 Transcribe Live
 
@@ -224,7 +228,7 @@ Groq и OpenAI кључ. Ceo diktat se sačeka pa jednim pozivom ode modelu. Dok
 pokazuje plavo **AI**.
 
 U istoj kartici postoji izbor **Model za manipulaciju teksta**: Gemini ili
-Groq GPT-OSS 120B. On važi za sređivanje, pasuse, tačke, ponavljanja i prevod,
+Groq GPT-OSS 120B. On važi za sređivanje, pasuse, tačke i ponavljanja,
 dok **Provider transkripcije** ostaje zaseban izbor. Gemini i Groq dobijaju
 samo već transkribovan tekst; audio иде искључиво изабраном Google или OpenAI
 провајдеру транскрипције.
@@ -238,7 +242,7 @@ Alati su **nezavisni** — uputstvo se sklapa od izabranih. Ako је изабр�
 | Dodaj samo zareze | isključeno | model analizira tekst i dodaje samo zareze, bez tačaka i ostalih znakova |
 | Sažmi u tačke | isključeno | preuredi tekst u spisak tačaka |
 | Podeli na pasuse | uključeno | prazan red između smisaonih celina |
-| Jezik izlaza | prazno | slobodan opis: „makedonski", „pola makedonski pola srpski" |
+| Izbaci ponavljanja | isključeno | udvojena reč ili fraza ostaje jednom |
 
 Bez sređivanja model **ne dira** interpunkciju i kvačice — tako se dobija samo
 kraći tekst ili samo pasusi. Ako nijedan alat nije izabran, poziva nema.
@@ -296,17 +300,6 @@ Za osećaj koliko je to — tipične vrednosti:
 | jedna fotografija u poruci | 800 KB |
 | minut Spotify-a | 1.1 MB |
 | učitavanje jedne veb stranice | 2.2 MB |
-
-## Procena koristi — 10 dana
-
-U kartici **Procena koristi — 10 dana** pokreni novi period kada želiš da meriš
-stvarnu vrednost diktiranja. Aplikacija lokalno beleži broj rezultata,
-karaktere i sekunde snimanja po danima. Potrošnju API-ja unosiš ručno, a brzina
-kucanja služi za približan proračun koliko bi ti vremena trebalo da isti tekst
-otkucaš. Izveštaj prikazuje prosek po danu, cenu po diktatu, cenu na 1.000
-karaktera i procenjeno vreme kucanja. Dodatno prikazuje broj poziva i vreme
-zvuka po svakom korišćenom provajderu/modelu, da se Google i OpenAI mogu
-uporediti na istom desetodnevnom uzorku. Podaci ostaju na telefonu.
 
 ## Tekst
 

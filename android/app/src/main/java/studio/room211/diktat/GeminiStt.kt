@@ -2,6 +2,11 @@ package studio.room211.diktat
 
 import org.json.JSONObject
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 /**
  * `gemini-3.5-transcribe-live` kao izvor transkripcije, preko Live API-ja.
@@ -16,8 +21,8 @@ import java.util.Base64
  * **Zvuk se strimuje DOK snimanje traje.** Izmereno na 64.7s zvuka: slanje
  * posle Stop-a ostavlja 15.6s cekanja, slanje u toku 0.0s. Cena je ista, jer
  * se naplacuje zvuk a zvuk je isti. Mana: komadi sa mikrofona se citaju samo
- * jednom, pa drugi pokusaj nema sta da posalje — zato se snimak usput cuva za
- * `PendingStore`.
+ * jednom, pa drugi pokusaj nema sta da posalje — neuspeo Live diktat propada,
+ * zvuk se nigde ne cuva.
  *
  * Kljuc je isti `polishApiKey` iz AI Studio — ne pravi se drugi za istu uslugu.
  */
@@ -142,7 +147,11 @@ object GeminiStt {
      * `komadi` vraca `null` kad snimanje stane. Lista sa jednim elementom daje
      * staro ponasanje (sve odjednom), pa oba puta idu kroz isti kod.
      */
-    fun recognizeStream(cfg: Config, komadi: () -> ByteArray?): String {
+    fun recognizeStream(
+        cfg: Config,
+        onUpdate: ((String) -> Unit)? = null,
+        komadi: () -> ByteArray?,
+    ): String {
         val rate = cfg.sampleRate
         // 16-bit mono: dva bajta po semplu, pa je komad od 100ms rate/10*2.
         val korak = maxOf(2, (rate / 1000) * LIVE_CHUNK_MS * 2)
@@ -177,6 +186,10 @@ object GeminiStt {
                         )
                         i = kraj
                     }
+                }
+
+                if (onUpdate != null) {
+                    return streamWithPreview(ws, komadi, ::posalji, korak, rate, onUpdate)
                 }
 
                 // Ostatak koji nije pun komad nosi se u sledeci prolaz:
@@ -230,7 +243,7 @@ object GeminiStt {
                     val poruka = JSONObject(sirovo)
                     if (poruka.has("error")) {
                         throw GeminiSttException(
-                            "Live API: ${poruka.opt("error").toString().take(200)}",
+                            "Live API: ${poruka.opt("error")?.toString()?.take(200)}",
                             retryable = true,
                         )
                     }
@@ -254,6 +267,105 @@ object GeminiStt {
             }
         }
         return delovi.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ").trim()
+    }
+
+    private fun streamWithPreview(
+        ws: WSock,
+        komadi: () -> ByteArray?,
+        posalji: (ByteArray) -> Unit,
+        korak: Int,
+        rate: Int,
+        onUpdate: (String) -> Unit,
+    ): String {
+        val delovi = mutableListOf<String>()
+        var interim = ""
+        val sent = AtomicBoolean(false)
+        val finished = CountDownLatch(1)
+        val error = AtomicReference<Exception?>(null)
+        ws.setTimeout(500)
+
+        fun prikazi() {
+            val text = (delovi + interim).filter { it.isNotBlank() }.joinToString(" ").trim()
+            runCatching { onUpdate(text) }
+        }
+
+        thread(name = "gemini-live-preview", isDaemon = true) {
+            var lastMessage = System.currentTimeMillis()
+            try {
+                while (true) {
+                    val raw = try {
+                        ws.recvText()
+                    } catch (_: WSock.WSTimeout) {
+                        if (!sent.get()) continue
+                        val waitMs = if (interim.isNotBlank()) LIVE_IDLE_MS else LIVE_QUIET_MS
+                        if (System.currentTimeMillis() - lastMessage >= waitMs) {
+                            if (delovi.isNotEmpty() || interim.isNotBlank()) break
+                            throw GeminiSttException("Gemini Transcribe Live nije vratio prepis.", true)
+                        }
+                        continue
+                    }
+                    if (raw == null) {
+                        if (delovi.isEmpty() && interim.isBlank() && ws.closeReason.isNotEmpty()) {
+                            throw GeminiSttException(zatvoreno(ws), prolazno(ws))
+                        }
+                        break
+                    }
+                    val message = JSONObject(raw)
+                    if (message.has("error")) {
+                        throw GeminiSttException(
+                            "Live API: ${message.opt("error")?.toString()?.take(200)}", true
+                        )
+                    }
+                    lastMessage = System.currentTimeMillis()
+                    val final = liveText(message)
+                    if (final.isNotBlank()) {
+                        delovi.add(final)
+                        interim = ""
+                        prikazi()
+                    } else {
+                        val temporary = liveInterim(message)
+                        if (temporary.isNotBlank()) {
+                            interim = temporary
+                            prikazi()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                error.set(e)
+            } finally {
+                finished.countDown()
+            }
+        }
+
+        var remainder = ByteArray(0)
+        try {
+            while (true) {
+                error.get()?.let { throw it }
+                val chunk = komadi() ?: break
+                if (chunk.isEmpty()) continue
+                remainder += chunk
+                val whole = remainder.size - (remainder.size % korak)
+                if (whole > 0) {
+                    posalji(remainder.copyOfRange(0, whole))
+                    remainder = remainder.copyOfRange(whole, remainder.size)
+                }
+            }
+            posalji(remainder + ByteArray((rate * LIVE_TAIL_SILENCE).toInt() * 2))
+            ws.sendText(JSONObject().put(
+                "realtimeInput", JSONObject().put("audioStreamEnd", true)
+            ).toString())
+            sent.set(true)
+            if (!finished.await(
+                    (LIVE_IDLE_MS + LIVE_QUIET_MS + 2_000).toLong(), TimeUnit.MILLISECONDS
+                )) {
+                throw GeminiSttException("Gemini Transcribe Live nije završio odgovor.", true)
+            }
+            error.get()?.let { throw it }
+            if (interim.isNotBlank()) delovi.add(interim)
+            return delovi.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ").trim()
+        } finally {
+            sent.set(true)
+        }
     }
 
     /** Gotov snimak — zvuk se salje odjednom, posle Stop-a. */

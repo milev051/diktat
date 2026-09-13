@@ -32,13 +32,13 @@ ide vrlo dobro (izmerena pouzdanost 0.93).
 
 ### Izbor provajdera transkripcije
 
-U meniju **AI** biraš jedan od tri izvora; Google je podrazumevan.
+U **Podešavanja → Snimanje i tekst** biraš jedan od tri izvora; Google je podrazumevan.
 
 | Izbor | Model | Ključ | Granica po zahtevu |
 |---|---|---|---|
 | **Transkripcija: Google** | Web Speech (Chromium) | ugrađen javni | ~30 s |
 | **Transkripcija: OpenAI GPT** | `gpt-transcribe` | OpenAI | do 60 min |
-| **Transkripcija: Gemini 3.5 Transcribe Live** | `gemini-3.5-transcribe-live` | Gemini | do 60 min |
+| **Transkripcija: Gemini 3.5 Transcribe Live** | `gemini-3.5-transcribe-live` | Gemini | 120 s podrazumevano |
 
 OpenAI šalje jedan završen snimak tek posle Stop-a na Audio Transcriptions API;
 potrebno je da uneseš svoj OpenAI API ključ u **AI → API ključevi → OpenAI API
@@ -61,21 +61,36 @@ obzira na dužinu diktata, a ostatak je bila tempirana pauza kojom se prepoznaje
 da je utihnuo. Skraćena je sa 3.0s na 1.0s, uz duži rok kad je celina još u
 letu — ukupno čekanje **3.5s → 1.5s**.
 
-Cena je ista — naplaćuje se zvuk, a zvuk je isti. Tekst i dalje stiže tek na
-kraju, u jednom komadu: „Live" je ime modela, ne prikaz reč-po-reč.
+Na Mac-u su u **Podešavanja → Snimanje i tekst** dva nezavisna izbora:
+
+- **Prikaži prepis uživo u okviru na ekranu** (podrazumevano uključeno): okvir
+  pri dnu ekrana ispisuje prepis dok govoriš, uključujući i međurezultat.
+  Okvir nikad ne uzima fokus i propušta klik, pa tekst i dalje ide u polje koje
+  je bilo aktivno, a nestaje istog trenutka kad zaustaviš snimanje. Postoji zato što potvrđena celina od Gemini-ja stiže tek na
+  pauzi: između dve potvrde inače nema nikakvog znaka da aplikacija čuje.
+- **Upisuj tekst tokom snimanja u aktivno polje**: potvrđene celine se odmah
+  kucaju u polje, pa raniju reč možeš da klikneš i ispraviš dok govoriš dalje.
+  Pre naredne celine kursor se vraća na kraj. Međurezultat se **nikad** ne
+  kuca, da Gemini ne bi prebrisao ručnu ispravku; on se vidi samo u okviru.
+  Lokalna pravila rade pri svakom upisu, a zasebna AI obrada teksta na kraju se
+  u ovom režimu preskače.
+
+Na Androidu je isti prikaz uživo zaseban izbor **Prikazuj prepis uživo tokom
+snimanja**; tekst stoji uz tajmer, a u polje se ubacuje konačan rezultat po
+zaustavljanju.
 
 Mana: komadi sa mikrofona se čitaju samo jednom, pa neuspeo poziv nema šta da
-ponovi. Snimak se zato čuva u `~/Diktat-neuspeli` i ponavlja se sa
-`./run.sh replay`.
+ponovi — takav diktat propada. Zvuk se nigde ne čuva ni na disku ni u kešu,
+ni na Mac-u ni na telefonu.
 
 > **Obična `gemini-3.5-transcribe` varijanta je isprobana pa uklonjena.** Na
 > besplatnom nivou ima 3 zahteva u minuti i **25 dnevno**, što za svakodnevni
 > rad ne znači ništa. Live varijanta nema ni jednu ni drugu granicu.
 
-Kada je izabran OpenAI ili Gemini, **provera snimka se gasi** (Google/Gemini
-sluša snimak, Groq preciznost): prepoznavanje već radi jak audio model, pa bi
-drugi prolaz slao isti zvuk još jednom, slabijem. AI obrada teksta (prevod,
-tačke, pasusi) radi normalno.
+Kada je izabran OpenAI ili Gemini, **provera snimka se gasi** (Gemini sluša
+snimak, Groq preciznost): prepoznavanje već radi jak audio model, pa bi drugi
+prolaz slao isti zvuk još jednom, slabijem. Na Mac-u se ta grupa tada i ne
+prikazuje. AI obrada teksta (tačke, pasusi) radi normalno.
 
 Prepis stiže na **latinici** — endpoint za `sr-RS` vraća ćirilicu, i to
 nedosledno, pa se pismo poravnava pre svega ostalog. Izmereno: snimak od 19s sa
@@ -83,10 +98,10 @@ dve pauze prepiše se za ~9s.
 
 ### Izbor modela za manipulaciju teksta
 
-U meniju **AI → Model za manipulaciju teksta** biraš **Gemini** ili
+U **Podešavanja → Snimanje i tekst → AI obrada teksta** biraš **Gemini** ili
 **Groq GPT-OSS 120B**. Na Androidu je isti izbor u AI kartici. Ovo je odvojeno
-od transkripcije: izbor određuje samo podelu na pasuse, tačke, sređivanje,
-ponavljanja i prevod. Groq-ov model koristi `openai/gpt-oss-120b` preko Groq
+od transkripcije: izbor određuje samo podelu na pasuse, tačke, sređivanje i
+ponavljanja. Groq-ov model koristi `openai/gpt-oss-120b` preko Groq
 chat endpointa; postojeća opcija **Groq preciznost** i dalje znači dodatnu
 audio-proveru i nije isto što i ovaj izbor.
 
@@ -124,6 +139,10 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 ## Korišćenje
 
 - **Drži desni Option**, pričaj, **pusti** → tekst se zalepi gde ti je kursor.
+- **Taster `§`** (levo od jedinice) radi isto, ako je uključen u Podešavanjima.
+  Dok je uključen, taj znak se **ne upisuje** nigde; uz modifikator (Shift+§ za
+  „±", Cmd+§) taster radi kao i pre.
+
 Dva nezavisna podešavanja:
 
 - **Režim** — *Drži taster* ili *Prekidač* (podrazumevano prekidač: pritisneš da
@@ -144,15 +163,14 @@ Dva nezavisna podešavanja:
   i ništa se ne ubacuje. Desni Option i dalje kuca specijalne znake normalno.
 - **Brz start pa odmah stop** se više ne gubi. Pokretanje čeka da se mikrofon
   oslobodi (do ~1.5s), pa je STOP u tom prozoru ranije padao u prazno i snimanje
-  je nastavljalo bez kraja. Sada se zapamti i izvrši čim snimanje krene. Uz to,
-  dok se snima, u meniju stoji **Zaustavi snimanje** kao izlaz u nuždi.
+  je nastavljalo bez kraja. Sada se zapamti i izvrši čim snimanje krene. Dok
+  se snima, klik na ikonicu služi kao rezervno **Zaustavi snimanje**.
 
 ### Provera da li prepoznavanje radi
 
 ```bash
 ./run.sh test 20           # snimi 20s SA PAUZAMA i ispiši šta je čuo
-./run.sh replay            # pusti poslednji neuspeo snimak kroz isti put
-./run.sh replay ~/x.wav    # ili određen snimak
+./run.sh replay ~/x.wav    # pusti postojeći WAV kroz isti put
 ```
 
 Oba idu kroz **izabrani izvor**, isti koji koristi i aplikacija. Ispis nosi i
@@ -163,26 +181,13 @@ izgubilo usput.
 prolazi i kad je duži diktat pokvaren — tako je jedan bug (prepis staje na prvoj
 pauzi) dugo prolazio neprimećeno.
 
-`replay` ne traži mikrofon: neuspeli diktati se čuvaju u `~/Diktat-neuspeli`, pa
-se ista greška ponavlja i posmatra bez slučajnosti.
+`replay` ne traži mikrofon: nad istim WAV fajlom se ista greška ponavlja i
+posmatra bez slučajnosti. Putanja se navodi ručno — aplikacija zvuk nigde ne
+čuva.
 
-### Meni
-
-| Stavka | |
-|---|---|
-| **Zaustavi snimanje** | vidi se **samo dok se snima**; zaustavlja diktat mišem, kad prekidač zakaže |
-| **Istorija** | poslednjih `history_size` tekstova; klik kopira u clipboard |
-| **Procena koristi (10 dana)** | dnevni diktati, karakteri i sekunde; trošak se unosi ručno |
-| **Snimanje / AI / Tekst** | podmeniji; sve ostalo je u `config.json` |
-| **Mikrofon** | izbor ulaza; lista se sama osvežava kad otvoriš podmeni |
-| **Osveži audio uređaje** | ručno, ako lista zaglavi |
-| **Režim** | drži taster / prekidač |
-| **AI obrada teksta** | izabrani alat sam uključuje obradu |
-| **Transkripcija** | tačno jedan izbor: Google, OpenAI GPT ili Gemini 3.5 Transcribe Live |
-| **API ključevi** | odvojeno: Gemini, Groq i OpenAI |
-| **Tekst** | nezavisno: sva slova mala i uklanjanje interpunkcije |
-| **Jezik** | srpski, engleski, hrvatski |
-| **Detaljan log obrade** | uključi/isključi snimanje toka; zatim **Otvori poslednji log…** |
+Klik na ikonicu otvara **Podešavanja**, a drugi klik ih sklanja; tokom snimanja
+isti klik zaustavlja diktat. Istorija, mikrofon, izbor
+izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 
 ---
 
@@ -197,6 +202,7 @@ se ista greška ponavlja i posmatra bez slučajnosti.
 | `openai_output_script` | `auto` | `auto`, `cyrillic` ili `latin` |
 | `openai_long_recording` | `true` | dugi OpenAI diktat, sa sigurnosnim limitom |
 | `openai_max_seconds` | `3600` | gornja granica OpenAI diktata, 60 minuta |
+| `gemini_live_insert` | `false` | potvrđene Gemini celine odmah u aktivno polje na Mac-u |
 | `recorded_seconds` | `0` | ukupno vreme uhvaćenog zvuka na računaru |
 | `lowercase` | `true` | sva slova mala, nezavisno od interpunkcije |
 | `strip_punctuation` | `true` | ukloni znakove; separatori `10:30`, `3,5`, `2.0` ostaju |
@@ -214,6 +220,7 @@ se ista greška ponavlja i posmatra bez slučajnosti.
 | `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
 | `hotkey` | `alt_r` | desni Option; `cmd_r`, `ctrl_r`, `f13`… |
+| `hotkey_section` | `true` | i taster `§` pokreće diktat; znak se tada guta |
 | `mode` | `toggle` | način aktivacije: `hold` (drži) ili `toggle` (pritisni) |
 | `continuous` | `true` | bez granice; seče na svakoj pauzi |
 | `continuous_max_seconds` | `3600` | sigurnosna granica i za neprekidni režim |
@@ -223,6 +230,7 @@ se ista greška ponavlja i posmatra bez slučajnosti.
 | `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
 | `history_size` | `3` | koliko poslednjih tekstova čuvati za kopiranje |
 | `show_overlay` | `false` | pilula sa vremenom preko ekrana |
+| `live_preview` | `true` | okvir sa prepisom uživo (Gemini Live) |
 | `overlay_position` | `top-right` | `top-right` ili `bottom` |
 | `text_model` | `gemini` | model za manipulaciju teksta: `gemini` ili `groq` |
 | `groq_enabled` | `false` | Groq Whisper + GPT-OSS drugo mišljenje |
@@ -230,24 +238,13 @@ se ista greška ponavlja i posmatra bez slučajnosti.
 
 Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
 
-### Procena koristi diktiranja
-
-U meniju **Procena koristi (10 dana)** pokreni novi period. Aplikacija lokalno
-beleži broj uspešnih rezultata, karaktere i sekunde snimanja za svaki dan.
-Potrošnju API-ja uneseš ručno kada je vidiš, a brzina kucanja služi samo za
-grubu procenu koliko bi vremena trebalo da se isti broj karaktera otkuca.
-Izveštaj prikazuje prosek po danu, cenu po diktatu, cenu na 1.000 karaktera i
-procenu vremena kucanja. Podaci su lokalni i ne šalju se nigde.
-Izveštaj beleži i uspešne pozive po provajderu/modelu — posebno Google ili
-OpenAI transkripciju, Gemini/Groq obradu i Groq Whisper proveru — da posle
-deset dana možeš da uporediš šta je stvarno korišćeno.
-
 ---
 
 ## AI obrada teksta
 
-Meni → **AI**. Nema posebnog prekidača: izabran alat sam po sebi znači da se AI
-koristi. Ceo diktat se sačeka, pa se **jednim pozivom**
+**Podešavanja → Snimanje i tekst**. Prekidač *Uključi AI obradu* je prečica nad alatima
+ispod: gašenje pamti zatečen izbor i sklanja ih sa ekrana, paljenje ih vraća.
+Izabran alat sam po sebi znači da se AI koristi. Ceo diktat se sačeka, pa se **jednim pozivom**
 pošalje jezičkom modelu. Dok se čeka odgovor, u menu baru stoji plavo **AI**.
 
 Traži ključ za trenutno izabrani model: Gemini koristi `polish_api_key`, a Groq
@@ -262,7 +259,8 @@ interpunkciju i kvačice **ne dira**:
 | Sredi tekst | isključeno | tačke i velika slova; usput i gramatička neslaganja |
 | Bez kvačica | isključeno | `č ć ž š đ → c c z s dj`, primenjuje se na kraju |
 | …podeli na pasuse | uključeno | prazan red između smisaonih celina |
-| Jezik izlaza | prazno | slobodan opis: `makedonski`, `engleski formalno`, `pola makedonski pola srpski` |
+| Sažmi u tačke | isključeno | spisak tačaka; isključuje pasuse |
+| Izbaci ponavljanja | isključeno | udvojena reč ili fraza ostaje jednom |
 
 Ako nijedan alat nije izabran, poziva nema — tekst se lepi kao i inače.
 
@@ -284,7 +282,6 @@ mu se to zabranilo u uputstvu; pasusi i emotikoni pri tom ostaju.
 | `polish_bullets` | `false` | sažmi u spisak tačaka; isključuje pasuse |
 | `polish_dedupe` | `false` | izbaci slučajno udvojene reči i fraze |
 | `polish_paragraphs` | `true` | deli tekst na pasuse, prazan red između |
-| `output_language` | `""` | jezik izlaza, slobodan opis; prazno = bez prevoda |
 | `polish_count` / `polish_count_day` | — | brojač poziva za tekući dan, upisuje ga aplikacija |
 
 Zašto jednim pozivom na kraju a ne po segmentu: model bi inače video krhotine i
@@ -294,8 +291,8 @@ jednog na oko sto pedeset.
 Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
 
 Kod prolazne greške transkripcije (mreža, timeout, 429 ili 5xx) Google i OpenAI
-automatski pokušavaju još **5 puta** pre nego što se audio sačuva za ručni
-ponovni pokušaj. Nevažeći ključ i neispravan zahtev se ne ponavljaju.
+automatski pokušavaju još **5 puta**. Nevažeći ključ i neispravan zahtev se ne
+ponavljaju, a posle poslednjeg pokušaja diktat propada — zvuk se ne čuva.
 
 Ako je *AI sluša snimak* uključeno, taj prolaz već vraća sređen tekst, pa se
 poseban poziv za *sredi tekst* **preskače** — isti posao se ne radi dvaput
@@ -310,8 +307,8 @@ prekidači `lowercase`, `strip_punctuation`, `join_thousands` i
 ### Kvota i rezervni plan
 
 Google **ne nudi** način da se vidi koliko je zahteva preostalo — ni u API-ju ni
-u AI Studio-u. Zato aplikacija sama broji: stavka *Poziva modelu danas: N* u meniju,
-brojač se resetuje u ponoć. `gemini-flash-lite-latest` na besplatnom ključu ima
+u AI Studio-u. Zato aplikacija sama broji pozive; brojač se resetuje u ponoć.
+`gemini-flash-lite-latest` na besplatnom ključu ima
 red veličine 500 poziva dnevno, a jedan diktat je jedan poziv.
 
 Šta se dešava kad nešto pukne:
@@ -380,8 +377,8 @@ Skraćenice i strani nazivi su najslabija tačka endpointa — zato postoji
 
 ### Groq: Whisper + GPT-OSS
 
-Na macOS-u se podešava iz menija **AI → Groq preciznost**, a na Androidu
-u kartici **AI**. Opcija **Google/Gemini sluša snimak** je zasebna; može biti
+Na macOS-u se podešava u **Podešavanja → Snimanje i tekst → Provera prepisa**, a na
+Androidu u kartici **AI**. Opcija **Gemini sluša snimak** je zasebna; može biti
 isključena dok Groq ostaje uključen. Groq Whisper tada i dalje dobija kompletan
 audio jednog diktata, zatim
 `openai/gpt-oss-120b` dobija Google i Whisper prepis i vraća samo konačan tekst.
@@ -397,14 +394,14 @@ testiranja.
 ## Testovi
 
 ```bash
-./run.sh tests     # 53 testa: pravila nad tekstom, uputstva modelu, tok diktata
+./run.sh tests     # pravila nad tekstom, uputstva modelu, tok diktata
 ```
 
-Ne traže ni mikrofon ni mrežu ni ključ. Android ima svojih 24: `cd android && ./gradlew test`.
+Ne traže ni mikrofon ni mrežu ni ključ. Android testovi: `cd android && ./gradlew testDebugUnitTest`.
 
 ## Ako se ne prepozna sve što si rekao
 
-Uključi **Detaljan log obrade** iz menija. Zatim se pojavljuje
+Uključi **Detaljan log obrade** u Podešavanjima. Zatim se pojavljuje
 **Otvori poslednji log…**. Svaki diktat se čuva u `~/Diktat-debug`:
 
 ```
@@ -462,14 +459,14 @@ izbaci je iz liste (`−`) pa dodaj ponovo — macOS ume da zapamti stari potpis
 pokreni jednu.
 
 **Tekst se ne lepi** → probaj `"insert_method": "type"`. Neki terminali i Java
-programi ne primaju sintetički Cmd+V. Tekst je uvek i u **Istoriji** u meniju.
+programi ne primaju sintetički Cmd+V. Tekst je uvek i u **Istoriji** u Podešavanjima.
 
 **Vađenje/vraćanje slušalica** → lista uređaja se osvežava sama pred svaki diktat
-(~2ms). Meni **Osveži audio uređaje** postoji za slučaj da ipak zaglavi.
+(~2ms). Spisak mikrofona se osvežava i kada otvoriš Podešavanja.
 
 **Servis vraća 403 ili prazno** → Google je verovatno stegao endpoint. Snimak
-nije izgubljen: čuva se u `~/Diktat-neuspeli` i šalje ponovo stavkom
-**Ponovi neuspele** u meniju.
+se ne čuva, pa taj diktat treba ponoviti; u logu stoji koliko je sekundi govora
+ostalo bez prepisa.
 
 ---
 
@@ -484,7 +481,8 @@ dictate/
   webstt.py    Google Web Speech endpoint
   insert.py    lepljenje/kucanje u aktivnu aplikaciju
   overlay.py   pilula sa vremenom (podrazumevano isključena)
-  debugdump.py snimanje zvuka i teksta radi poređenja
+  settings_window.py  prozor Podešavanja (kartice, raspored po redovima)
+  debugdump.py snimanje zvuka i teksta radi poređenja (samo uz `debug: true`)
   config.py    config.json
 doctor.py      dijagnostika
 selftest.py    snimi 5s i ispiši šta je čuo

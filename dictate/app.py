@@ -9,6 +9,7 @@ AppKit se dira iskljucivo iz glavne niti; radne niti samo upisuju u `State`.
 """
 
 import queue
+from collections import deque
 import re
 import subprocess
 import threading
@@ -22,7 +23,7 @@ from Foundation import NSAttributedString
 
 from . import (
     abbrev, apitest, audio, config, debugdump, geministt, hotkey, insert, listen,
-    overlay, pending, openai, polish, groq, settings_window, utility, webstt,
+    overlay, openai, polish, groq, settings_window, webstt,
 )
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
@@ -64,6 +65,22 @@ class _MicDelegate(AppKit.NSObject):
             traceback.print_exc()
 
 
+class _StatusClickDelegate(AppKit.NSObject):
+    """Klik na ikonicu otvara podešavanja; drugi klik ih sklanja."""
+
+    def initWithApp_(self, app):
+        self = objc.super(_StatusClickDelegate, self).init()
+        if self is not None:
+            self._app = app
+        return self
+
+    def clicked_(self, _sender):
+        if self._app._recorder is not None or self._app._starting:
+            self._app._stop_from_menu(None)
+        else:
+            self._app._toggle_settings()
+
+
 class State:
     """Deljeno stanje izmedju radnih niti i UI niti."""
 
@@ -92,6 +109,18 @@ class DictateApp(rumps.App):
         self.cfg = config.load()
         self.state = State()
         self.hud = overlay.Overlay(self.cfg.get("overlay_position", "bottom"))
+        # Okvir sa prepisom uzivo stoji iznad pilule kad su oboje na dnu.
+        self.live_panel = overlay.LivePanel(
+            avoid_pill=bool(self.cfg.get("show_overlay", False))
+            and self.cfg.get("overlay_position", "bottom") == "bottom"
+        )
+        self._live_text = ""
+        self._live_text_dirty = False
+        # Okvir se gasi u trenutku zaustavljanja. Zastavicu dize nit tastera, a
+        # sklanja je `_tick` sa glavne niti; posle nje reader jos stize da
+        # posalje poslednju potvrdjenu celinu, pa mora da postoji i zabrana da
+        # je okvir ponovo prikaze.
+        self._live_off = True
 
         self._client_error = None
         self._session_lock = threading.Lock()
@@ -103,6 +132,7 @@ class DictateApp(rumps.App):
         self._starting = 0
         self._stop_requested = False
         self._policy_set = False
+        self._status_click_set = False
         self._error_shown_at = None
         self._record_started_at = 0.0
         self._last_clock = ""
@@ -114,10 +144,6 @@ class DictateApp(rumps.App):
         self._insert_q: queue.Queue = queue.Queue()
         self._dump = None
         self._debug_sessions = {}
-        self._pending_store = pending.PendingStore(
-            self.cfg.get("pending_dir", "~/Diktat-neuspeli"),
-            self.cfg["sample_rate"],
-        )
         self._hist_lock = threading.Lock()
         self._history: list[str] = []
         self._history_dirty = True
@@ -144,13 +170,28 @@ class DictateApp(rumps.App):
         self._preflight()
         threading.Thread(target=self._insert_worker, daemon=True).start()
 
-        self.listener = hotkey.HotkeyListener(
+        self.listener = self._make_listener()
+
+    def _make_listener(self):
+        return hotkey.HotkeyListener(
             self.cfg,
             on_start=self._on_start,
             on_stop=self._on_stop,
             on_cancel=self._on_cancel,
             is_synthetic=insert.injecting,
         )
+
+    def _restart_hotkey(self):
+        """Ponovo otvori osluškivanje tastature.
+
+        Gutanje `§` traži AKTIVAN event tap, a vrsta tapa se bira pri otvaranju,
+        pa se prekidač ne može uključiti bez ponovnog otvaranja.
+        """
+        stari = getattr(self, "listener", None)
+        if stari is not None:
+            stari.stop()
+        self.listener = self._make_listener()
+        self.listener.start()
 
     # ------------------------------------------------------------------ UI
 
@@ -166,34 +207,6 @@ class DictateApp(rumps.App):
             "Podešavanja…", callback=self._open_settings
         )
         self.history_menu = rumps.MenuItem("Istorija")
-        self.utility_menu = rumps.MenuItem("Procena koristi (10 dana)")
-        self.item_utility_status = rumps.MenuItem(
-            "Pokreni desetodnevnu procenu", callback=self._show_utility_report
-        )
-        self.item_utility_start = rumps.MenuItem(
-            "Pokreni novu procenu (briše staru)", callback=self._start_utility
-        )
-        self.item_utility_spend = rumps.MenuItem(
-            "Unesi potrošeno u dinarima…", callback=self._set_utility_spend
-        )
-        self.item_utility_speed = rumps.MenuItem(
-            "Brzina kucanja…", callback=self._set_utility_speed
-        )
-        self.item_utility_report = rumps.MenuItem(
-            "Prikaži izveštaj…", callback=self._show_utility_report
-        )
-        self.item_utility_reset = rumps.MenuItem(
-            "Obriši procenu", callback=self._reset_utility
-        )
-        for item in (
-            self.item_utility_status,
-            self.item_utility_start,
-            self.item_utility_spend,
-            self.item_utility_speed,
-            self.item_utility_report,
-            self.item_utility_reset,
-        ):
-            self.utility_menu.add(item)
         self.mic_menu = rumps.MenuItem("Mikrofon")
 
         # Meni je grupisan po pitanju na koje odgovaras, a ne po tome kad je
@@ -321,9 +334,6 @@ class DictateApp(rumps.App):
         # Bez callback-a: stavka je samo prikaz. Google ne nudi nacin da se vidi
         # preostala kvota, pa aplikacija broji svoje pozive sama.
         self.item_polish_count = rumps.MenuItem("Poziva modelu danas: 0")
-        self.item_language_out = rumps.MenuItem(
-            "Jezik izlaza…", callback=self._set_output_language
-        )
 
         for stavka in (
             self.item_provider_google,
@@ -341,29 +351,18 @@ class DictateApp(rumps.App):
             self.item_polish_bullets,
             self.item_polish_para,
             self.item_polish_dedupe,
-            self.item_language_out,
             rumps.separator,
             self.item_polish_count,
         ):
             ai_menu.add(stavka)
         for stavka in (self.item_listen, self.item_tidy,
                        self.item_polish_para, self.item_polish_bullets,
-                       self.item_polish_dedupe, self.item_language_out):
+                       self.item_polish_dedupe):
             stavka._menuitem.setIndentationLevel_(1)
 
         self.menu = [
             self.item_stop,
             self.settings_item,
-            None,
-            self.history_menu,
-            self.utility_menu,
-            None,
-            self.mic_menu,
-            snimanje_menu,
-            ai_menu,
-            tekst_menu,
-            None,
-            rumps.MenuItem("Izlaz", callback=self._quit),
         ]
 
         # Alati se sive dok je glavni prekidac ugasen. Lista parova, ne recnik:
@@ -374,7 +373,6 @@ class DictateApp(rumps.App):
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_bullets, self._make_polish_toggle("polish_bullets", False)),
             (self.item_polish_dedupe, self._make_polish_toggle("polish_dedupe", False)),
-            (self.item_language_out, self._set_output_language),
         ]
 
         self._rebuild_mic_menu()
@@ -521,24 +519,10 @@ class DictateApp(rumps.App):
         # akciju, pa bi setEnabled_ bio pregazen pri sledecem otvaranju menija.
         for stavka, cb in self._polish_callbacks:
             stavka.set_callback(cb if radi else None)
-        jezik = polish.output_language(self.cfg)
-        self.item_language_out.title = f"Jezik izlaza: {jezik}" if jezik else "Jezik izlaza…"
         self.item_polish_count.title = (
             f"Poziva modelu danas: {self._polish_today()}" if radi
             else "Nema API ključa (config.json)"
         )
-        self._sync_utility_menu()
-
-    def _sync_utility_menu(self):
-        izvestaj = utility.report(self.cfg)
-        if not izvestaj.get("started"):
-            self.item_utility_status.title = "Pokreni desetodnevnu procenu"
-            return
-        self.item_utility_status.title = (
-            f"Dan {izvestaj['elapsed_days']}/10 — "
-            f"{izvestaj['characters']} karaktera"
-        )
-
 
 
     # ------------------------------------------------------- preflight
@@ -572,6 +556,7 @@ class DictateApp(rumps.App):
 
     def _on_start(self):
         """Vraca False ako snimanje nije poceto — hotkey tada vrati svoje stanje."""
+        self._live_off = False
         with self._session_lock:
             self._starting += 1
             self._stop_requested = False
@@ -602,6 +587,11 @@ class DictateApp(rumps.App):
                 return False
             recorder.session = self._nova_sesija(zakljucano=True)
             self._recorder = recorder
+            recorder.live_insert = (
+                geministt.enabled(self.cfg)
+                and bool(self.cfg.get("gemini_live_insert", False))
+                and self.cfg.get("insert_method", "auto") != "clipboard_only"
+            )
             self._record_started_at = time.monotonic()
             # Faza se upisuje pod katancem, da je _settle_phase prethodne
             # sesije ne prepise natrag na "obradjuje".
@@ -610,6 +600,10 @@ class DictateApp(rumps.App):
             propusteni_stop = self._stop_requested
             self._stop_requested = False
 
+        if recorder.live_insert:
+            # Živi delovi moraju da zauzmu mesto u istom redu kao ostali
+            # diktati pre nego što prvi od njih stigne sa servera.
+            recorder.ticket = self._next_ticket(recorder.session)
         threading.Thread(target=self._run_session, args=(recorder,), daemon=True).start()
         if propusteni_stop:
             self._on_stop()
@@ -625,6 +619,9 @@ class DictateApp(rumps.App):
         if recorder is None:
             return
         self.state.set(phase="thinking")
+        # Okvir sa prepisom nestaje odmah, ne kad rep istekne: snimanje je za
+        # korisnika gotovo u trenutku kad pusti taster.
+        self._live_off = True
         # Rep hvata poslednju rec — taster se pusta tacno na njenom kraju.
         recorder.stop(tail=float(self.cfg.get("tail_seconds", 0.8)))
 
@@ -634,6 +631,7 @@ class DictateApp(rumps.App):
             if recorder is None:
                 return
             recorder.cancelled = True
+        self._live_off = True
         recorder.stop()
         self._settle_phase(reason)
 
@@ -690,7 +688,11 @@ class DictateApp(rumps.App):
             return self._ticket
 
     def _deliver(self, ticket: int, text: str, session: int):
-        self._insert_q.put((ticket, text, session))
+        self._insert_q.put((ticket, text, session, False))
+
+    def _deliver_live_part(self, ticket: int, text: str, session: int):
+        if text.strip():
+            self._insert_q.put((ticket, text, session, True))
 
     def _release_recorder(self, recorder):
         """Audio je gotov: pusti mikrofon ODMAH da moze sledeci diktat,
@@ -702,7 +704,8 @@ class DictateApp(rumps.App):
         # PortAudio, a to ne sme da se desi dok je neki strim jos otvoren.
         # Ticket se uzima dok slot jos drzimo, da nova sesija ne preuzme nizi broj.
         recorder.close()
-        recorder.ticket = self._next_ticket(recorder.session)
+        if not recorder.ticket:
+            recorder.ticket = self._next_ticket(recorder.session)
         with self._session_lock:
             if self._recorder is recorder:
                 self._recorder = None
@@ -769,6 +772,12 @@ class DictateApp(rumps.App):
                 self._settle_phase()
             return
 
+        if getattr(recorder, "live_insert", False):
+            if text.strip():
+                self._remember(text)
+            self._deliver(ticket, "", recorder.session)
+            return
+
         text = text.strip()
         if not text:
             self._deliver(ticket, "", recorder.session)
@@ -798,31 +807,19 @@ class DictateApp(rumps.App):
             and audio.peak(pcm) >= self.GOVOR_PEAK
         )
 
-    def _keep_failed(self, pcm: bytes) -> None:
-        saved = self._pending_store.save(pcm)
-        if saved is not None:
-            print(f"[diktat] snimak sacuvan za ponovni pokusaj: {saved}")
-            self._history_dirty = True
-
     def _recognize_or_keep(self, pcm: bytes) -> str:
-        """Snimak ide na disk i kad poziv padne, i kad prepis dodje prazan.
+        """Prepis segmenta; prazan rezultat za jasan govor se samo prijavi.
 
-        Endpoint ume da vrati prazan rezultat i za uredan govor. Ranije se takav
-        segment tiho gubio: ostatak diktata se zalepi, a taj deo nestane bez
-        traga, pa izgleda kao da je zalepljen samo kraj. Sada se snimak cuva u
-        `~/Diktat-neuspeli` i moze da se ponovi sa `./run.sh replay`.
+        Zvuk se nigde ne upisuje na disk — ni kad poziv padne, ni kad prepis
+        dodje prazan. Snimljeni glas ostaje samo u radnoj memoriji, koliko
+        traje prepoznavanje. Ispis u logu je jedini trag, da se vidi da deo
+        diktata nije stigao.
         """
-        try:
-            text = self._recognize(pcm)
-        except Exception:
-            self._keep_failed(pcm)
-            raise
+        text = self._recognize(pcm)
         if not text and self._bilo_je_govora(pcm):
             print(
-                f"[diktat] prazan prepis za {self._seconds(pcm):.1f}s govora "
-                f"— snimak sacuvan"
+                f"[diktat] prazan prepis za {self._seconds(pcm):.1f}s govora"
             )
-            self._keep_failed(pcm)
         return text
 
     def _recognize(self, pcm: bytes) -> str:
@@ -830,28 +827,17 @@ class DictateApp(rumps.App):
             return ""
         seconds = self._seconds(pcm)
         if self.cfg.get("transcription_provider", "google") == "openai":
-            text = openai.post_process(openai.recognize(pcm, self.cfg), self.cfg)
-            utility.record_model(
-                self.cfg, "OpenAI", openai.MODEL, "transkripcija", seconds
-            )
-            config.save(self.cfg)
-            return text
+            return openai.post_process(openai.recognize(pcm, self.cfg), self.cfg)
         if geministt.enabled(self.cfg):
-            model = geministt.model_for(self.cfg)
-            text = geministt.post_process(
+            return geministt.post_process(
                 geministt.recognize(pcm, self.cfg), self.cfg
             )
-            utility.record_model(self.cfg, "Gemini", model, "transkripcija", seconds)
-            config.save(self.cfg)
-            return text
         text, conf = webstt.recognize_full(
             pcm,
             language=self.cfg.get("language", "sr-RS"),
             sample_rate=self.cfg["sample_rate"],
             key=self.cfg.get("api_key") or None,
         )
-        utility.record_model(self.cfg, "Google", "web-speech", "transkripcija", seconds)
-        config.save(self.cfg)
         if not text:
             return text
         if self._batch() or (self._formal() and polish.tidy_on(self.cfg)):
@@ -918,24 +904,10 @@ class DictateApp(rumps.App):
                 # audio nepotrebno išao i Gemini-ju i Groq-u.
                 ispravljen = groq.check_batch(delovi, tekst, self.cfg, trace=trag)
                 self._count_polish(2)  # Whisper + GPT-OSS
-                seconds = sum(len(part) / 2 / rate for part, rate in delovi)
-                utility.record_model(
-                    self.cfg, "Groq", groq.DEFAULT_TRANSCRIPTION_MODEL,
-                    "provera snimka", seconds,
-                )
-                utility.record_model(
-                    self.cfg, "Groq", groq.DEFAULT_MERGE_MODEL,
-                    "provera snimka",
-                )
             else:
                 ispravljen = listen.check_batch(delovi, tekst, self.cfg)
                 self._count_polish()
                 trag["prompt"] = listen._uputstvo(tekst, self.cfg, len(delovi))
-                seconds = sum(len(part) / 2 / rate for part, rate in delovi)
-                utility.record_model(
-                    self.cfg, "Gemini", self.cfg.get("polish_model") or polish.DEFAULT_MODEL,
-                    "provera snimka", seconds,
-                )
             config.save(self.cfg)
             trag["merged_text"] = ispravljen
             self._write_ai_debug(session, trag)
@@ -1134,51 +1106,57 @@ class DictateApp(rumps.App):
         pustis taster. Broj prepoznatih celina je isti (11).
 
         Cena je ista: naplacuje se zvuk, a zvuk je isti. Mana je sto se komadi
-        sa mikrofona citaju samo jednom — drugi pokusaj nema sta da posalje.
-        Zato se usput pisu na privremeni disk, pa neuspeo diktat zavrsi u
-        `~/Diktat-neuspeli` i moze da se ponovi rukom (`./run.sh replay`).
+        sa mikrofona citaju samo jednom — drugi pokusaj nema sta da posalje, pa
+        neuspeo Live diktat propada. Kopija se namerno nigde ne pise: zvuk ne
+        sme da ostane na disku posle diktata.
         """
-        import tempfile
-
         session = self._dump.session() if self._dump else None
         if session is not None:
             self._debug_sessions[recorder.session] = session
 
-        # Privremeni disk, ne lista u memoriji: sat vremena je preko 100 MB.
-        with tempfile.NamedTemporaryFile(prefix="diktat-live-", suffix=".pcm") as fh:
-
-            def komadi():
-                for chunk in self._tracked(recorder):
-                    fh.write(chunk)
-                    yield chunk
-
-            seconds = 0.0
-            try:
-                sirovo = geministt.recognize_live_stream(komadi(), self.cfg)
-            except Exception:
-                fh.flush()
-                fh.seek(0)
-                pcm = fh.read()
-                if pcm and not recorder.cancelled:
-                    sacuvan = self._pending_store.save(pcm)
-                    if sacuvan is not None:
-                        print(f"[diktat] snimak sacuvan za ponovni pokusaj: {sacuvan}")
-                        self._history_dirty = True
-                raise
-            seconds = fh.tell() / 2 / self.cfg["sample_rate"]
+        komadi = self._tracked(recorder)
+        # `on_update` nosi ceo tekst do tog trenutka (potvrđeno + međurezultat) i
+        # ide SAMO u okvir na ekranu. U polje se kuca tek potvrđena celina
+        # (`on_final`): međurezultat model sme da promeni, pa bi kasnija izmena
+        # obrisala ručnu ispravku.
+        prikaz = (
+            (lambda tekst: self._live_preview(recorder, tekst))
+            if self._live_preview_on() else None
+        )
+        sirovo = geministt.recognize_live_stream(
+            komadi, self.cfg,
+            on_update=prikaz,
+            on_final=(
+                (lambda raw: self._live_part(recorder, raw))
+                if getattr(recorder, "live_insert", False) else None
+            ),
+        )
 
         if recorder.cancelled:
             return ""
         self._settle_phase()
         text = geministt.post_process(sirovo, self.cfg)
-        utility.record_model(
-            self.cfg, "Gemini", geministt.model_for(), "transkripcija", seconds
-        )
-        config.save(self.cfg)
         if session is not None:
             session.segment(session.next_index(), b"", text, kind="gemini_live")
             session.finish(b"", text)
         return text
+
+    def _live_preview_on(self) -> bool:
+        return bool(self.cfg.get("live_preview", True))
+
+    def _live_preview(self, recorder, tekst: str):
+        """Radna nit samo ostavlja tekst; okvir crta `_tick` sa glavne niti."""
+        if recorder.cancelled:
+            return
+        self._live_text = geministt.post_process(tekst, self.cfg).strip()
+        self._live_text_dirty = True
+
+    def _live_part(self, recorder, raw):
+        if recorder.cancelled:
+            return
+        text = geministt.post_process(raw, self.cfg).strip()
+        if text:
+            self._deliver_live_part(recorder.ticket, text + " ", recorder.session)
 
     @staticmethod
     def _seconds(pcm: bytes, rate=16000) -> float:
@@ -1217,10 +1195,20 @@ class DictateApp(rumps.App):
         buffered = {}
         expected = 1
         while True:
-            seq, text, sesija = self._insert_q.get()
-            buffered[seq] = (text, sesija)
+            seq, text, sesija, partial = self._insert_q.get()
+            buffered.setdefault(seq, deque()).append((text, sesija, partial))
             while expected in buffered:
-                ready, cija = buffered.pop(expected)
+                events = buffered[expected]
+                if not events:
+                    break
+                ready, cija, is_partial = events.popleft()
+                if is_partial:
+                    try:
+                        insert.insert_live(ready)
+                    except Exception:  # noqa: BLE001
+                        traceback.print_exc()
+                    continue
+                del buffered[expected]
                 expected += 1
                 with self._count_lock:
                     if self._pending > 0:
@@ -1261,7 +1249,6 @@ class DictateApp(rumps.App):
             return
         with self._stats_lock:
             self.cfg["recorded_seconds"] = self._recorded_seconds() + seconds
-            utility.record_audio(self.cfg, seconds)
             config.save(self.cfg)
 
     def _count_polish(self, amount=1):
@@ -1356,16 +1343,6 @@ class DictateApp(rumps.App):
         try:
             doteran = polish.polish(tekst, self.cfg, vec_sredjeno=vec_sredjeno)
             self._count_polish()
-            if polish.text_model(self.cfg) == polish.GROQ_TEXT_MODEL:
-                utility.record_model(
-                    self.cfg, "Groq", groq.DEFAULT_MERGE_MODEL, "obrada teksta"
-                )
-            else:
-                utility.record_model(
-                    self.cfg, "Gemini", self.cfg.get("polish_model") or polish.DEFAULT_MODEL,
-                    "obrada teksta",
-                )
-            config.save(self.cfg)
             if polish.tidy_on(self.cfg):
                 # Uz sredjivanje ostaju samo podesavanja koja se sa njim ne
                 # sudaraju — tekst je modelu isao nedirnut, pa bi inace izostala.
@@ -1402,6 +1379,8 @@ class DictateApp(rumps.App):
                 AppKit.NSApplicationActivationPolicyAccessory
             )
             self._policy_set = True
+        if not self._status_click_set:
+            self._configure_status_click()
 
         if self._api_check_result is not None:
             result = self._api_check_result
@@ -1421,6 +1400,10 @@ class DictateApp(rumps.App):
         # Ide pre svih ranih izlaza iz _tick: stavka mora da se skloni i kad se
         # stanje ne menja (`dirty` je False), a meni sme da se dira samo odavde.
         self._sync_stop_item()
+        if self._settings_window_ui is not None:
+            self._settings_window_ui.refresh_recording()
+
+        self._tick_live_panel()
 
         phase, message, dirty = self.state.snapshot()
 
@@ -1483,11 +1466,42 @@ class DictateApp(rumps.App):
         else:
             self.hud.hide()
 
+    def _tick_live_panel(self):
+        """Okvir sa prepisom uživo; sve se crta sa glavne niti."""
+        # Zaustavljeno snimanje gasi okvir odmah, u sledecem otkucaju (50ms).
+        # Reader jos radi i sme da posalje jos koju celinu — one idu u polje,
+        # ali se vise ne crtaju.
+        if self._live_off or (self._recorder is None and not self._starting):
+            self._live_text_dirty = False
+            if self.live_panel.visible:
+                self.live_panel.hide()
+                self._live_text = ""
+            return
+
+        if self._live_text_dirty:
+            self._live_text_dirty = False
+            if self._live_preview_on():
+                self.live_panel.set_text(self._live_text)
+                if not self.live_panel.visible:
+                    self.live_panel.show(self._live_text)
+
     def _clock_text(self) -> str:
         """Proteklo vreme u sekundama, dve cifre. Snimanje ionako staje na
         granici, pa minuti nemaju sta da rade u naslovu."""
         elapsed = time.monotonic() - self._record_started_at
         return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
+
+    def _configure_status_click(self):
+        nsapp = getattr(self, "_nsapp", None)
+        item = getattr(nsapp, "nsstatusitem", None) if nsapp else None
+        button = item.button() if item is not None else None
+        if button is None:
+            return
+        self._status_click_delegate = _StatusClickDelegate.alloc().initWithApp_(self)
+        item.setMenu_(None)
+        button.setTarget_(self._status_click_delegate)
+        button.setAction_("clicked:")
+        self._status_click_set = True
 
     def _title_color(self):
         """Boja kaze sta se trenutno desava; cifre uvek stoje.
@@ -1550,11 +1564,46 @@ class DictateApp(rumps.App):
             self._settings_window_ui = settings_window.SettingsWindow(self)
         self._settings_window_ui.show()
 
+    def _toggle_settings(self):
+        """Ikonica je prekidač: drugi klik sklanja prozor."""
+        prozor = self._settings_window_ui
+        if prozor is not None and prozor.visible():
+            prozor.hide()
+            return
+        self._open_settings(None)
+
     def settingsCheckbox_(self, sender):
         key = str(sender.identifier() or "")
         value = sender.state() == AppKit.NSControlStateValueOn
         if key == "text_style_written":
             self.cfg["text_style"] = "written" if value else "spoken"
+        elif key == "pravilno":
+            config.postavi_pravilno(self.cfg, value)
+        elif key == "hotkey_section":
+            self.cfg["hotkey_section"] = value
+            config.save(self.cfg)
+            self._restart_hotkey()
+        elif key == "lokalna_pravila":
+            # Prekidač grupe je izvedeno stanje: ugašena grupa znači „pravilno",
+            # tj. sva četiri pravila ugašena, uz pamćenje zatečenog izbora.
+            config.postavi_pravilno(self.cfg, not value)
+        elif key == "ai_obrada":
+            # Nije peto podesavanje nego precica nad alatima: gasenje pamti
+            # zatecen izbor, paljenje ga vraca.
+            config.postavi_ai_obradu(self.cfg, value)
+        elif key == "debug":
+            self.cfg["debug"] = value
+            self._apply_debug(value)
+        elif key == "audio_check":
+            if value and (self._own_audio_model() or not polish.gemini_available(self.cfg)):
+                self.state.set(phase="error", message="Provera snimka traži Google transkripciju i Gemini ključ")
+                value = False
+            self.cfg["audio_check"] = value
+        elif key == "groq_enabled":
+            if value and (self._own_audio_model() or not self.cfg.get("groq_api_key")):
+                self.state.set(phase="error", message="Groq provera traži Google transkripciju i Groq ključ")
+                value = False
+            self.cfg["groq_enabled"] = value
         elif key:
             self.cfg[key] = value
         config.save(self.cfg)
@@ -1573,6 +1622,14 @@ class DictateApp(rumps.App):
                 self.cfg["openai_output_script"] = "latin"
         elif key == "text_model":
             self.cfg["text_model"] = "groq" if title.startswith("Groq") else "gemini"
+        elif key == "input_device":
+            self.cfg["input_device"] = (
+                None if title == "Sistemski podrazumevani" else title
+            )
+        elif key == "mode":
+            self.cfg["mode"] = "hold" if title == "Drži taster" else "toggle"
+            if hasattr(self, "listener"):
+                self.listener.mode = self.cfg["mode"]
         config.save(self.cfg)
         self._sync_menu_marks()
         if self._settings_window_ui is not None:
@@ -1588,17 +1645,20 @@ class DictateApp(rumps.App):
 
     def settingsButton_(self, sender):
         action = str(sender.identifier() or "")
-        if action == "clear_history":
-            self._clear_history(sender)
-        elif action == "open_pending":
-            if self._settings_window_ui is not None:
-                self._settings_window_ui.open_pending()
+        if action.startswith("copy_history_"):
+            try:
+                index = int(action.removeprefix("copy_history_"))
+                with self._hist_lock:
+                    value = self._history[index]
+                insert.set_clipboard(value)
+            except (ValueError, IndexError):
+                pass
         elif action == "check_api":
             self._check_api_keys(sender)
-        elif action == "utility_report":
-            self._show_utility_report(sender)
-        elif action == "utility_start":
-            self._start_utility(sender)
+        elif action == "quit":
+            self._quit(sender)
+        elif action == "stop_recording":
+            self._stop_from_menu(sender)
         elif action == "accessibility":
             subprocess.Popen([
                 "open",
@@ -1624,7 +1684,6 @@ class DictateApp(rumps.App):
                 self._history.remove(clean)
             self._history.insert(0, clean)
             del self._history[size:]
-        utility.record_text(self.cfg, clean)
         config.save(self.cfg)
         self._history_dirty = True
 
@@ -1678,129 +1737,11 @@ class DictateApp(rumps.App):
         self._sync_menu_marks()
         self._keep_menu_open()
 
-    def _start_utility(self, _):
-        utility.start(self.cfg)
-        config.save(self.cfg)
-        self._sync_menu_marks()
-        rumps.alert(
-            title="Desetodnevna procena je pokrenuta",
-            message=(
-                "Od sada se beleže diktati, karakteri, vreme snimanja i korišćeni modeli. "
-                "Posle deset dana unesi stvarni trošak u meniju."
-            ),
-        )
 
-    def _set_utility_spend(self, _):
-        izvestaj = utility.report(self.cfg)
-        if not izvestaj.get("started"):
-            rumps.alert(
-                title="Procena nije pokrenuta",
-                message="Prvo izaberi „Pokreni novu procenu (briše staru)“.",
-            )
-            return
-        odgovor = rumps.Window(
-            message="Unesi koliko je potrošeno tokom ove procene.",
-            title="Potrošnja u dinarima",
-            default_text=f"{izvestaj['spent']:.2f}",
-            ok="Sačuvaj",
-            cancel="Otkaži",
-            dimensions=(300, 24),
-        ).run()
-        if not odgovor.clicked:
-            return
-        try:
-            iznos = float(odgovor.text.strip().replace(",", "."))
-        except ValueError:
-            rumps.alert(title="Neispravan iznos", message="Unesi broj, na primer 12,50.")
-            return
-        utility.set_spent(self.cfg, iznos)
-        config.save(self.cfg)
-        self._sync_menu_marks()
-        self._keep_menu_open()
 
-    def _set_utility_speed(self, _):
-        izvestaj = utility.report(self.cfg)
-        if not izvestaj.get("started"):
-            rumps.alert(
-                title="Procena nije pokrenuta",
-                message="Prvo pokreni desetodnevnu procenu.",
-            )
-            return
-        odgovor = rumps.Window(
-            message="Koliko karaktera približno otkucaš za jedan minut?",
-            title="Brzina kucanja",
-            default_text=str(izvestaj["typing_cpm"]),
-            ok="Sačuvaj",
-            cancel="Otkaži",
-            dimensions=(300, 24),
-        ).run()
-        if not odgovor.clicked:
-            return
-        try:
-            brzina = int(odgovor.text.strip())
-        except ValueError:
-            rumps.alert(title="Neispravna brzina", message="Unesi ceo broj, na primer 180.")
-            return
-        utility.set_typing_cpm(self.cfg, brzina)
-        config.save(self.cfg)
-        self._sync_menu_marks()
-        self._keep_menu_open()
 
-    def _utility_report_text(self):
-        izvestaj = utility.report(self.cfg)
-        if not izvestaj.get("started"):
-            return "Procena nije pokrenuta."
-        total_minutes = izvestaj["seconds"] / 60
-        avg_days = max(1, izvestaj["elapsed_days"])
-        avg_dictations = izvestaj["dictations"] / avg_days
-        avg_characters = izvestaj["characters"] / avg_days
-        lines = [
-            f"Period: {izvestaj['start_date']} — {izvestaj['end_date']}",
-            f"Dan {izvestaj['elapsed_days']}/10; preostalo: {izvestaj['remaining_days']} dana",
-            "",
-            f"Ukupno: {izvestaj['dictations']} diktata, "
-            f"{izvestaj['characters']} karaktera, {total_minutes:.1f} min snimanja",
-            f"Prosek dnevno: {avg_dictations:.1f} diktata, {avg_characters:.0f} karaktera",
-            f"Procena vremena za kucanje: {izvestaj['typed_minutes'] / 60:.2f} h "
-            f"({izvestaj['typing_cpm']} karaktera/min)",
-            f"Uneto kao trošak: {izvestaj['spent']:.2f} RSD",
-        ]
-        if izvestaj["dictations"]:
-            lines.append(f"Trošak po diktatu: {izvestaj['cost_per_dictation']:.2f} RSD")
-        if izvestaj["characters"]:
-            lines.append(
-                f"Trošak na 1.000 karaktera: "
-                f"{izvestaj['cost_per_1000_characters']:.2f} RSD"
-            )
-        if izvestaj.get("models"):
-            lines.extend(("", "Korišćeni modeli:"))
-            for model in izvestaj["models"]:
-                operation = (
-                    f" · {model['operation']}" if model.get("operation") else ""
-                )
-                seconds = model.get("seconds", 0.0)
-                audio = f", {seconds / 60:.1f} min zvuka" if seconds else ""
-                lines.append(
-                    f"{model['provider']} / {model['model']}{operation}: "
-                    f"{model['calls']} poziva{audio}"
-                )
-        lines.append("")
-        lines.append("Dnevno:")
-        lines.extend(
-            f"{row['date']}: {row['dictations']} diktata, "
-            f"{row['characters']} karaktera, {row['seconds'] / 60:.1f} min"
-            for row in izvestaj["days"]
-        )
-        return "\n".join(lines)
 
-    def _show_utility_report(self, _):
-        rumps.alert(title="Procena koristi diktiranja", message=self._utility_report_text())
 
-    def _reset_utility(self, _):
-        utility.reset(self.cfg)
-        config.save(self.cfg)
-        self._sync_menu_marks()
-        self._keep_menu_open()
 
     def _check_api_keys(self, _):
         if self._api_check_running:
@@ -1971,22 +1912,6 @@ class DictateApp(rumps.App):
         config.save(self.cfg)
         self._sync_menu_marks()
         self._keep_menu_open()
-
-    def _set_output_language(self, _):
-        """Slobodan opis, ne spisak: „pola makedonski pola srpski" je isto vazeci."""
-        odgovor = rumps.Window(
-            message="Na kom jeziku tekst treba da izađe?\nPrazno = bez prevoda.",
-            title="Jezik izlaza",
-            default_text=polish.output_language(self.cfg),
-            ok="Sačuvaj",
-            cancel="Otkaži",
-            dimensions=(260, 24),
-        ).run()
-        if not odgovor.clicked:
-            return
-        self.cfg["output_language"] = odgovor.text.strip()
-        config.save(self.cfg)
-        self._sync_menu_marks()
 
     def _make_polish_toggle(self, key, default):
         def toggle(_):

@@ -3,13 +3,54 @@
 Kljucni detalj: desni Command je i dalje obican modifikator. Ako korisnik
 drzi desni Cmd i pritisne bilo koji drugi taster (Cmd+V, Cmd+Tab...), to je
 precica a ne diktat — sesija se tada otkazuje i nista se ne ubacuje.
-Taster se nikad ne guta, pa sve sistemske precice rade normalno.
+Modifikator se nikad ne guta, pa sve sistemske precice rade normalno.
+
+Izuzetak je `§` (taster levo od jedinice na ISO tastaturi). On nije
+modifikator nego obican znak, pa bi pri svakom diktatu ostavljao „§" u tekstu.
+Zato se, i samo dok je izabran kao prekidac, guta preko `darwin_intercept`.
+Gutanje trazi AKTIVAN event tap: dogadjaji tastature tada prolaze kroz nas
+proces, pa se ukljucuje samo kad je opcija upaljena. Uz modifikator (Shift+§ =
+„±", Cmd+§) ne guta se nista i taster radi kao i pre.
 """
 
 import threading
 import time
 
 from pynput import keyboard
+
+try:                       # samo macOS; bez Quartz-a gutanje otpada
+    from Quartz import (
+        CGEventGetFlags,
+        CGEventGetIntegerValueField,
+        kCGEventFlagMaskAlternate,
+        kCGEventFlagMaskCommand,
+        kCGEventFlagMaskControl,
+        kCGEventFlagMaskShift,
+        kCGKeyboardEventKeycode,
+    )
+    MOD_MASK = (
+        kCGEventFlagMaskCommand | kCGEventFlagMaskShift
+        | kCGEventFlagMaskAlternate | kCGEventFlagMaskControl
+    )
+except Exception:          # noqa: BLE001
+    CGEventGetFlags = None
+    MOD_MASK = 0
+
+# kVK_ISO_Section: taster levo od „1" na ISO rasporedu.
+SECTION_VK = 10
+
+# Modifikatori koji, kad se drze, znace da „§" nije prekidac nego deo precice.
+MODIFIER_KEYS = {
+    keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r,
+    keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r,
+    keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+    keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r,
+}
+
+
+def is_section_key(key) -> bool:
+    """Da li je pritisnut `§`; `vk` je pouzdaniji od znaka, koji zavisi od rasporeda."""
+    return getattr(key, "vk", None) == SECTION_VK
 
 KEY_MAP = {
     "cmd_r": keyboard.Key.cmd_r,
@@ -31,6 +72,7 @@ class HotkeyListener:
             raise RuntimeError(
                 f"Nepoznat hotkey '{key_name}'. Dozvoljeni: {', '.join(KEY_MAP)}"
             )
+        self.cfg = cfg
         self.target = KEY_MAP[key_name]
         self.mode = cfg.get("mode", "toggle")
         self.min_seconds = float(cfg.get("min_seconds", 0.35))
@@ -46,15 +88,39 @@ class HotkeyListener:
         self._contaminated = False
         self._pressed_at = 0.0
         self._listener = None
+        self._mods = set()
+
+    def section_on(self) -> bool:
+        return bool(self.cfg.get("hotkey_section", True))
 
     def start(self):
+        # Aktivan tap (preko `darwin_intercept`) se pravi SAMO kad se `§`
+        # zaista koristi: tada svaki taster prolazi kroz nas proces.
+        dodatno = (
+            {"darwin_intercept": self._intercept}
+            if self.section_on() and CGEventGetFlags is not None else {}
+        )
         self._listener = keyboard.Listener(
             on_press=self._on_press,
             on_release=self._on_release,
             suppress=False,
+            **dodatno,
         )
         self._listener.daemon = True
         self._listener.start()
+
+    def _intercept(self, _event_type, event):
+        """Vrati None da dogadjaj nestane; sve ostalo prosledi netaknuto."""
+        try:
+            if (
+                self.section_on()
+                and CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) == SECTION_VK
+                and not (CGEventGetFlags(event) & MOD_MASK)
+            ):
+                return None
+        except Exception:  # noqa: BLE001 — tastatura ne sme da stane zbog nas
+            pass
+        return event
 
     def stop(self):
         if self._listener is not None:
@@ -63,9 +129,21 @@ class HotkeyListener:
 
     # ------------------------------------------------------------------
 
+    def _matches(self, key) -> bool:
+        """Prekidac je izabrani modifikator, a uz opciju i `§` bez modifikatora."""
+        if key == self.target:
+            return True
+        return (
+            self.section_on()
+            and is_section_key(key)
+            and not self._mods
+        )
+
     def _on_press(self, key):
         with self._lock:
-            if key == self.target:
+            if key in MODIFIER_KEYS:
+                self._mods.add(key)
+            if self._matches(key):
                 if self.mode == "toggle":
                     if self._active:
                         self._active = False
@@ -92,7 +170,11 @@ class HotkeyListener:
 
     def _on_release(self, key):
         with self._lock:
-            if key != self.target or self.mode == "toggle":
+            # Modifikator se skida PRE poredjenja: „§" pusten posle Shift-a ne
+            # sme da ostane zapamcen kao precica.
+            if key in MODIFIER_KEYS:
+                self._mods.discard(key)
+            if not self._matches(key) or self.mode == "toggle":
                 return
             if not self._active:
                 return
@@ -115,6 +197,7 @@ class HotkeyListener:
         with self._lock:
             self._active = False
             self._contaminated = False
+            self._mods.clear()
 
     def _start(self):
         """Pokreni snimanje; ako aplikacija ne moze (mikrofon jos zauzet),

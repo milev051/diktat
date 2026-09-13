@@ -106,9 +106,6 @@ object WebStt {
                 sent = body.size.toLong(),
                 received = reply.toByteArray().size.toLong(),
                 seconds = pcmSize / 2.0 / cfg.sampleRate,
-                provider = "google",
-                model = "web-speech",
-                operation = "transkripcija",
             )
             return parse(reply)
         } finally {

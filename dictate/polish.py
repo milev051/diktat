@@ -5,9 +5,9 @@ punim kontekstom. Po segmentu bi model video krhotine i izmisljao krajeve
 recenica, a i broj poziva bi skocio sa jednog na stotinak po diktatu.
 
 Alati su nezavisni: sredjivanje (interpunkcija, velika slova, kvacice) je samo
-JEDAN od njih. Moze se traziti samo prevod ili samo podela na pasuse a da model
-tekst inace ne dira — zato se uputstvo sklapa iz delova umesto da postoji fiksan
-prompt po rezimu. Kad nijedan alat nije izabran, poziva nema.
+JEDAN od njih. Moze se traziti samo podela na pasuse a da model tekst inace ne
+dira — zato se uputstvo sklapa iz delova umesto da postoji fiksan prompt po
+rezimu. Kad nijedan alat nije izabran, poziva nema.
 """
 
 import json
@@ -63,14 +63,6 @@ PONAVLJANJA = (
     "zaredom, ostavi je jednom. Ponavljanje koje nosi značenje "
     "(\u201Evrlo, vrlo dugo\u201C) ostavi kako jeste."
 )
-# Slobodan opis, ne spisak jezika: korisnik ume da trazi i "pola makedonski
-# pola srpski", sto nijedan spisak ne pokriva. Model to razume iz opisa.
-PREVOD = (
-    "Konačan tekst napiši na: {jezik}. Drži se tog opisa doslovno — ako traži "
-    "mešavinu jezika ili neobičan stil, tako i uradi. Značenje mora da ostane "
-    "isto: ne dodaj i ne izbacuj sadržaj."
-)
-
 # Granice koje vaze uvek. Ostale zavise od izabranih alata i dodaju se u _uputstvo.
 GRANICE = [
     "ne dodaj nove misli i ne izbacuj postojeće",
@@ -125,12 +117,6 @@ def tidy_on(cfg) -> bool:
     return config.style(cfg) == "written"
 
 
-
-def output_language(cfg) -> str:
-    """Opis jezika na kome tekst treba da izadje; prazno = bez prevoda."""
-    return (cfg.get("output_language") or "").strip()
-
-
 def tools(cfg, vec_sredjeno=False) -> list[str]:
     """Izabrani alati. Prazna lista znaci da modelu nema sta da se posalje.
 
@@ -148,8 +134,6 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
     elif cfg.get("polish_paragraphs", True):
         # Tacke i pasusi su dva odgovora na isto pitanje; tacke pobedjuju.
         izabrani.append("paragraphs")
-    if output_language(cfg):
-        izabrani.append("translate")
     return izabrani
 
 
@@ -249,7 +233,6 @@ def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
     return (
         bool(cfg.get("polish_bullets", False))   # tacke prepisuju recenice
         or bool(cfg.get("polish_dedupe", False))  # brisanje ponavljanja skida reci
-        or bool(output_language(cfg))       # prevod po prirodi menja svaku rec
         or "tidy" in tools(cfg, vec_sredjeno)
     )
 
@@ -300,12 +283,10 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
         zadaci.append(PASUSI)
     else:
         granice.append(NE_PASUSI)
-    if not {"translate", "bullets", "dedupe"} & set(izabrani):
-        # Uz prevod i uz tacke je "ne preformulisi" besmisleno — prepisivanje
-        # recenica je ceo posao.
+    if not {"bullets", "dedupe"} & set(izabrani):
+        # Uz tacke je "ne preformulisi" besmisleno — prepisivanje recenica je
+        # ceo posao.
         granice.append(NE_SKRACUJ)
-    if "translate" in izabrani:
-        zadaci.append(PREVOD.format(jezik=output_language(cfg)))
 
     if len(zadaci) == 1:
         posao = "Tvoj posao:\n" + zadaci[0]

@@ -5,6 +5,8 @@ ne moze pozvati u testu, pa je ovo jedina odbrana od tihe greske u imenu polja.
 """
 
 import unittest
+import threading
+import queue
 
 from dictate import config, geministt
 
@@ -55,6 +57,14 @@ class Izbor(unittest.TestCase):
 
     def test_model_je_live(self):
         self.assertEqual(geministt.model_for(), geministt.LIVE_MODEL)
+
+    def test_stari_mac_prikaz_preuzima_novi_direktan_unos(self):
+        migrated = config._migrate(
+            dict(config.DEFAULTS, gemini_live_preview=True),
+            {"gemini_live_preview": True},
+        )
+        self.assertTrue(migrated["gemini_live_insert"])
+        self.assertNotIn("gemini_live_preview", migrated)
 
 
 class Recnik(unittest.TestCase):
@@ -215,6 +225,55 @@ class Strimovanje(unittest.TestCase):
     def test_prazni_komadi_se_preskacu(self):
         poslato = self.posalji([b"", b"\x01\x02" * 800, b""])
         self.assertTrue(poslato)
+
+    def test_prikaz_stize_pre_kraja_snimanja_bez_dupliranja(self):
+        poruke = queue.Queue()
+        prikazano = threading.Event()
+        azuriranja = []
+
+        class LazniWs:
+            close_code = close_reason = None
+
+            def __enter__(self_): return self_
+            def __exit__(self_, *a): return False
+            def set_timeout(self_, seconds): pass
+            def send_json(self_, poruka):
+                if "audio" in (poruka.get("realtimeInput") or {}) and not hasattr(self_, "sent"):
+                    self_.sent = True
+                    poruke.put({"serverContent": {
+                        "interimInputTranscription": {"text": "Zdra"}
+                    }})
+                    poruke.put({"serverContent": {
+                        "inputTranscription": {"text": "Zdravo, svima!"}
+                    }})
+            def recv_json(self_):
+                if not hasattr(self_, "setup"):
+                    self_.setup = True
+                    return {"setupComplete": {}}
+                try:
+                    return poruke.get(timeout=0.01)
+                except queue.Empty as exc:
+                    raise geministt.WebSocketTimeout("tišina") from exc
+
+        def komadi():
+            yield b"\x01\x02" * 1600
+            self.assertTrue(prikazano.wait(1), "prepis nije stigao tokom snimanja")
+
+        stari_ws = geministt.WebSocket
+        stari_quiet = geministt.LIVE_QUIET_SECONDS
+        geministt.WebSocket = lambda *a, **k: LazniWs()
+        geministt.LIVE_QUIET_SECONDS = 0.03
+        try:
+            def on_update(text):
+                azuriranja.append(text)
+                if text == "Zdravo, svima!":
+                    prikazano.set()
+            rezultat = geministt.recognize_stream(komadi(), cfg(), on_update=on_update)
+        finally:
+            geministt.WebSocket = stari_ws
+            geministt.LIVE_QUIET_SECONDS = stari_quiet
+        self.assertEqual(azuriranja, ["Zdra", "Zdravo, svima!"])
+        self.assertEqual(rezultat, "Zdravo, svima!")
 
 
 class DveStrpljivosti(unittest.TestCase):

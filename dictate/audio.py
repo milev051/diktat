@@ -242,3 +242,34 @@ def default_input_name():
         return sd.query_devices(kind="input")["name"]
     except Exception:  # noqa: BLE001
         return "nepoznat"
+
+
+# Dozvola za mikrofon; ucitava se jednom i pamti, jer se cita pri svakom
+# osvezavanju prozora podesavanja.
+_AV_KLASA = None
+
+
+def _avcapture():
+    global _AV_KLASA
+    if _AV_KLASA is None:
+        import objc
+
+        objc.loadBundle(
+            "AVFoundation", globals(),
+            bundle_path="/System/Library/Frameworks/AVFoundation.framework",
+        )
+        _AV_KLASA = objc.lookUpClass("AVCaptureDevice")
+    return _AV_KLASA
+
+
+def microphone_granted() -> bool:
+    """Da li sistem dozvoljava snimanje.
+
+    Nepoznato se racuna kao dozvoljeno: status 0 znaci da korisnik jos nije ni
+    pitan, a to pitanje postavlja sam sistem pri prvom diktatu. Odbijeno (2) i
+    ograniceno (1) su jedini slucajevi u kojima korisnik mora u Podesavanja.
+    """
+    try:
+        return int(_avcapture().authorizationStatusForMediaType_("soun")) not in (1, 2)
+    except Exception:  # noqa: BLE001 — bez AVFoundation radimo kao i pre
+        return True

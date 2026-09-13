@@ -6,6 +6,7 @@ na pravom mestu.
 """
 
 import struct
+import socket
 import unittest
 
 from dictate import wsock
@@ -118,6 +119,43 @@ class Citanje(unittest.TestCase):
             + server_okvir(wsock.OP_CONT, b'1}', fin=True)
         )
         self.assertEqual(napravi(data).recv_json(), {"a": 1})
+
+    def test_kratka_tisina_izmedju_okvira_ne_gubi_prvi_deo(self):
+        ws = napravi(b"")
+        okviri = iter([
+            (False, wsock.OP_TEXT, b'{"a":'),
+            wsock.WebSocketTimeout("tišina"),
+            (True, wsock.OP_CONT, b'1}'),
+        ])
+        def sledeci():
+            vrednost = next(okviri)
+            if isinstance(vrednost, Exception):
+                raise vrednost
+            return vrednost
+        ws._recv_frame = sledeci
+        with self.assertRaises(wsock.WebSocketTimeout):
+            ws.recv_json()
+        self.assertEqual(ws.recv_json(), {"a": 1})
+
+    def test_kratka_tisina_usred_okvira_ne_kvari_zaglavlje(self):
+        ws = napravi(b"")
+        okvir = server_okvir(wsock.OP_TEXT, b'{"a":1}')
+        delovi = iter([okvir[:4], socket.timeout(), okvir[4:]])
+        def recv(_n):
+            vrednost = next(delovi)
+            if isinstance(vrednost, Exception):
+                raise vrednost
+            return vrednost
+        ws._sock.recv = recv
+        with self.assertRaises(wsock.WebSocketTimeout):
+            ws.recv_json()
+        self.assertEqual(ws.recv_json(), {"a": 1})
+
+    def test_ssl_privremeno_nema_bajtova(self):
+        ws = napravi(b"")
+        ws._sock.recv = lambda _n: (_ for _ in ()).throw(BlockingIOError(35, "EAGAIN"))
+        with self.assertRaises(wsock.WebSocketTimeout):
+            ws.recv_json()
 
     def test_ping_se_odgovara_pa_se_cita_dalje(self):
         data = (

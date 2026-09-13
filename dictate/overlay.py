@@ -244,3 +244,164 @@ class Overlay:
     @property
     def visible(self) -> bool:
         return self._visible
+
+
+# ---------------------------------------------------------------- prikaz uzivo
+
+LIVE_MAX_WIDTH = 760.0
+LIVE_MIN_HEIGHT = 46.0
+LIVE_MAX_HEIGHT = 200.0
+LIVE_PAD = 18.0
+LIVE_BOTTOM = 120.0
+LIVE_CHARS = 400          # koliko poslednjih znakova stoji na ekranu
+LIVE_BG = (0.08, 0.09, 0.11)
+
+
+class LivePanel:
+    """Okvir sa prepisom koji se ispisuje DOK govoris.
+
+    Postoji zato sto direktan upis u aktivno polje stize tek kad Gemini potvrdi
+    celinu — izmedju dve potvrde nema nikakvog znaka da aplikacija cuje. Ovde se
+    vidi i medjurezultat, koji se u polje namerno NE kuca: model sme da ga
+    promeni, pa bi kasnija izmena obrisala rucnu ispravku.
+
+    Panel je isti soj kao pilula: `NonactivatingPanel`, propusta klik i nikad ne
+    uzima fokus, jer tekst mora da ode u polje koje je bilo aktivno pre diktata.
+    Svi metodi se zovu SAMO sa glavne niti.
+    """
+
+    def __init__(self, avoid_pill=False):
+        self.avoid_pill = avoid_pill
+        self._panel = None
+        self._box = None
+        self._label = None
+        self._visible = False
+        self._text = ""
+        self._font = AppKit.NSFont.systemFontOfSize_weight_(
+            17, AppKit.NSFontWeightMedium
+        )
+
+    @property
+    def visible(self) -> bool:
+        return self._visible
+
+    def _build(self):
+        if self._panel is not None:
+            return
+        style = (
+            AppKit.NSWindowStyleMaskBorderless
+            | AppKit.NSWindowStyleMaskNonactivatingPanel
+        )
+        panel = AppKit.NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, LIVE_MAX_WIDTH, LIVE_MIN_HEIGHT),
+            style,
+            AppKit.NSBackingStoreBuffered,
+            False,
+        )
+        panel.setLevel_(AppKit.NSScreenSaverWindowLevel)
+        panel.setOpaque_(False)
+        panel.setBackgroundColor_(AppKit.NSColor.clearColor())
+        panel.setHasShadow_(True)
+        panel.setIgnoresMouseEvents_(True)
+        panel.setReleasedWhenClosed_(False)
+        panel.setHidesOnDeactivate_(False)
+        panel.setBecomesKeyOnlyIfNeeded_(True)
+        panel.setCollectionBehavior_(
+            AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
+            | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary
+            | AppKit.NSWindowCollectionBehaviorStationary
+            | AppKit.NSWindowCollectionBehaviorIgnoresCycle
+        )
+
+        box = AppKit.NSView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, LIVE_MAX_WIDTH, LIVE_MIN_HEIGHT)
+        )
+        box.setWantsLayer_(True)
+        box.layer().setCornerRadius_(14.0)
+        box.layer().setBackgroundColor_(
+            Quartz.CGColorCreateGenericRGB(LIVE_BG[0], LIVE_BG[1], LIVE_BG[2], 0.92)
+        )
+        panel.setContentView_(box)
+
+        label = AppKit.NSTextField.alloc().initWithFrame_(
+            NSMakeRect(LIVE_PAD, LIVE_PAD, LIVE_MAX_WIDTH - LIVE_PAD * 2, 20)
+        )
+        label.setBezeled_(False)
+        label.setDrawsBackground_(False)
+        label.setEditable_(False)
+        label.setSelectable_(False)
+        label.setFont_(self._font)
+        label.setTextColor_(AppKit.NSColor.whiteColor())
+        label.setAlignment_(AppKit.NSTextAlignmentLeft)
+        label.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
+        label.setUsesSingleLineMode_(False)
+        label.setMaximumNumberOfLines_(0)
+        label.setStringValue_("")
+        box.addSubview_(label)
+
+        self._panel = panel
+        self._box = box
+        self._label = label
+
+    def _width(self) -> float:
+        screen = AppKit.NSScreen.mainScreen()
+        if screen is None:
+            return LIVE_MAX_WIDTH
+        return min(LIVE_MAX_WIDTH, max(320.0, screen.visibleFrame().size.width - 160))
+
+    def _height(self, text, width) -> float:
+        """Visina prelomljenog teksta, ogranicena da okvir ne pokrije ekran."""
+        attrs = {AppKit.NSFontAttributeName: self._font}
+        okvir = AppKit.NSString.stringWithString_(text or " ").boundingRectWithSize_options_attributes_(
+            AppKit.NSMakeSize(width - LIVE_PAD * 2, LIVE_MAX_HEIGHT),
+            AppKit.NSStringDrawingUsesLineFragmentOrigin
+            | AppKit.NSStringDrawingUsesFontLeading,
+            attrs,
+        )
+        return min(
+            LIVE_MAX_HEIGHT,
+            max(LIVE_MIN_HEIGHT, math.ceil(okvir.size.height) + LIVE_PAD * 2),
+        )
+
+    def _layout(self, text):
+        width = self._width()
+        height = self._height(text, width)
+        screen = AppKit.NSScreen.mainScreen()
+        if screen is None:
+            return
+        v = screen.visibleFrame()
+        # Kad je pilula sa vremenom takodje na dnu, okvir ide iznad nje.
+        dno = LIVE_BOTTOM + (HEIGHT + 14 if self.avoid_pill else 0)
+        x = v.origin.x + (v.size.width - width) / 2
+        y = v.origin.y + dno
+        self._panel.setFrame_display_(NSMakeRect(x, y, width, height), True)
+        self._box.setFrame_(NSMakeRect(0, 0, width, height))
+        self._label.setFrame_(
+            NSMakeRect(LIVE_PAD, LIVE_PAD, width - LIVE_PAD * 2, height - LIVE_PAD * 2)
+        )
+
+    # ------------------------------------------------------------------
+
+    def show(self, text=""):
+        self._build()
+        self.set_text(text)
+        self._panel.orderFrontRegardless()
+        self._visible = True
+
+    def set_text(self, text):
+        self._build()
+        # Samo rep: dug diktat bi inace prerastao ekran, a gleda se ionako
+        # poslednja recenica.
+        clean = " ".join((text or "").split())[-LIVE_CHARS:]
+        prikaz = clean or "Slušam…"
+        if prikaz == self._text:
+            return
+        self._text = prikaz
+        self._label.setStringValue_(prikaz)
+        self._layout(prikaz)
+
+    def hide(self):
+        if self._panel is not None and self._visible:
+            self._panel.orderOut_(None)
+        self._visible = False
+        self._text = ""
