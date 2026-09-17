@@ -343,6 +343,8 @@ class SettingsWindow:
         )
         self._checkbox(page, "Aktiviraj i tasterom § (znak se ne upisuje)",
                        "hotkey_section", True)
+        self._checkbox(page, "Aktiviraj i tasterom ` (znak se ne upisuje)",
+                       "hotkey_grave", False)
         self._checkbox(
             page, "Neprekidno snimanje (seče na pauzama)", "continuous", True,
             vidljivo=self._samo_za("google", "gemini_live"),

@@ -564,7 +564,7 @@ class GasenjePrikaza(unittest.TestCase):
             self.visible = False
 
     def _app(self):
-        app = napravi(live_preview=True)
+        app = napravi(live_preview=True, transcription_provider="gemini_live")
         app.live_panel = self._Panel()
         app._live_text = "prva celina"
         app._live_text_dirty = True
@@ -578,6 +578,21 @@ class GasenjePrikaza(unittest.TestCase):
         app._tick_live_panel()
         self.assertTrue(app.live_panel.visible)
         self.assertEqual(app.live_panel.text, "prva celina")
+
+    def test_okvir_izlazi_pre_prvog_teksta(self):
+        # Server ume celoj sesiji da ne posalje medjurezultat; okvir ipak mora
+        # da izadje odmah, a ne tek uz potvrdjenu celinu na pauzi.
+        app = self._app()
+        app._live_text = ""
+        app._live_text_dirty = False
+        app._tick_live_panel()
+        self.assertTrue(app.live_panel.visible)
+
+    def test_bez_live_izvora_nema_okvira(self):
+        app = self._app()
+        app.cfg["transcription_provider"] = "google"
+        app._tick_live_panel()
+        self.assertFalse(app.live_panel.visible)
 
     def test_zaustavljanje_gasi_odmah(self):
         app = self._app()

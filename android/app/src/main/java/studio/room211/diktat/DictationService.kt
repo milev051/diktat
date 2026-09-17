@@ -660,6 +660,11 @@ class DictationService : Service() {
             setPadding(dp(14), dp(12), dp(14), dp(12))
             maxWidth = resources.displayMetrics.widthPixels - dp(28)
             maxLines = 6
+            // Dno, ne vrh: tekst preraste šest redova posle ~15s govora, a
+            // TextView tada pokazuje PRVIH šest, pa nove reči padaju van
+            // okvira i prikaz izgleda kao da kasni. Uz donju gravitaciju
+            // TextView sam skroluje na poslednji red.
+            gravity = Gravity.BOTTOM or Gravity.START
             text = "Slušam…"
             background = GradientDrawable().apply {
                 cornerRadius = dp(16).toFloat()

@@ -593,6 +593,7 @@ class DictateApp(rumps.App):
                 and self.cfg.get("insert_method", "auto") != "clipboard_only"
             )
             self._record_started_at = time.monotonic()
+            recorder.pokrenuto = self._record_started_at
             # Faza se upisuje pod katancem, da je _settle_phase prethodne
             # sesije ne prepise natrag na "obradjuje".
             self.state.set(phase="recording", message="")
@@ -710,10 +711,12 @@ class DictateApp(rumps.App):
             if self._recorder is recorder:
                 self._recorder = None
         # Prekidac se vraca u mirovanje: ako se snimanje samo prekinulo na
-        # granici, sledeci pritisak mora da POKRENE, a ne da zaustavi.
+        # granici, sledeci pritisak mora da POKRENE, a ne da zaustavi. Ali samo
+        # ako pritisak pripada OVOM snimanju; onaj koji je vec pokrenuo sledece
+        # snimanje ostaje, inace to snimanje ne moze da se zaustavi tasterom.
         listener = getattr(self, "listener", None)
         if listener is not None:
-            listener.reset()
+            listener.reset(pokrenuto=getattr(recorder, "pokrenuto", None))
         if recorder.hit_limit:
             print(f"[diktat] granica od {self._limit_seconds():.0f}s — snimanje prekinuto")
         if recorder.captured == 0:
@@ -1473,17 +1476,22 @@ class DictateApp(rumps.App):
         # ali se vise ne crtaju.
         if self._live_off or (self._recorder is None and not self._starting):
             self._live_text_dirty = False
+            self._live_text = ""
             if self.live_panel.visible:
                 self.live_panel.hide()
-                self._live_text = ""
             return
 
-        if self._live_text_dirty:
+        if not (self._live_preview_on() and geministt.enabled(self.cfg)):
+            return
+        # Okvir izlazi odmah, sa „Slušam…", a ne tek uz prvi tekst. Server
+        # ponekad celoj sesiji ne pošalje nijedan međurezultat (izmereno: 2 od
+        # 11 sesija, isti kod i isti snimak), pa bi prvi znak života inače bio
+        # tek potvrđena celina na pauzi, u istom trenutku kad se tekst upiše.
+        if self._live_text_dirty or not self.live_panel.visible:
             self._live_text_dirty = False
-            if self._live_preview_on():
-                self.live_panel.set_text(self._live_text)
-                if not self.live_panel.visible:
-                    self.live_panel.show(self._live_text)
+            self.live_panel.set_text(self._live_text)
+            if not self.live_panel.visible:
+                self.live_panel.show(self._live_text)
 
     def _clock_text(self) -> str:
         """Proteklo vreme u sekundama, dve cifre. Snimanje ionako staje na
@@ -1579,8 +1587,8 @@ class DictateApp(rumps.App):
             self.cfg["text_style"] = "written" if value else "spoken"
         elif key == "pravilno":
             config.postavi_pravilno(self.cfg, value)
-        elif key == "hotkey_section":
-            self.cfg["hotkey_section"] = value
+        elif key in ("hotkey_section", "hotkey_grave"):
+            self.cfg[key] = value
             config.save(self.cfg)
             self._restart_hotkey()
         elif key == "lokalna_pravila":

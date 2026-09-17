@@ -5,12 +5,13 @@ drzi desni Cmd i pritisne bilo koji drugi taster (Cmd+V, Cmd+Tab...), to je
 precica a ne diktat — sesija se tada otkazuje i nista se ne ubacuje.
 Modifikator se nikad ne guta, pa sve sistemske precice rade normalno.
 
-Izuzetak je `§` (taster levo od jedinice na ISO tastaturi). On nije
-modifikator nego obican znak, pa bi pri svakom diktatu ostavljao „§" u tekstu.
-Zato se, i samo dok je izabran kao prekidac, guta preko `darwin_intercept`.
-Gutanje trazi AKTIVAN event tap: dogadjaji tastature tada prolaze kroz nas
-proces, pa se ukljucuje samo kad je opcija upaljena. Uz modifikator (Shift+§ =
-„±", Cmd+§) ne guta se nista i taster radi kao i pre.
+Izuzetak su `§` (levo od jedinice na ISO tastaturi) i `` ` `` (levo od Z,
+pored levog Shift-a). Oni nisu modifikatori nego obicni znakovi, pa bi pri
+svakom diktatu ostavljali znak u tekstu. Zato se, i samo dok su izabrani kao
+prekidac, gutaju preko `darwin_intercept`. Gutanje trazi AKTIVAN event tap:
+dogadjaji tastature tada prolaze kroz nas proces, pa se ukljucuje samo kad je
+bar jedna od tih opcija upaljena. Uz modifikator (Shift+§ = „±", Shift+` = „~",
+Cmd+§) ne guta se nista i taster radi kao i pre.
 """
 
 import threading
@@ -38,6 +39,8 @@ except Exception:          # noqa: BLE001
 
 # kVK_ISO_Section: taster levo od „1" na ISO rasporedu.
 SECTION_VK = 10
+# kVK_ANSI_Grave: taster „`"; na ISO rasporedu stoji levo od Z.
+GRAVE_VK = 50
 
 # Modifikatori koji, kad se drze, znace da „§" nije prekidac nego deo precice.
 MODIFIER_KEYS = {
@@ -90,15 +93,21 @@ class HotkeyListener:
         self._listener = None
         self._mods = set()
 
-    def section_on(self) -> bool:
-        return bool(self.cfg.get("hotkey_section", True))
+    def znak_tasteri(self) -> set:
+        """`vk` tastera-znakova koji su trenutno prekidac; jedino njih gutamo."""
+        vks = set()
+        if self.cfg.get("hotkey_section", True):
+            vks.add(SECTION_VK)
+        if self.cfg.get("hotkey_grave", False):
+            vks.add(GRAVE_VK)
+        return vks
 
     def start(self):
-        # Aktivan tap (preko `darwin_intercept`) se pravi SAMO kad se `§`
-        # zaista koristi: tada svaki taster prolazi kroz nas proces.
+        # Aktivan tap (preko `darwin_intercept`) se pravi SAMO kad se `§` ili
+        # `` ` `` zaista koristi: tada svaki taster prolazi kroz nas proces.
         dodatno = (
             {"darwin_intercept": self._intercept}
-            if self.section_on() and CGEventGetFlags is not None else {}
+            if self.znak_tasteri() and CGEventGetFlags is not None else {}
         )
         self._listener = keyboard.Listener(
             on_press=self._on_press,
@@ -113,8 +122,8 @@ class HotkeyListener:
         """Vrati None da dogadjaj nestane; sve ostalo prosledi netaknuto."""
         try:
             if (
-                self.section_on()
-                and CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) == SECTION_VK
+                CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+                in self.znak_tasteri()
                 and not (CGEventGetFlags(event) & MOD_MASK)
             ):
                 return None
@@ -130,12 +139,11 @@ class HotkeyListener:
     # ------------------------------------------------------------------
 
     def _matches(self, key) -> bool:
-        """Prekidac je izabrani modifikator, a uz opciju i `§` bez modifikatora."""
+        """Prekidac je izabrani modifikator, a uz opcije i `§` / `` ` `` bez modifikatora."""
         if key == self.target:
             return True
         return (
-            self.section_on()
-            and is_section_key(key)
+            getattr(key, "vk", None) in self.znak_tasteri()
             and not self._mods
         )
 
@@ -187,14 +195,22 @@ class HotkeyListener:
             else:
                 self._fire(self.on_stop)
 
-    def reset(self):
+    def reset(self, pokrenuto=None):
         """Vrati prekidac u mirovanje.
 
         Zove se kad se snimanje samo prekine na granici: bez toga bi prekidac
         ostao "aktivan" pa bi sledeci pritisak radio STOP umesto START, i
         korisnik bi morao dvaput.
+
+        `pokrenuto` je trenutak kad je snimanje koje se oslobadja pocelo.
+        Pritisak POSLE toga pripada novom snimanju (krenuo si dok je rep
+        prethodnog jos trajao) i ne sme da se obrise: novo snimanje bi teklo
+        dok prekidac misli da ne snima, pa bi svaki sledeci pritisak bio START
+        koji ne dobije mikrofon, a snimanje ne bi stalo do granice.
         """
         with self._lock:
+            if pokrenuto is not None and self._pressed_at > pokrenuto:
+                return
             self._active = False
             self._contaminated = False
             self._mods.clear()

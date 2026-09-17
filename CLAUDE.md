@@ -64,9 +64,12 @@ dok se snimanje seklo na drugoj. Sada je u `Granica.sekundi`, izdvojeno od
 `Config` baš zato što je `Context` u JVM testovima prazan kalup — test nad
 `Config`-om bi tiho prolazio na praznom.
 
-**`§` je jedini taster koji gutamo, i samo dok je izabran.** Ostali prekidači su
-modifikatori i ne ostavljaju znak, pa se ne diraju; `§` je običan znak, pa bi
-pri svakom diktatu upisao „§" u tekst. Gutanje ide preko `darwin_intercept`,
+**`§` i `` ` `` su jedini tasteri koje gutamo, i svaki samo dok je izabran**
+(`hotkey_section`, `hotkey_grave`). Ostali prekidači su modifikatori i ne
+ostavljaju znak, pa se ne diraju; `§` i `` ` `` su obični znakovi, pa bi pri
+svakom diktatu upisali znak u tekst. Oba idu kroz `znak_tasteri()`, jedini
+spisak `vk` kodova (10 i 50) iz kog čitaju i poređenje i gutanje, da se ta dva
+ne raziđu. Gutanje ide preko `darwin_intercept`,
 koje event tap pretvara iz `ListenOnly` u **aktivan** tap: od tog trenutka svaki
 pritisak tastera prolazi kroz naš proces. Zato se aktivan tap pravi samo kad je
 opcija upaljena, a promena prekidača traži ponovno otvaranje osluškivanja
@@ -154,6 +157,8 @@ grupu — inače tiho pokvari brojeve.
 | Live API: prekid čitanja na `generationComplete` | ta zastavica stiže posle **svake** izgovorene celine, ne na kraju diktata — od 17s govora stigne samo prva rečenica | čitaj dok ne **utihne** (kratak timeout), skupljaj sve `inputTranscription` |
 | …a zvuk poslat bez repa tišine | poslednja celina ostane na međurezultatu i nikad se ne finalizuje — izmereno 2 od 3 | dodaj ~2s tišine pre `audioStreamEnd` |
 | `selftest.py` zvao Google ma šta bilo izabrano | `./run.sh test` prolazi dok je pravi izvor pokvaren | alat ide kroz isti izbor izvora kao aplikacija |
+| `listener.reset()` bezuslovno pri oslobađanju snimka | pritisak za nov diktat dat dok rep prethodnog traje bude obrisan; novo snimanje teče dok prekidač misli da miruje, svaki sledeći pritisak je START bez mikrofona i snimanje ne staje do granice od 120s | `reset(pokrenuto=recorder.pokrenuto)`: briše se samo pritisak stariji od snimka koji se oslobađa |
+| Android: pregled uživo sa `maxLines = 6` i gravitacijom na vrhu | posle ~15s govora TextView pokazuje prvih šest redova, nove reči padaju van okvira i prikaz izgleda kao da kasni | `gravity = BOTTOM`, TextView sam skroluje na poslednji red |
 | STOP koji stigne dok `_on_start` još čeka mikrofon | `_recorder` je još `None`, pa STOP nema šta da zaustavi — snimanje krene odmah posle njega i **više ne staje**; taster deluje mrtvo | brojač `_starting` i zastavica `_stop_requested`; pokretanje ih pokupi pod istim katancem |
 
 ---
@@ -235,6 +240,19 @@ izgledalo kao da prikaz visi. Zato `_on_stop` i `_on_cancel` dižu `_live_off`
 otkucaju od 50ms. Zastavica mora da važi i **posle** sklanjanja: reader još radi
 i pošalje poslednju potvrđenu celinu, koja ide u polje ali okvir više ne vraća
 na ekran. Skida je tek `_on_start`.
+
+**Server ponekad celoj sesiji ne pošalje nijedan međurezultat.** Izmereno
+15.09.2026. na istom snimku (31.7s, tri rečenice), isti kod, sesije u isto
+vreme: u 9 od 11 sesija stiže `interimInputTranscription` na ~0.5s, reč po reč
+(62-66 poruka); u 2 sesije stignu samo `voiceActivity` i tri `inputTranscription`
+(9 poruka). Kad međurezultati stignu, okvir ih nacrta za ~26ms, bez rupa u
+tajmeru, pa ni crtanje ni App Nap nisu uzrok. Podešavanja koje ih uključuje
+nema (`inputAudioTranscription` prima samo `language_codes`,
+`custom_vocabulary`, `mode`). Zato okvir izlazi odmah na početku snimanja sa
+„Slušam…": korisnik bar vidi da snimanje traje, a ne čeka prvu potvrđenu
+celinu. Ne pokušavaj da ponovo otvoriš sesiju zbog prikaza: zvuk je već poslat,
+a druga sesija je dupli saobraćaj. Merenje sa više od šest istovremenih sesija
+udara u kvotu („exceeded your current quota").
 
 **Android prikaz uživo je odvojen.** `gemini_live_preview` čita iste Live
 poruke paralelno sa slanjem zvuka i pokazuje ih u neaktivirajućem overlay-u.

@@ -62,6 +62,8 @@ DEFAULTS = {
     # „§" (levo od jedinice) kao drugi prekidac. Nije modifikator nego znak, pa
     # se dok je ukljucen guta — inace bi ostavljao „§" u tekstu.
     "hotkey_section": True,
+    # „`" (levo od Z na ISO rasporedu) kao treci prekidac; guta se isto kao „§".
+    "hotkey_grave": False,
     "mode": "toggle",             # nacin aktivacije: "hold" | "toggle"
     "continuous": True,           # bez granice; sece na svakoj pauzi
     "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni

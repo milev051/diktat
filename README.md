@@ -142,6 +142,9 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
 - **Taster `§`** (levo od jedinice) radi isto, ako je uključen u Podešavanjima.
   Dok je uključen, taj znak se **ne upisuje** nigde; uz modifikator (Shift+§ za
   „±", Cmd+§) taster radi kao i pre.
+- **Taster `` ` ``** (levo od Z, pored levog Shift-a) isto, uz zaseban prekidač u
+  Podešavanjima, podrazumevano isključen. I on se tada ne upisuje; Shift+` i
+  dalje daje „~".
 
 Dva nezavisna podešavanja:
 
@@ -221,6 +224,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
 | `hotkey` | `alt_r` | desni Option; `cmd_r`, `ctrl_r`, `f13`… |
 | `hotkey_section` | `true` | i taster `§` pokreće diktat; znak se tada guta |
+| `hotkey_grave` | `false` | i taster `` ` `` pokreće diktat; znak se tada guta |
 | `mode` | `toggle` | način aktivacije: `hold` (drži) ili `toggle` (pritisni) |
 | `continuous` | `true` | bez granice; seče na svakoj pauzi |
 | `continuous_max_seconds` | `3600` | sigurnosna granica i za neprekidni režim |
