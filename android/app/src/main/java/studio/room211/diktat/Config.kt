@@ -19,6 +19,16 @@ class Config(context: Context) {
         // cuva se u SharedPreferences-u i nadogradnja ga ne dira.
     }
 
+    /**
+     * Provera novog GitHub izdanja cim se aplikacija otvori.
+     *
+     * Jedan mali GET, bez preuzimanja; APK se skida tek kad se pritisne
+     * dugme. Iskljuceno znaci da se proverava samo rucno.
+     */
+    var updateCheckOnStart: Boolean
+        get() = prefs.getBoolean("update_check_on_start", true)
+        set(v) = prefs.edit().putBoolean("update_check_on_start", v).apply()
+
     var language: String
         get() = prefs.getString("language", "sr-RS")!!
         set(v) = prefs.edit().putString("language", v).apply()

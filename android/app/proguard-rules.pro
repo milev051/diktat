@@ -6,3 +6,5 @@
 -keep class studio.room211.diktat.SttService { *; }
 -keep class studio.room211.diktat.DiktatTileService { *; }
 -keep class studio.room211.diktat.LanguageDetailsReceiver { *; }
+# FileProvider se pravi po imenu iz manifesta, isto kao i nase komponente.
+-keep class androidx.core.content.FileProvider { *; }

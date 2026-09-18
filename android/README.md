@@ -71,6 +71,34 @@ aplikaciji kojom otvaraš fajl, ne samom Diktatu.
 
 ---
 
+## Ažuriranje
+
+Aplikacija nije na Google Play-u, pa nova verzija stiže sa **GitHub izdanja**
+(`milev051/diktat`). Kartica **Verzija i ažuriranje** stoji na vrhu ekrana:
+
+- **Proveri ažuriranje**: pita GitHub koje je poslednje izdanje. Dugme
+  **pozeleni** i piše „Preuzmi i instaliraj v1.64" samo kada nova verzija
+  stvarno postoji, pa se stanje vidi na prvi pogled.
+- **Proveri ažuriranje pri pokretanju**: uključeno podrazumevano. Provera je
+  jedan mali zahtev bez preuzimanja, radi tiho i ništa ne iskače; APK se skida
+  tek kada pritisneš dugme.
+
+Preuzet APK ide u keš aplikacije, a instalaciju potvrđuješ kao i kod svakog
+drugog APK-a. Prvi put Android traži dozvolu za instaliranje iz nepoznatih
+izvora; aplikacija sama otvori taj ekran.
+
+Izdanje mora da nosi APK kao prilog, jer se uzima prvi fajl sa nastavkom
+`.apk`. Oznaka se poredi broj po broj (`1.9` je starije od `1.11`), ne kao
+tekst.
+
+```bash
+./build.sh
+gh release create v1.64 app/build/outputs/apk/release/app-release.apk \
+  -R milev051/diktat -t "Diktat 1.64"
+```
+
+---
+
 ## Podešavanje
 
 Otvori aplikaciju; ekran ima dugmad koja vode na svako od ovih mesta jer su na

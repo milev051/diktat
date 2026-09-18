@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Rect
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -23,7 +24,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.DynamicColors
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import studio.room211.diktat.Ui.body
 import studio.room211.diktat.Ui.button
 import studio.room211.diktat.Ui.card
@@ -33,8 +36,14 @@ import studio.room211.diktat.Ui.setBranchEnabled
 import studio.room211.diktat.Ui.dp
 import studio.room211.diktat.Ui.field
 import studio.room211.diktat.Ui.switch
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
+
+    private companion object {
+        /** Zelena je ista u svetloj i tamnoj temi; Material You je ovde ne dira. */
+        val ZELENA = 0xFF2E7D32.toInt()
+    }
 
     private lateinit var cfg: Config
     private lateinit var statusLine: TextView
@@ -42,6 +51,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var polishLine: TextView
     private lateinit var previewOut: TextView
     private lateinit var historyRows: LinearLayout
+    private lateinit var updateLine: TextView
+    private lateinit var updateButton: MaterialButton
+    private var updateButtonBackground: ColorStateList? = null
+    private var updateButtonStroke: ColorStateList? = null
+    private var updateButtonText: ColorStateList? = null
+    private var updateLineColor: ColorStateList? = null
+    private var novoIzdanje: Azuriranje.Izdanje? = null
+    private var proveraUToku = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Boje se preuzimaju sa pozadine telefona (Material You).
@@ -67,6 +84,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(4), dp(12), 0, dp(16))
         })
 
+        root.addView(azuriranje())
         root.addView(istorija())
         // Grupisano po pitanju na koje odgovaras: snimanje glasa, ispravka
         // teksta i osnovni izgled teksta su odvojene celine.
@@ -83,6 +101,9 @@ class MainActivity : AppCompatActivity() {
             addView(root)
         }
         setContentView(scroll)
+
+        // Tiha provera: nista ne iskace, dugme samo pozeleni ako ima nove verzije.
+        if (cfg.updateCheckOnStart) proveriAzuriranje(tiho = true)
 
         // Sadrzaj ide ispod statusne trake, pa se razmak dodaje rucno. Visina
         // tastature se mora dodati na dno: bez toga tastatura prekrije polje u
@@ -119,6 +140,158 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------ kartice
+
+    /**
+     * Verzija i azuriranje sa GitHub izdanja.
+     *
+     * Aplikacija nije na Google Play-u, pa niko ne javlja da je izasla nova
+     * verzija. Dugme je zeleno samo kada nova verzija stvarno postoji: tako se
+     * stanje vidi sa vrha ekrana, bez otvaranja bilo cega.
+     */
+    private fun azuriranje(): ViewGroup {
+        val (card, box) = card(this, "Verzija i ažuriranje")
+        box.addView(
+            body(
+                this,
+                "Instalirana verzija ${versionName()}. Aplikacija nije na Google Play-u, " +
+                    "pa nova verzija stiže sa GitHub izdanja i instalira se kao i svaki " +
+                    "drugi APK.",
+            )
+        )
+        updateLine = body(this, "")
+        updateLineColor = updateLine.textColors
+        box.addView(updateLine)
+
+        updateButton = button(this, "Proveri ažuriranje") {
+            val spremno = novoIzdanje
+            if (spremno != null) preuzmiIzdanje(spremno) else proveriAzuriranje(tiho = false)
+        }
+        updateButtonBackground = updateButton.backgroundTintList
+        updateButtonStroke = updateButton.strokeColor
+        updateButtonText = updateButton.textColors
+        box.addView(updateButton)
+
+        box.addView(
+            switch(this, "Proveri ažuriranje pri pokretanju", cfg.updateCheckOnStart) {
+                cfg.updateCheckOnStart = it
+            }
+        )
+        prikaziStanje(
+            if (cfg.updateCheckOnStart) "Proveravam GitHub izdanja\u2026" else "Još nije provereno.",
+            null,
+        )
+        return card
+    }
+
+    /** Jedno mesto koje crta stanje provere; zeleno znaci „ima nova verzija". */
+    private fun prikaziStanje(poruka: String, izdanje: Azuriranje.Izdanje?) {
+        if (!::updateLine.isInitialized) return
+        novoIzdanje = izdanje
+        updateLine.text = poruka
+        if (izdanje != null) {
+            val zelena = ColorStateList.valueOf(ZELENA)
+            updateButton.text = "Preuzmi i instaliraj ${izdanje.oznaka}"
+            updateButton.backgroundTintList = zelena
+            updateButton.strokeColor = zelena
+            updateButton.setTextColor(0xFFFFFFFF.toInt())
+            updateLine.setTextColor(ZELENA)
+            updateLine.alpha = 1f
+        } else {
+            updateButton.text = "Proveri ažuriranje"
+            updateButton.backgroundTintList = updateButtonBackground
+            updateButtonStroke?.let { updateButton.strokeColor = it }
+            updateButtonText?.let { updateButton.setTextColor(it) }
+            updateLineColor?.let { updateLine.setTextColor(it) }
+            updateLine.alpha = 0.75f
+        }
+    }
+
+    /** `tiho` je provera pri pokretanju: ne otvara prozore i ne javlja gresku. */
+    private fun proveriAzuriranje(tiho: Boolean) {
+        if (proveraUToku) return
+        proveraUToku = true
+        if (!tiho) prikaziStanje("Proveravam GitHub izdanja\u2026", null)
+        Thread {
+            val ishod = runCatching { Azuriranje.poslednje() }
+            runOnUiThread {
+                proveraUToku = false
+                if (isDestroyed) return@runOnUiThread
+                val trenutna = versionName()
+                ishod.onSuccess { izdanje ->
+                    if (Azuriranje.novije(trenutna, izdanje.oznaka)) {
+                        prikaziStanje(
+                            "Nova verzija ${izdanje.oznaka} je spremna, instalirana je $trenutna.",
+                            izdanje,
+                        )
+                    } else {
+                        prikaziStanje("Imaš najnoviju verziju ($trenutna).", null)
+                    }
+                }.onFailure { greska ->
+                    prikaziStanje(
+                        "Provera nije uspela: ${greska.message ?: "nepoznata greška"}",
+                        null,
+                    )
+                }
+            }
+        }.start()
+    }
+
+    private fun preuzmiIzdanje(izdanje: Azuriranje.Izdanje) {
+        if (!Azuriranje.smeDaInstalira(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("Potrebna dozvola")
+                .setMessage(
+                    "Android traži da aplikaciji dozvoliš instaliranje aplikacija iz " +
+                        "nepoznatih izvora. Otvoriću podešavanja, pa se vrati nazad i " +
+                        "probaj ponovo."
+                )
+                .setPositiveButton("Otvori podešavanja") { _, _ -> Azuriranje.otvoriDozvolu(this) }
+                .setNegativeButton("Odustani", null)
+                .show()
+            return
+        }
+
+        val traka = LinearProgressIndicator(this).apply {
+            max = 100
+            progress = 0
+        }
+        val prozor = AlertDialog.Builder(this)
+            .setTitle("Preuzimam ${izdanje.oznaka}")
+            .setView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(24), dp(20), dp(24), dp(8))
+                addView(traka)
+            })
+            .setCancelable(false)
+            .create()
+        prozor.show()
+
+        val kontekst = applicationContext
+        Thread {
+            val ishod = runCatching {
+                Azuriranje.preuzmi(kontekst, izdanje.adresaApk) { deo ->
+                    runOnUiThread { traka.setProgressCompat(deo, true) }
+                }
+            }
+            runOnUiThread {
+                if (prozor.isShowing && !isFinishing && !isDestroyed) prozor.dismiss()
+                if (isDestroyed) return@runOnUiThread
+                ishod.onSuccess { fajl: File ->
+                    runCatching { Azuriranje.instaliraj(this, fajl) }.onFailure { greska ->
+                        prikaziStanje(
+                            "Instalacija nije pokrenuta: ${greska.message ?: "nepoznata greška"}",
+                            izdanje,
+                        )
+                    }
+                }.onFailure { greska ->
+                    prikaziStanje(
+                        "Preuzimanje nije uspelo: ${greska.message ?: "nepoznata greška"}",
+                        izdanje,
+                    )
+                }
+            }
+        }.start()
+    }
 
     private fun istorija(): ViewGroup {
         val (card, box) = card(this, "Istorija diktata")

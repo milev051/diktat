@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Preuzet APK stoji u kesu aplikacije; sistemskom instalateru se daje samo on. -->
+<paths>
+    <cache-path name="azuriranje" path="." />
+</paths>
