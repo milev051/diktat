@@ -51,6 +51,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var polishLine: TextView
     private lateinit var previewOut: TextView
     private lateinit var historyRows: LinearLayout
+    private lateinit var permissionCard: ViewGroup
+    private lateinit var permissionRows: LinearLayout
     private lateinit var updateLine: TextView
     private lateinit var updateButton: MaterialButton
     private var updateButtonBackground: ColorStateList? = null
@@ -84,6 +86,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(4), dp(12), 0, dp(16))
         })
 
+        root.addView(nedostajuceDozvole())
         root.addView(azuriranje())
         root.addView(istorija())
         // Grupisano po pitanju na koje odgovaras: snimanje glasa, ispravka
@@ -134,12 +137,125 @@ class MainActivity : AppCompatActivity() {
         } else {
             "Pristupačnost nije uključena — tekst će završiti u clipboard-u."
         }
+        showPermissions()
         showTraffic()
         showHistory()
         polishLine.text = "Poziva modelu danas: ${cfg.polishCountToday}"
     }
 
     // ------------------------------------------------------------ kartice
+
+    /**
+     * Sta jos nije odobreno, sa dugmetom koje vodi tacno tamo.
+     *
+     * Podesavanja su na Samsungu razbacana po pet ekrana, pa je bez ovoga
+     * korisnik morao da zna gde je sta. Kartica se crta pri svakom povratku u
+     * aplikaciju i nestaje sama kada je sve odobreno.
+     */
+    private fun nedostajuceDozvole(): ViewGroup {
+        val (card, box) = card(this, "Nedostaju dozvole")
+        box.addView(
+            body(
+                this,
+                "Aplikacija je pri pokretanju proverila šta joj nedostaje. Dodirni " +
+                    "dugme, odobri, pa se vrati nazad; kartica nestaje kada je sve na " +
+                    "svom mestu.",
+            )
+        )
+        permissionRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(permissionRows)
+        permissionCard = card
+        return card
+    }
+
+    /** Jedna stavka provere: ime, zasto treba, da li je odobrena i gde se odobrava. */
+    private data class Provera(
+        val naziv: String,
+        val zasto: String,
+        val odobreno: () -> Boolean,
+        val otvori: () -> Unit,
+    )
+
+    private fun provere(): List<Provera> {
+        val spisak = mutableListOf(
+            Provera(
+                "Mikrofon",
+                "bez njega nema snimanja",
+                { checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED },
+                { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1) },
+            ),
+            Provera(
+                "Digitalni asistent",
+                "bočni taster pokreće diktat",
+                { jeNas(secure("assistant")) || jeNas(secure("voice_interaction_service")) },
+                {
+                    openAny(
+                        "android.settings.VOICE_INPUT_SETTINGS",
+                        Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, Settings.ACTION_SETTINGS,
+                    )
+                },
+            ),
+            Provera(
+                "Prikaz preko drugih aplikacija",
+                "tajmer dok snimaš",
+                { Settings.canDrawOverlays(this) },
+                {
+                    runCatching {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName"),
+                            )
+                        )
+                    }
+                },
+            ),
+            Provera(
+                "Unos teksta (Pristupačnost)",
+                "bez toga tekst ostaje u clipboard-u",
+                { InsertService.isRunning },
+                { openAny(Settings.ACTION_ACCESSIBILITY_SETTINGS) },
+            ),
+            Provera(
+                "Instaliranje ažuriranja",
+                "nova verzija se instalira iz aplikacije",
+                { Azuriranje.smeDaInstalira(this) },
+                { Azuriranje.otvoriDozvolu(this) },
+            ),
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            spisak += Provera(
+                "Obaveštenja",
+                "stanje diktata u statusnoj traci",
+                {
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                        PackageManager.PERMISSION_GRANTED
+                },
+                { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) },
+            )
+        }
+        return spisak
+    }
+
+    private fun showPermissions() {
+        if (!::permissionRows.isInitialized) return
+        permissionRows.removeAllViews()
+        val nedostaju = provere().filterNot { runCatching { it.odobreno() }.getOrDefault(false) }
+        permissionCard.visibility = if (nedostaju.isEmpty()) View.GONE else View.VISIBLE
+        for (stavka in nedostaju) {
+            permissionRows.addView(
+                button(this, "Odobri: ${stavka.naziv}") { stavka.otvori() }
+            )
+            permissionRows.addView(indent(this, body(this, stavka.zasto)))
+        }
+    }
+
+    /** Sistemsko podesavanje kao tekst; nedostupno se ponasa kao prazno. */
+    private fun secure(kljuc: String): String =
+        runCatching { Settings.Secure.getString(contentResolver, kljuc).orEmpty() }
+            .getOrDefault("")
+
+    private fun jeNas(vrednost: String) = vrednost.contains(packageName)
 
     /**
      * Verzija i azuriranje sa GitHub izdanja.
@@ -721,6 +837,15 @@ class MainActivity : AppCompatActivity() {
     private fun versionName(): String = runCatching {
         packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
     }.getOrDefault("?")
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        showPermissions()
+    }
 
     private fun askForPermissions() {
         val missing = mutableListOf<String>()

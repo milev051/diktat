@@ -73,29 +73,65 @@ aplikaciji kojom otvaraš fajl, ne samom Diktatu.
 
 ## Ažuriranje
 
-Aplikacija nije na Google Play-u, pa nova verzija stiže sa **GitHub izdanja**
-(`milev051/diktat`). Kartica **Verzija i ažuriranje** stoji na vrhu ekrana:
+**Nove verzije se ne šalju linkom.** Aplikacija sama zna gde je poslednje
+izdanje, sama ga preuzme i sama pokrene instalaciju; jedino što korisnik radi
+jeste da potvrdi.
 
-- **Proveri ažuriranje**: pita GitHub koje je poslednje izdanje. Dugme
-  **pozeleni** i piše „Preuzmi i instaliraj v1.64" samo kada nova verzija
-  stvarno postoji, pa se stanje vidi na prvi pogled.
-- **Proveri ažuriranje pri pokretanju**: uključeno podrazumevano. Provera je
-  jedan mali zahtev bez preuzimanja, radi tiho i ništa ne iskače; APK se skida
-  tek kada pritisneš dugme.
+Kartica **Verzija i ažuriranje** stoji na vrhu ekrana:
 
-Preuzet APK ide u keš aplikacije, a instalaciju potvrđuješ kao i kod svakog
-drugog APK-a. Prvi put Android traži dozvolu za instaliranje iz nepoznatih
-izvora; aplikacija sama otvori taj ekran.
+- **Proveri ažuriranje pri pokretanju**, uključeno podrazumevano. Čim se
+  aplikacija otvori, tiho pita GitHub koje je poslednje izdanje. Ništa ne
+  iskače i ništa se ne preuzima.
+- Kada nova verzija postoji, dugme **pozeleni** i piše „Preuzmi i instaliraj
+  v1.65". Isti pritisak skida APK i otvara instalaciju, uz traku napretka.
+- Kada je nema, dugme ostaje obično i piše „Imaš najnoviju verziju (1.65)".
+  Dugme radi i ručno, kad god hoćeš da proveriš.
 
-Izdanje mora da nosi APK kao prilog, jer se uzima prvi fajl sa nastavkom
-`.apk`. Oznaka se poredi broj po broj (`1.9` je starije od `1.11`), ne kao
-tekst.
+Prvi put Android traži dozvolu za instaliranje iz nepoznatih izvora.
+Aplikacija sam otvori taj ekran, a kartica **Nedostaju dozvole** je nudi kao
+stavku, pa se to podesi jednom i više se ne pominje.
+
+Posle instalacije podešavanja, ključevi i istorija ostaju kakvi su bili:
+instalira se preko postojeće aplikacije, ne briše se ništa.
+
+### Šta treba da uradi onaj ko objavljuje
+
+Izdanje mora da nosi APK kao prilog, jer aplikacija uzima prvi fajl sa
+nastavkom `.apk`. Oznaka se poredi broj po broj (`1.9` je starije od `1.11`),
+ne kao tekst, i mora da bude veća od `versionName` u `app/build.gradle.kts`.
 
 ```bash
 ./build.sh
-gh release create v1.64 app/build/outputs/apk/release/app-release.apk \
-  -R milev051/diktat -t "Diktat 1.64"
+gh release create v1.65 app/build/outputs/apk/release/app-release.apk \
+  -R milev051/diktat -t "Diktat 1.65"
 ```
+
+Telefoni koji već imaju aplikaciju javiće novu verziju sami, pri sledećem
+otvaranju.
+
+---
+
+## Dozvole
+
+Pri svakom otvaranju aplikacija proverava šta joj nedostaje. Za svaku stavku
+koja nije odobrena, na **vrhu ekrana** se pojavi kartica **Nedostaju dozvole**
+sa dugmetom koje vodi tačno na taj ekran, i redom zašto treba:
+
+| stavka | čemu služi |
+|---|---|
+| Mikrofon | bez njega nema snimanja |
+| Digitalni asistent | bočni taster pokreće diktat |
+| Prikaz preko drugih aplikacija | tajmer dok snimaš |
+| Unos teksta (Pristupačnost) | bez toga tekst ostaje u clipboard-u |
+| Instaliranje ažuriranja | nova verzija se instalira iz aplikacije |
+| Obaveštenja | stanje diktata u statusnoj traci |
+
+Kartica **nestaje sama** čim je sve odobreno, pa prazan ekran znači da je sve u
+redu. Puna lista istih ekrana ostaje niže, u kartici **Dozvole**, za slučaj da
+nešto hoćeš da promeniš kasnije.
+
+Aplikacija radi i bez Pristupačnosti: tekst tada završi u clipboard-u i lepiš
+ga ručno.
 
 ---
 
