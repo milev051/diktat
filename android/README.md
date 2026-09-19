@@ -126,9 +126,15 @@ sa dugmetom koje vodi tačno na taj ekran, i redom zašto treba:
 | Instaliranje ažuriranja | nova verzija se instalira iz aplikacije |
 | Obaveštenja | stanje diktata u statusnoj traci |
 
-Kartica **nestaje sama** čim je sve odobreno, pa prazan ekran znači da je sve u
-redu. Puna lista istih ekrana ostaje niže, u kartici **Dozvole**, za slučaj da
-nešto hoćeš da promeniš kasnije.
+Kartica **nestaje sama** čim je sve odobreno, pa njeno odsustvo znači da je sve
+u redu.
+
+Puna lista istih ekrana stoji niže, u kartici **Dozvole**, i tamo se vidi
+stanje svake stavke: odobrena nosi **kvačicu** i pritajena je, neodobrena
+ostaje istaknuta i ispod nje piše čemu služi. Dugme radi u oba slučaja, za
+kasniju promenu. Tu je i **Mikrofon na tastaturi (Voice input)**, koji nije
+obavezan pa se ne gura na vrh ekrana: to je zamena za bočni taster, a ne uslov
+da aplikacija radi.
 
 Aplikacija radi i bez Pristupačnosti: tekst tada završi u clipboard-u i lepiš
 ga ručno.

@@ -46,12 +46,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var cfg: Config
-    private lateinit var statusLine: TextView
     private lateinit var trafficLine: TextView
     private lateinit var polishLine: TextView
     private lateinit var previewOut: TextView
     private lateinit var historyRows: LinearLayout
     private lateinit var permissionCard: ViewGroup
+    private lateinit var dozvoleRows: LinearLayout
     private lateinit var permissionRows: LinearLayout
     private lateinit var updateLine: TextView
     private lateinit var updateButton: MaterialButton
@@ -132,11 +132,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        statusLine.text = if (InsertService.isRunning) {
-            "Pristupačnost je uključena — tekst se upisuje gde je kursor."
-        } else {
-            "Pristupačnost nije uključena — tekst će završiti u clipboard-u."
-        }
         showPermissions()
         showTraffic()
         showHistory()
@@ -174,6 +169,8 @@ class MainActivity : AppCompatActivity() {
         val zasto: String,
         val odobreno: () -> Boolean,
         val otvori: () -> Unit,
+        /** Neobavezne stavke se ne guraju na vrh ekrana, samo se vidi stanje. */
+        val obavezna: Boolean = true,
     )
 
     private fun provere(): List<Provera> {
@@ -234,19 +231,44 @@ class MainActivity : AppCompatActivity() {
                 { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) },
             )
         }
+        spisak += Provera(
+            "Mikrofon na tastaturi (Voice input)",
+            "zamena za bočni taster, radi i bez Pristupačnosti",
+            { jeNas(secure("voice_recognition_service")) },
+            { openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS) },
+            obavezna = false,
+        )
         return spisak
     }
 
+    private fun odobreno(stavka: Provera) =
+        runCatching { stavka.odobreno() }.getOrDefault(false)
+
     private fun showPermissions() {
-        if (!::permissionRows.isInitialized) return
-        permissionRows.removeAllViews()
-        val nedostaju = provere().filterNot { runCatching { it.odobreno() }.getOrDefault(false) }
-        permissionCard.visibility = if (nedostaju.isEmpty()) View.GONE else View.VISIBLE
-        for (stavka in nedostaju) {
-            permissionRows.addView(
-                button(this, "Odobri: ${stavka.naziv}") { stavka.otvori() }
-            )
-            permissionRows.addView(indent(this, body(this, stavka.zasto)))
+        val sve = provere()
+
+        if (::permissionRows.isInitialized) {
+            permissionRows.removeAllViews()
+            val nedostaju = sve.filter { it.obavezna && !odobreno(it) }
+            permissionCard.visibility = if (nedostaju.isEmpty()) View.GONE else View.VISIBLE
+            for (stavka in nedostaju) {
+                permissionRows.addView(button(this, "Odobri: ${stavka.naziv}") { stavka.otvori() })
+                permissionRows.addView(indent(this, body(this, stavka.zasto)))
+            }
+        }
+
+        // Puna lista istih ekrana: odobreno nosi kvacicu i pritajeno je, jer
+        // sluzi samo za kasniju promenu, a neodobreno ostaje da se istice.
+        if (!::dozvoleRows.isInitialized) return
+        dozvoleRows.removeAllViews()
+        for (stavka in sve) {
+            val ok = odobreno(stavka)
+            val dugme = button(this, if (ok) "✓ ${stavka.naziv}" else stavka.naziv) {
+                stavka.otvori()
+            }
+            if (ok) dugme.alpha = 0.55f
+            dozvoleRows.addView(dugme)
+            if (!ok) dozvoleRows.addView(indent(this, body(this, stavka.zasto)))
         }
     }
 
@@ -454,35 +476,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun dozvole(): ViewGroup {
         val (card, box) = card(this, "Dozvole")
-        statusLine = body(this, "")
-        box.addView(statusLine)
-        box.addView(button(this, "Postavi kao digitalnog asistenta") {
-            openAny(
-                "android.settings.VOICE_INPUT_SETTINGS",
-                Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, Settings.ACTION_SETTINGS,
-            )
-        })
-        box.addView(button(this, "Prikaz preko drugih aplikacija") {
-            runCatching {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName"),
-                    )
-                )
-            }
-        })
-        box.addView(button(this, "Unos teksta (Pristupačnost)") {
-            openAny(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        })
-        box.addView(button(this, "Mikrofon na tastaturi (Voice input)") {
-            openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS)
-        })
         box.addView(
             body(
                 this,
-                "Umesto bočnog tastera možeš izabrati Diktat kao Voice input; " +
-                    "tada mikrofon na tastaturi radi isto, bez Pristupačnosti.",
+                "Kvačica znači da je stavka odobrena. Dugme i dalje radi, za slučaj da " +
+                    "nešto hoćeš da promeniš.",
+            )
+        )
+        dozvoleRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(dozvoleRows)
+        box.addView(
+            body(
+                this,
+                "Bez Pristupačnosti diktat i dalje radi, ali tekst završi u clipboard-u " +
+                    "pa ga lepiš ručno. Umesto bočnog tastera možeš izabrati Diktat kao " +
+                    "Voice input; tada mikrofon na tastaturi radi isto.",
             )
         )
         return card
