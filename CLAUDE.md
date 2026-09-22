@@ -28,6 +28,15 @@ servis dobija svoj `tok_*.py` i jednu granu u `Snimanje._transcribe` i
 stavke, ~500 linija) je uklonjen: od kada klik na ikonicu otvara Podešavanja,
 nikad se nije prikazivao.
 
+**Android pilula je u `Pilula.kt`** (od 22.09.2026): prozor preko ekrana, dugme
+„Aa/aa", brojač sa bojom i pregled uživo. `DictationService` je samo pali,
+osvežava i gasi (`prikazi`, `osvezi`, `pregled`, `sakrij`) i bavi se snimanjem i
+obradom. Granicu snimanja pilula dobija od servisa (`Granica.sekundi`), da
+tajmer i pilula nikad ne pokazuju različito. Provereno na SM-S911B preko
+`adb shell am start -n studio.room211.diktat/.AssistActivity`, koji uključuje
+i isključuje diktat; telefon mora biti otključan, a tekst se upisuje samo kad
+postoji polje za unos.
+
 ---
 
 ## Pravila koja se ne smeju prekršiti
