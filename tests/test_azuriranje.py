@@ -44,6 +44,23 @@ class Verzije(unittest.TestCase):
         self.assertTrue(azuriranje.novije("", "v1.66"))
 
 
+class Bundle(unittest.TestCase):
+    def test_instalirana_aplikacija(self):
+        self.assertEqual(
+            azuriranje.bundle_iz_komande(
+                "/bin/bash /Applications/Diktat.app/Contents/Resources/diktat.sh\n"),
+            "/Applications/Diktat.app")
+
+    def test_putanja_sa_razmakom(self):
+        self.assertEqual(
+            azuriranje.bundle_iz_komande(
+                "/bin/bash /Users/x/Android apps/Diktat.app/Contents/MacOS/Diktat"),
+            "/Users/x/Android apps/Diktat.app")
+
+    def test_nepoznat_roditelj(self):
+        self.assertEqual(azuriranje.bundle_iz_komande("-zsh"), "/Applications/Diktat.app")
+
+
 class Odgovor(unittest.TestCase):
     def test_cita_oznaku_i_arhivu(self):
         izdanje = azuriranje.iz_odgovora(json.dumps({

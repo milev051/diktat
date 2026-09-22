@@ -714,8 +714,9 @@ class SettingsWindow:
 def _zeleno(dugme, ukljuceno=True):
     """Zeleno dugme znaci da ima nove verzije, kao na telefonu.
 
-    Boja okvira (`setBezelColor_`) se u tamnoj temi i na neaktivnom prozoru ne
-    vidi, pa je zelen i natpis.
+    Zelena je pozadina, a natpis beo i podebljan. Zelen natpis se na zelenoj
+    pozadini nije video (22.09.2026); beo se cita i kad je prozor neaktivan,
+    pa pozadina posivi.
     """
     if hasattr(dugme, "setBezelColor_"):
         dugme.setBezelColor_(AppKit.NSColor.systemGreenColor() if ukljuceno else None)
@@ -724,7 +725,7 @@ def _zeleno(dugme, ukljuceno=True):
         stil.setAlignment_(AppKit.NSTextAlignmentCenter)
         dugme.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(
             dugme.title(), {
-                AppKit.NSForegroundColorAttributeName: AppKit.NSColor.systemGreenColor(),
+                AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor(),
                 AppKit.NSFontAttributeName: AppKit.NSFont.boldSystemFontOfSize_(13),
                 AppKit.NSParagraphStyleAttributeName: stil,
             }))

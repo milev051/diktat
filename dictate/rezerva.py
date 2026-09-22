@@ -22,6 +22,10 @@ ROK_SATI = 24
 # Kraci snimak od ovoga nije vredan cuvanja: to je slucajan pritisak tastera.
 NAJKRACE_SEKUNDI = 1.0
 ZAGLAVLJE_WAV = 44
+# Ispod ovoga je snimak tisina (slucajan pritisak): izmereno 0.002-0.022 na
+# tri takva. Namerno nize od GOVOR_PEAK (0.10) iz app.py: tih govor u
+# mikrofon MacBook-a ume da bude ispod 0.10, a prepoznat je.
+PRAG_TISINE = 0.03
 
 
 class Snimak:
@@ -99,6 +103,22 @@ class Snimak:
 def _vrh(pcm: bytes) -> float:
     from .audio import peak
     return peak(pcm)
+
+
+def ishod(tekst: str, greska: str | None, vrh: float, otkazano: bool):
+    """Sta sa rezervnim snimkom posle diktata: (obrisi_snimak, greska).
+
+    Prepoznat tekst se NIKAD ne odbacuje. Prva verzija ovog pravila je
+    brisala i tekst kad je vrh bio ispod 0.10, pa diktat tihim glasom nije
+    stizao nigde, bez ijedne greske u logu (22.09.2026).
+    """
+    if (tekst or "").strip() and not greska:
+        return True, None                 # uspeo diktat, snimak ne treba
+    if otkazano:
+        return False, greska              # otkaz ume da bude slucajan, cuva se
+    if not (tekst or "").strip() and vrh < PRAG_TISINE:
+        return True, None                 # tisina: nema sta da se cuva ni prijavi
+    return False, greska
 
 
 class Sacuvan:

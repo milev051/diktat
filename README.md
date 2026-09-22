@@ -282,7 +282,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 
 | Ključ | Podrazumevano | Objašnjenje |
 |---|---|---|
-| `language` | `sr-RS` | menja se i iz menija |
+| `language` | `sr-RS` | jezik prepoznavanja |
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `transcription_provider` | `google` | `google`, `openai` ili `gemini_live`; međusobno isključivi izbor |
 | `openai_api_key` | `""` | OpenAI Platform ključ; ne čuvati ga u repozitorijumu |
@@ -298,7 +298,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `text_style` | `spoken` | stil koji traži AI; lokalni prekidači za mala slova i interpunkciju su odvojeni |
 | `abbreviations` | `true` | „ne znam" → „nzm", „je li" → „je l", „svejedno"/„sve jedno" → „svj"; „15 minuta" → „15min" |
 | `abbreviation_rules` | `""` | prazno = ugrađena lista; format `fraza=skraćenica`, jedno po redu |
-| `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i iz menija |
+| `ascii_diacritics` | `false` | `č ć ž š đ → c c z s dj`; menja se i u Podešavanjima |
 | `auto_segment` | `false` | seci dug snimak na pauzama i slati u delovima |
 | `segment_after_seconds` | `10` | samo uz `auto_segment` |
 | `pause_seconds` | `0.7` | koliko tišine znači „kraj misli" |
@@ -323,7 +323,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `text_model` | `gemini` | model za manipulaciju teksta: `gemini` ili `groq` |
 | `groq_api_key` | `""` | Groq ključ; ne čuvati ga u repozitorijumu |
 
-Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
+Posle ručne izmene fajla treba restart; izmene iz Podešavanja rade odmah.
 
 ---
 
@@ -493,7 +493,18 @@ ostalo bez prepisa.
 ```
 android/       probna Android aplikacija (vidi android/README.md)
 dictate/
-  app.py       menu bar, stanja, orkestracija (UI samo iz glavne niti)
+  app.py       pokretanje, stanje, traka menija (AppKit samo iz glavne niti)
+  snimanje.py  start, stop, osigurač, sesija diktata, izbor servisa
+  tok_google.py  Google: sečenje na pauzama, segmenti
+  tok_openai.py  OpenAI: ceo snimak posle Stop-a
+  tok_gemini.py  Gemini Live: strim dok snimaš, pregled uživo
+  upis.py      redosled i upis teksta, istorija
+  obrada.py    lokalna pravila i AI obrada
+  prozor_akcije.py  šta rade dugmad i prekidači u Podešavanjima
+  prepis_sacuvanog.py  Prepiši / Obriši za sačuvane snimke
+  azuriranje_ui.py  dugme i provera ažuriranja
+  rezerva.py   rezervni snimak diktata na disku
+  azuriranje.py  preuzimanje i instalacija izdanja sa GitHub-a
   hotkey.py    detekcija desnog Command-a + otkazivanje na prečice
   audio.py     mikrofon → 16 kHz PCM komadi + detekcija pauze
   webstt.py    Google Web Speech endpoint

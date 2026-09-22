@@ -6,6 +6,18 @@ plus greške koje su već napravljene — da se ne ponavljaju.
 Dva dela, isti Google Web Speech endpoint (Chromium, javni ključ):
 `dictate/` (macOS, Python — desni Option) i `android/` (Kotlin — bočni taster).
 
+**Mac kod je po delovima** (od 22.09.2026). `DictateApp` u `dictate/app.py`
+drži samo pokretanje, stanje, tajmer i traku menija, a ostalo nasleđuje od
+klasa u zasebnim fajlovima: `snimanje.py` (start, stop, osigurač, sesija, izbor
+servisa), `tok_google.py`, `tok_openai.py`, `tok_gemini.py` (po jedan tok
+snimanja za svaki servis), `upis.py` (redosled i upis), `obrada.py` (pravila i
+AI), `prozor_akcije.py`, `prepis_sacuvanog.py`, `azuriranje_ui.py`. Stanje
+(`self.cfg`, katanci, redovi) i dalje pravi samo `DictateApp.__init__`. Nov
+servis dobija svoj `tok_*.py` i jednu granu u `Snimanje._transcribe` i
+`_recognize`, ne novu granu usred tuđeg toka. Stari padajući meni (rumps
+stavke, ~500 linija) je uklonjen: od kada klik na ikonicu otvara Podešavanja,
+nikad se nije prikazivao.
+
 ---
 
 ## Pravila koja se ne smeju prekršiti

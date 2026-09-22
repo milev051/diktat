@@ -26,7 +26,7 @@ MAX_RETRIES = 5
 
 
 class OpenAIError(Exception):
-    """Грешка OpenAI позива; retryable означава да други покушај има смисла."""
+    """Greška OpenAI poziva; retryable označava da drugi pokušaj ima smisla."""
 
     def __init__(self, message, retryable=False):
         super().__init__(message)
@@ -34,7 +34,7 @@ class OpenAIError(Exception):
 
 
 def enabled(cfg) -> bool:
-    """Да ли је OpenAI изабран као извор транскрипције."""
+    """Da li je OpenAI izabran kao izvor transkripcije."""
     return cfg.get("transcription_provider", "google") == "openai"
 
 
@@ -72,12 +72,12 @@ def _multipart(fields: dict[str, str], name: str, data: bytes, filename: str,
 
 def _prompt(script: str) -> str:
     instruction = {
-        "cyrillic": "Пиши на српској ћирилици.",
-        "latin": "Пиши на српској латиници.",
-    }.get(script, "Користи писмо које најбоље одговара изговореном тексту.")
+        "cyrillic": "Piši na srpskoj ćirilici.",
+        "latin": "Piši na srpskoj latinici.",
+    }.get(script, "Koristi pismo koje najbolje odgovara izgovorenom tekstu.")
     return (
-        "Тачно препиши српски диктат. Не преводи, не сажимај и не додај речи "
-        "које нису изговорене. Сачувај бројеве и називе. " + instruction
+        "Tačno prepiši srpski diktat. Ne prevodi, ne sažimaj i ne dodaj reči "
+        "koje nisu izgovorene. Sačuvaj brojeve i nazive. " + instruction
     )
 
 
@@ -96,12 +96,12 @@ _CYRILLIC_TO_LATIN = str.maketrans({
 
 
 def to_latin(text: str) -> str:
-    """Преведи српску ћирилицу у латиницу без дирања осталог текста."""
+    """Prevedi srpsku ćirilicu u latinicu bez diranja ostalog teksta."""
     return text.translate(_CYRILLIC_TO_LATIN) if text else text
 
 
 def post_process(text: str, cfg) -> str:
-    """Примени само локална правила која не кваре интерпункцију модела."""
+    """Primeni samo lokalna pravila koja ne kvare interpunkciju modela."""
     text = (text or "").strip()
     if cfg.get("openai_output_script") == "latin":
         text = to_latin(text)
@@ -124,14 +124,14 @@ def post_process(text: str, cfg) -> str:
 
 
 def recognize(pcm: bytes, cfg, timeout=180) -> str:
-    """Пошаљи mono 16-bit PCM на OpenAI и врати транскрипт."""
+    """Pošalji mono 16-bit PCM na OpenAI i vrati transkript."""
     if not pcm:
         return ""
     key = (cfg.get("openai_api_key") or "").strip()
     if not key:
-        raise OpenAIError("OpenAI API кључ није подешен.")
+        raise OpenAIError("OpenAI API ključ nije podešen.")
     if len(pcm) < MIN_AUDIO_BYTES:
-        raise OpenAIError("Снимак је прекратак за OpenAI.")
+        raise OpenAIError("Snimak je prekratak za OpenAI.")
 
     rate = int(cfg.get("sample_rate", 16000))
     if cfg.get("compress_audio", True):
@@ -168,16 +168,16 @@ def recognize(pcm: bytes, cfg, timeout=180) -> str:
             payload = _request_json(request, timeout)
             text = str(payload.get("text") or "").strip()
             if not text:
-                raise OpenAIError("OpenAI није вратио текст.", retryable=True)
+                raise OpenAIError("OpenAI nije vratio tekst.", retryable=True)
             return text
         except OpenAIError as exc:
             if not exc.retryable or attempt == MAX_RETRIES:
                 raise
-            print(f"[diktat] {exc} — покушавам поново ({attempt + 1}/{MAX_RETRIES})")
+            print(f"[diktat] {exc} — pokušavam ponovo ({attempt + 1}/{MAX_RETRIES})")
             time.sleep(RETRY_WAIT * min(attempt + 1, 5))
             if attempt < MAX_RETRIES:
                 continue
-    raise OpenAIError("OpenAI није вратио текст.")
+    raise OpenAIError("OpenAI nije vratio tekst.")
 
 
 def _request_json(request, timeout: float):
@@ -191,28 +191,28 @@ def _request_json(request, timeout: float):
         ) from exc
     except urllib.error.URLError as exc:
         raise OpenAIError(
-            f"Нема везе са OpenAI-јем ({exc.reason}).", retryable=True
+            f"Nema veze sa OpenAI-jem ({exc.reason}).", retryable=True
         ) from exc
     except (TimeoutError, socket.timeout) as exc:
-        raise OpenAIError("OpenAI није одговорио на време.", retryable=True) from exc
+        raise OpenAIError("OpenAI nije odgovorio na vreme.", retryable=True) from exc
     try:
         payload = json.loads(raw.decode("utf-8", "replace"))
     except json.JSONDecodeError as exc:
-        raise OpenAIError("OpenAI је вратио неисправан одговор.") from exc
+        raise OpenAIError("OpenAI je vratio neispravan odgovor.") from exc
     if not isinstance(payload, dict):
-        raise OpenAIError("OpenAI је вратио неочекиван одговор.")
+        raise OpenAIError("OpenAI je vratio neočekivan odgovor.")
     return payload
 
 
 def _http_message(code: int, detail: str = "") -> str:
     if code in (401, 403):
-        return f"OpenAI је одбио API кључ (HTTP {code})."
+        return f"OpenAI je odbio API ključ (HTTP {code})."
     if code == 400:
-        return "OpenAI је одбио аудио или параметре (HTTP 400)." + (
+        return "OpenAI je odbio audio ili parametre (HTTP 400)." + (
             f" {detail}" if detail else ""
         )
     if code == 413:
-        return "OpenAI је одбио превелик аудио фајл (HTTP 413)."
+        return "OpenAI je odbio prevelik audio fajl (HTTP 413)."
     if code == 429:
-        return "OpenAI је ограничио број захтева (HTTP 429)."
-    return f"OpenAI је вратио HTTP {code}." + (f" {detail}" if detail else "")
+        return "OpenAI je ograničio broj zahteva (HTTP 429)."
+    return f"OpenAI je vratio HTTP {code}." + (f" {detail}" if detail else "")

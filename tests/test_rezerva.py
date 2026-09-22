@@ -70,5 +70,26 @@ class Rezerva(unittest.TestCase):
         self.assertEqual(rezerva.sacuvani(self.folder, aktivni=[snimak.putanja]), [])
 
 
+class Ishod(unittest.TestCase):
+    """Sta posle diktata: prepoznat tekst se nikad ne baca."""
+
+    def test_tih_govor_sa_prepisom_prolazi(self):
+        # Bas ovo je bila greska: vrh 0.05 je bio "tisina" i tekst je nestajao.
+        self.assertEqual(rezerva.ishod("zdravo", None, 0.05, False), (True, None))
+
+    def test_prepis_prolazi_i_uz_sasvim_tih_snimak(self):
+        self.assertEqual(rezerva.ishod("zdravo", None, 0.0, False), (True, None))
+
+    def test_tisina_bez_prepisa_se_brise_bez_greske(self):
+        self.assertEqual(rezerva.ishod("", "Isteklo vreme", 0.01, False), (True, None))
+
+    def test_govor_bez_prepisa_se_cuva_uz_gresku(self):
+        self.assertEqual(rezerva.ishod("", "Isteklo vreme", 0.3, False),
+                         (False, "Isteklo vreme"))
+
+    def test_otkazan_se_cuva(self):
+        self.assertEqual(rezerva.ishod("", None, 0.3, True), (False, None))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -199,12 +199,48 @@ def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
             raise
     finally:
         shutil.rmtree(radni, ignore_errors=True)
+    # Radni folder ovog procesa je bila stara kopija, koja je upravo obrisana.
+    # Pokretac prepoznaje staru instancu po radnom folderu, pa bi je bez ovoga
+    # ostavio da radi pored nove (izmereno 22.09.2026: cwd .../staro).
+    try:
+        os.chdir(INSTALIRANO)
+    except OSError:
+        pass
+
+
+def _bundle() -> str:
+    """Diktat.app koji je pokrenuo ovaj proces (roditelj je njegov diktat.sh)."""
+    try:
+        roditelj = subprocess.run(
+            ["ps", "-o", "command=", "-p", str(os.getppid())],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        roditelj = ""
+    return bundle_iz_komande(roditelj)
+
+
+def bundle_iz_komande(komanda: str) -> str:
+    """„/bin/bash /Applications/Diktat.app/Contents/Resources/diktat.sh" ->
+    „/Applications/Diktat.app". Putanja sme da ima razmake (folder projekta)."""
+    komanda = komanda.strip()
+    for tumac in ("/bin/bash ", "/bin/sh "):
+        if komanda.startswith(tumac):
+            komanda = komanda[len(tumac):]
+    oznaka = ".app/Contents/"
+    if komanda.startswith("/") and oznaka in komanda:
+        return komanda[:komanda.index(oznaka) + len(".app")]
+    return "/Applications/Diktat.app"
 
 
 def ponovo_pokreni() -> None:
-    """Zameni ovaj proces novim kodom. PID ostaje isti, pa i dozvole i ikonica."""
+    """Pokreni Diktat iznova kroz njegov bundle, kao klik na ikonicu.
+
+    `os.execv` u istom procesu je izgledao cisto (isti PID, iste dozvole), ali
+    posle njega tastatura vise ne stize do aplikacije: izmereno 22.09.2026,
+    diktat posle azuriranja ne krece, a posle rucnog pokretanja radi. Zato
+    `open -n` pokrene novu instancu bundle-a, a njen diktat.sh ugasi ovu.
+    """
     sys.stdout.flush()
     sys.stderr.flush()
-    # Stara radna putanja je obrisana zajedno sa starom kopijom.
-    os.chdir(INSTALIRANO)
-    os.execv(sys.executable, [sys.executable, str(INSTALIRANO / "run.py")])
+    subprocess.Popen(["open", "-n", _bundle()])

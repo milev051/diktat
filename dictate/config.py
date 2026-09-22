@@ -41,8 +41,8 @@ DEFAULTS = {
     # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci
     # da model sredjuje tekst — prekidac za to stoji u AI grupi.
     "text_style": "spoken",
-    "lowercase": True,             # независно од интерпункције
-    "strip_punctuation": True,     # бројеви типа 10:30 и 3,5 остају читави
+    "lowercase": True,             # nezavisno od interpunkcije
+    "strip_punctuation": True,     # brojevi tipa 10:30 i 3,5 ostaju čitavi
     "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
     "abbreviations": True,        # „ne znam" -> „nzm"
     "abbreviation_rules": "",     # prazno = ugradjena lista (dictate/abbrev.py)

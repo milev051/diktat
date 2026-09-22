@@ -16,8 +16,8 @@ class OpenAITest(unittest.TestCase):
         )
 
     def test_prompt_bira_pismo(self):
-        self.assertIn("ћирилици", openai._prompt("cyrillic"))
-        self.assertIn("латиници", openai._prompt("latin"))
+        self.assertIn("ćirilici", openai._prompt("cyrillic"))
+        self.assertIn("latinici", openai._prompt("latin"))
 
     def test_latinica_cuva_brojeve_url_i_engleski(self):
         tekst = "Љубљана, 10:30, 3.14, https://AI.example/ API"
