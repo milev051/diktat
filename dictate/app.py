@@ -22,8 +22,8 @@ import rumps
 from Foundation import NSAttributedString
 
 from . import (
-    abbrev, apitest, audio, config, debugdump, geministt, hotkey, insert, listen,
-    overlay, openai, polish, groq, settings_window, webstt,
+    abbrev, apitest, audio, azuriranje, config, debugdump, geministt, hotkey, insert,
+    overlay, openai, polish, groq, rezerva, settings_window, webstt,
 )
 
 # Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
@@ -41,6 +41,9 @@ TITLE_COLORS = {
 }
 
 ERROR_HUD_SECONDS = 4.0
+LIVE_MREZNI_ROK = 20
+# Koliko posle repa STOP sme da ceka pre nego sto osigurac oslobodi mikrofon.
+STOP_ROK = 3.0
 
 
 class _MicDelegate(AppKit.NSObject):
@@ -156,14 +159,37 @@ class DictateApp(rumps.App):
         self._pending_by: dict[int, int] = {}
         # Zvuk segmenata; unutrasnji kljuc je ticket, da redosled ostane
         # hronoloski i kad se segmenti prepoznaju paralelno.
-        self._audio_lock = threading.Lock()
-        self._audio_parts: dict[int, dict[int, bytes]] = {}
-        self._audio_seconds: dict[int, float] = {}
         self._polishing = False
         self._polishing_count = 0
         self._api_check_result = None
         self._api_check_running = False
         self._settings_window_ui = None
+        # Azuriranje: radna nit samo upisuje stanje i dize `_azur_dirty`, a
+        # prozor i naslov osvezava `_tick` sa glavne niti.
+        self._azur_izdanje = None
+        self._azur_status = ""
+        # Kratak ishod rucne provere za natpis dugmeta; pun tekst je u statusu.
+        self._azur_ishod = ""
+        self._azur_radi = False
+        self._azur_dirty = False
+        self._azur_restart = False
+        self._azur_proveren_u = 0.0
+        # Prvi poziv AVFoundation-a (provera dozvole za mikrofon) traje ~2s, a
+        # gradnja prozora jos ~0.3s; oba su padala na prvi klik na ikonicu.
+        # Zato se AVFoundation ucita u pozadini, a prozor napravi unapred.
+        self._prozor_moze = False
+        self._sacuvani_dirty = True
+        self._prepis_radi = False
+        self.prepis_status = ""
+        # Ostatak neuspelog diktata od pre pokretanja: prozor se otvori sam,
+        # da se prepis ponovi bez trazenja.
+        self._najavi_sacuvane = bool(rezerva.sacuvani())
+
+        def zagrej():
+            audio.microphone_granted()
+            self._prozor_moze = True
+
+        threading.Thread(target=zagrej, daemon=True).start()
 
         self._build_menu()
         self._apply_debug(self.cfg.get("debug", False))
@@ -298,12 +324,6 @@ class DictateApp(rumps.App):
         self.item_openai_key = rumps.MenuItem(
             "OpenAI API ključ…", callback=self._set_openai_key
         )
-        self.item_listen = rumps.MenuItem(
-            "Google/Gemini sluša snimak", callback=self._toggle_listen
-        )
-        self.item_groq = rumps.MenuItem(
-            "Groq preciznost (Whisper + GPT-OSS)", callback=self._toggle_groq
-        )
         self.item_groq_key = rumps.MenuItem(
             "Groq API ključ…", callback=self._set_groq_key
         )
@@ -343,8 +363,6 @@ class DictateApp(rumps.App):
             text_model_menu,
             api_keys_menu,
             rumps.separator,
-            self.item_listen,
-            self.item_groq,
             self.item_debug,
             self.item_debug_open,
             self.item_tidy,
@@ -355,7 +373,7 @@ class DictateApp(rumps.App):
             self.item_polish_count,
         ):
             ai_menu.add(stavka)
-        for stavka in (self.item_listen, self.item_tidy,
+        for stavka in (self.item_tidy,
                        self.item_polish_para, self.item_polish_bullets,
                        self.item_polish_dedupe):
             stavka._menuitem.setIndentationLevel_(1)
@@ -368,7 +386,6 @@ class DictateApp(rumps.App):
         # Alati se sive dok je glavni prekidac ugasen. Lista parova, ne recnik:
         # rumps MenuItem nije hashable.
         self._polish_callbacks = [
-            (self.item_listen, self._toggle_listen),
             (self.item_tidy, self._toggle_tidy),
             (self.item_polish_para, self._make_polish_toggle("polish_paragraphs", True)),
             (self.item_polish_bullets, self._make_polish_toggle("polish_bullets", False)),
@@ -498,10 +515,6 @@ class DictateApp(rumps.App):
             "OpenAI API кључ: подешен" if self.cfg.get("openai_api_key")
             else "OpenAI API кључ…"
         )
-        # Ови пролази су додатна провера Google преписа; у OpenAI режиму су
-        # неактивни да један диктат не пошаљемо и другом провајдеру.
-        self.item_listen.state = 1 if provider != "openai" and listen.enabled(self.cfg) else 0
-        self.item_groq.state = 1 if provider != "openai" and groq.enabled(self.cfg) else 0
         self.item_groq_key.title = (
             "Groq API ključ: podešen" if self.cfg.get("groq_api_key")
             else "Groq API ključ…"
@@ -586,6 +599,10 @@ class DictateApp(rumps.App):
                 self.state.set(phase="error", message=f"Mikrofon: {exc}")
                 return False
             recorder.session = self._nova_sesija(zakljucano=True)
+            recorder.snimak = (
+                rezerva.Snimak.novi(int(self.cfg["sample_rate"]))
+                if self.cfg.get("rezervni_snimak", True) else None
+            )
             self._recorder = recorder
             recorder.live_insert = (
                 geministt.enabled(self.cfg)
@@ -624,7 +641,35 @@ class DictateApp(rumps.App):
         # korisnika gotovo u trenutku kad pusti taster.
         self._live_off = True
         # Rep hvata poslednju rec — taster se pusta tacno na njenom kraju.
-        recorder.stop(tail=float(self.cfg.get("tail_seconds", 0.8)))
+        rep = float(self.cfg.get("tail_seconds", 0.8))
+        recorder.stop(tail=rep)
+        cuvar = threading.Timer(rep + STOP_ROK, self._cuvar_zaustavljanja, args=(recorder,))
+        cuvar.daemon = True
+        cuvar.start()
+
+    def _cuvar_zaustavljanja(self, recorder):
+        """STOP mora da zaustavi sat, sta god da se zaglavilo iza njega.
+
+        Posle odvajanja mikrofona od mreze (`_tracked`) ovo ne bi smelo da se
+        desi. Ostaje kao osigurac: ako PortAudio zapne pri zatvaranju strima ili
+        se pojavi neki treci uzrok, korisnik ne sme da gleda sat koji tece i
+        taster koji ne reaguje. Linija u logu kaze da je osigurac radio, pa se
+        uzrok trazi odatle.
+        """
+        with self._session_lock:
+            if self._recorder is not recorder or recorder.released:
+                return
+            self._recorder = None
+        print(f"[diktat] snimanje nije stalo {STOP_ROK:.0f}s posle STOP-a, "
+              "oslobadjam mikrofon silom", flush=True)
+        recorder._finish()
+        listener = getattr(self, "listener", None)
+        if listener is not None:
+            listener.reset(pokrenuto=getattr(recorder, "pokrenuto", None))
+        # Zatvaranje strima je upravo ono sto ume da zapne, pa ide u svoju nit.
+        threading.Thread(target=self._release_recorder, args=(recorder,),
+                         daemon=True).start()
+        self._settle_phase()
 
     def _on_cancel(self, reason="otkazano"):
         with self._session_lock:
@@ -744,11 +789,40 @@ class DictateApp(rumps.App):
     # --------------------------------------------------------- sesija
 
     def _tracked(self, recorder):
-        """Omotac oko chunks() koji pusta mikrofon cim audio stane."""
+        """Mikrofon i mreza su odvojeni: zvuk cita zasebna nit.
+
+        Ranije je mikrofon citao onaj ko salje na mrezu. Kad Gemini Live
+        prestane da prima (izmereno 22.09.2026: „Isteklo vreme cekanja
+        odgovora"), slanje stoji, pa niko ne cita mikrofon: snimanje se ne
+        zavrsava, `_recorder` ostaje zauzet i taster deluje mrtav do isteka
+        mreznog roka. Sada nit pumpe prazni mikrofon nezavisno od mreze, pise
+        rezervnu kopiju i pusta mikrofon cim snimanje stane.
+        """
+        red: queue.Queue = queue.Queue()
+        snimak = getattr(recorder, "snimak", None)
+
+        def pumpa():
+            try:
+                for komad in recorder.chunks():
+                    if snimak is not None:
+                        snimak.upisi(komad)
+                    red.put(komad)
+            finally:
+                if snimak is not None:
+                    snimak.zatvori()
+                self._release_recorder(recorder)
+                red.put(None)
+
+        threading.Thread(target=pumpa, name="diktat-mikrofon", daemon=True).start()
         try:
-            yield from recorder.chunks()
+            while True:
+                komad = red.get()
+                if komad is None:
+                    return
+                yield komad
         finally:
-            self._release_recorder(recorder)
+            # Potrosac je odustao (pala mreza): mikrofon mora da stane i sam.
+            recorder.stop()
 
     def _run_session(self, recorder):
         text = ""
@@ -764,12 +838,33 @@ class DictateApp(rumps.App):
             )
             self._release_recorder(recorder)
 
+        # Rezervni snimak ostaje samo kad prepis nije stigao; uspeo diktat ga
+        # brise odmah, da glas ne stoji na disku bez razloga.
+        snimak = getattr(recorder, "snimak", None)
+        if snimak is not None and not recorder.cancelled and snimak.vrh < self.GOVOR_PEAK:
+            # Bez govora nema sta da se prepise ni sacuva. Gemini Live na
+            # tisinu ne vrati nista, pa bi to inace izaslo kao greska
+            # „Isteklo vreme cekanja odgovora" i kao sacuvan snimak (izmereno
+            # 22.09.2026: tri takva, vrh 0.002-0.022).
+            if error:
+                print(f"[diktat] bez govora, greska se ne prijavljuje: {error}")
+            error = None
+            text = ""
+            snimak.obrisi()
+        if snimak is not None and not error and (text or "").strip():
+            snimak.obrisi()
+        sacuvan = snimak is not None and snimak.putanja.exists()
+        if sacuvan:
+            self._sacuvani_dirty = True
+
         # Ticket dodeljen u _release_recorder mora da se preda tacno jednom,
         # inace red ubacivanja stane zauvek.
         ticket = recorder.ticket
         if recorder.cancelled or error:
             self._deliver(ticket, "", recorder.session)
             if error and not recorder.cancelled:
+                if sacuvan:
+                    error = f"{error[:120]} · snimak je sačuvan u Podešavanjima"
                 self.state.set(phase="error", message=error)
             else:
                 self._settle_phase()
@@ -813,10 +908,8 @@ class DictateApp(rumps.App):
     def _recognize_or_keep(self, pcm: bytes) -> str:
         """Prepis segmenta; prazan rezultat za jasan govor se samo prijavi.
 
-        Zvuk se nigde ne upisuje na disk — ni kad poziv padne, ni kad prepis
-        dodje prazan. Snimljeni glas ostaje samo u radnoj memoriji, koliko
-        traje prepoznavanje. Ispis u logu je jedini trag, da se vidi da deo
-        diktata nije stigao.
+        Ispis u logu je trag da deo diktata nije stigao. Zvuk celog diktata
+        ostaje u rezervnom snimku (`rezerva.py`) dok prepis ne uspe.
         """
         text = self._recognize(pcm)
         if not text and self._bilo_je_govora(pcm):
@@ -843,85 +936,12 @@ class DictateApp(rumps.App):
         )
         if not text:
             return text
-        if self._batch() or (self._formal() and polish.tidy_on(self.cfg)):
-            # Kad model sredjuje tekst ili slusa snimak, dobija ga kakav jeste:
+        if self._formal() and polish.tidy_on(self.cfg):
+            # Kad model sredjuje tekst, dobija ga kakav jeste:
             # skracenice i skidanje kvacica bi mu otezali citanje. Pravila se
             # tada primenjuju na kraju, nad ispravljenim tekstom.
             return text
         return self._apply_rules(text)
-
-    def _keep_audio(self, session: int, ticket: int, pcm: bytes):
-        """Sacuvaj zvuk segmenta za grupnu proveru na kraju diktata.
-
-        Ceo diktat ide modelu jednim pozivom: provera po segmentu je trosila
-        6-9 poziva na jednu diktiranu poruku, a model je video krhotinu umesto
-        celine. Granica postoji jer neprekidan rezim ume da traje satima —
-        preko nje se zvuk vise ne cuva, a tekst ostaje onakav kakav je.
-        """
-        if not pcm or not (listen.enabled(self.cfg) or groq.enabled(self.cfg)):
-            return
-        granica = float(self.cfg.get("audio_check_max_seconds", 120))
-        with self._audio_lock:
-            if self._audio_seconds.get(session, 0.0) + self._seconds(pcm) > granica:
-                return
-            self._audio_parts.setdefault(session, {})[ticket] = pcm
-            self._audio_seconds[session] = (
-                self._audio_seconds.get(session, 0.0) + self._seconds(pcm)
-            )
-
-    def _take_audio(self, session: int):
-        """Zvuk jednog diktata, hronoloski."""
-        with self._audio_lock:
-            delovi = self._audio_parts.pop(session, {})
-            self._audio_seconds.pop(session, None)
-        rate = self.cfg["sample_rate"]
-        return [(delovi[k], rate) for k in sorted(delovi)]
-
-    def _slusaj(self, session: int, tekst: str):
-        """Drugo misljenje o celom diktatu; na otkaz ostaje prvi prepis.
-
-        Vraca (tekst, da li je model zaista slusao) — ako jeste, tekst vec ima
-        interpunkciju i kvacice, pa sledeci poziv nema sta da sredjuje.
-        """
-        delovi = self._take_audio(session)
-        if not delovi:
-            return tekst, False
-        groq_prolaz = groq.enabled(self.cfg)
-        trag = {
-            "provider": (
-                "Groq Whisper + GPT-OSS" if groq_prolaz else "Gemini audio check"
-            ),
-            "google_text": tekst,
-            "metadata": (
-                f"audio: {len(delovi)} segment(a); Whisper model: "
-                f"{groq.DEFAULT_TRANSCRIPTION_MODEL}; GPT-OSS model: "
-                f"{groq.DEFAULT_MERGE_MODEL}"
-                if groq_prolaz
-                else f"audio: {len(delovi)} segment(a); Gemini model: "
-                f"{self.cfg.get('polish_model') or polish.DEFAULT_MODEL}"
-            ),
-        }
-        try:
-            if groq_prolaz:
-                # Groq dobija prednost kada je uključen: u suprotnom bi isti
-                # audio nepotrebno išao i Gemini-ju i Groq-u.
-                ispravljen = groq.check_batch(delovi, tekst, self.cfg, trace=trag)
-                self._count_polish(2)  # Whisper + GPT-OSS
-            else:
-                ispravljen = listen.check_batch(delovi, tekst, self.cfg)
-                self._count_polish()
-                trag["prompt"] = listen._uputstvo(tekst, self.cfg, len(delovi))
-            config.save(self.cfg)
-            trag["merged_text"] = ispravljen
-            self._write_ai_debug(session, trag)
-            if ispravljen != tekst:
-                print(f"[diktat] AI slušao {len(delovi)} segm.: {tekst!r} -> {ispravljen!r}")
-            return ispravljen, True
-        except Exception as exc:  # noqa: BLE001
-            trag["error"] = str(exc)
-            self._write_ai_debug(session, trag)
-            print(f"[diktat] provera snimka nije uspela: {exc}")
-            return tekst, False
 
     def _write_ai_debug(self, session: int, trag: dict):
         """Upiši rezultate provajdera u log sesije ako je detaljan log uključen."""
@@ -1014,7 +1034,6 @@ class DictateApp(rumps.App):
             if recorder.cancelled:
                 return ""
             self._settle_phase()
-            self._keep_audio(recorder.session, recorder.ticket, pcm)
             text = self._recognize_or_keep(pcm)
             if session is not None:
                 session.segment(session.next_index(), pcm, text, kind="ceo")
@@ -1059,7 +1078,6 @@ class DictateApp(rumps.App):
             return ""
         self._settle_phase()
         tail = b"".join(frames)
-        self._keep_audio(recorder.session, recorder.ticket, tail)
         text = self._recognize_or_keep(tail)
         if not text and self._seconds(tail) > 0.4:
             print(f"[diktat] rep od {self._seconds(tail):.1f}s nije prepoznat")
@@ -1110,8 +1128,8 @@ class DictateApp(rumps.App):
 
         Cena je ista: naplacuje se zvuk, a zvuk je isti. Mana je sto se komadi
         sa mikrofona citaju samo jednom — drugi pokusaj nema sta da posalje, pa
-        neuspeo Live diktat propada. Kopija se namerno nigde ne pise: zvuk ne
-        sme da ostane na disku posle diktata.
+        neuspeo Live diktat se ne ponavlja sam. Zato postoji rezervni snimak
+        (`rezerva.py`), iz koga se prepis ponavlja rucno.
         """
         session = self._dump.session() if self._dump else None
         if session is not None:
@@ -1127,7 +1145,9 @@ class DictateApp(rumps.App):
             if self._live_preview_on() else None
         )
         sirovo = geministt.recognize_live_stream(
-            komadi, self.cfg,
+            # Kratak mrezni rok: zvuk ide u realnom vremenu, pa ni jedno slanje
+            # ni citanje ne sme da visi minutima. Pre je bio 180 s.
+            komadi, self.cfg, timeout=LIVE_MREZNI_ROK,
             on_update=prikaz,
             on_final=(
                 (lambda raw: self._live_part(recorder, raw))
@@ -1168,7 +1188,6 @@ class DictateApp(rumps.App):
     def _ship_segment(self, pcm: bytes, sesija: int, session=None):
         """Posalji odsecen deo na prepoznavanje, a snimanje ide dalje."""
         ticket = self._next_ticket(sesija)
-        self._keep_audio(sesija, ticket, pcm)
         index = session.next_index() if session is not None else 0
 
         def work():
@@ -1284,9 +1303,6 @@ class DictateApp(rumps.App):
                 delovi = self._formal_parts.pop(sesija, [])
             tekst = " ".join(d for d in delovi if d).strip()
             if not tekst:
-                # Otkazan ili prazan diktat: zvuk mora da ode, inace bi usao u
-                # sledecu proveru i model bi "cuo" prosli diktat.
-                self._take_audio(sesija)
                 continue
             with self._count_lock:
                 self._polishing_count += 1
@@ -1307,13 +1323,10 @@ class DictateApp(rumps.App):
             ]
 
     def _do_polish(self, sesija: int, tekst: str):
-        sredjeno = False
-        if self._batch():
-            tekst, sredjeno = self._slusaj(sesija, tekst)
         # Tekst je cekao kraj diktata pa je jos sirov: ako model ne doteruje,
         # pravila moraju sada da odrade svoje.
         doteran = (
-            self._doteraj(tekst, sredjeno, sesija) if self._formal()
+            self._doteraj(tekst, session=sesija) if self._formal()
             else self._rules_over_paragraphs(tekst)
         )
         with self._count_lock:
@@ -1407,6 +1420,18 @@ class DictateApp(rumps.App):
             self._settings_window_ui.refresh_recording()
 
         self._tick_live_panel()
+        self._tick_azuriranje()
+        if (self._prozor_moze and self._settings_window_ui is None
+                and self._recorder is None and not self._starting):
+            self._settings_window_ui = settings_window.SettingsWindow(self)
+            self._settings_window_ui.pripremi()
+        if self._najavi_sacuvane and self._settings_window_ui is not None:
+            self._najavi_sacuvane = False
+            self._open_settings(None)
+        if self._sacuvani_dirty:
+            self._sacuvani_dirty = False
+            if self._settings_window_ui is not None:
+                self._settings_window_ui.refresh()
 
         phase, message, dirty = self.state.snapshot()
 
@@ -1436,6 +1461,12 @@ class DictateApp(rumps.App):
                 self.hud.set_busy(pending > 0)
             return
 
+        if self._azur_dirty:
+            self._azur_dirty = False
+            dirty = True
+            if self._settings_window_ui is not None:
+                self._settings_window_ui.refresh()
+
         if not dirty:
             return
 
@@ -1446,7 +1477,11 @@ class DictateApp(rumps.App):
         elif phase == "thinking":
             self._set_menubar(self._last_clock or ICON["idle"], "busy")
         else:
-            self._set_menubar(ICON.get(phase, ICON["idle"]))
+            naslov = ICON.get(phase, ICON["idle"])
+            if phase != "error" and self.azur_dostupno():
+                # Strelica je jedini znak da ima nove verzije; ne iskace nista.
+                naslov += " ↑"
+            self._set_menubar(naslov)
 
         if not self.cfg.get("show_overlay", True):
             return
@@ -1571,6 +1606,11 @@ class DictateApp(rumps.App):
         if self._settings_window_ui is None:
             self._settings_window_ui = settings_window.SettingsWindow(self)
         self._settings_window_ui.show()
+        # Svako otvaranje pita GitHub, ali ne cesce od jednom u minuti: dva
+        # brza klika na ikonicu ne treba da budu dva zahteva.
+        if (self.cfg.get("update_check", True) and not self._azur_radi
+                and time.time() - self._azur_proveren_u > 60):
+            self._azur_proveri(rucno=False)
 
     def _toggle_settings(self):
         """Ikonica je prekidač: drugi klik sklanja prozor."""
@@ -1602,16 +1642,6 @@ class DictateApp(rumps.App):
         elif key == "debug":
             self.cfg["debug"] = value
             self._apply_debug(value)
-        elif key == "audio_check":
-            if value and (self._own_audio_model() or not polish.gemini_available(self.cfg)):
-                self.state.set(phase="error", message="Provera snimka traži Google transkripciju i Gemini ključ")
-                value = False
-            self.cfg["audio_check"] = value
-        elif key == "groq_enabled":
-            if value and (self._own_audio_model() or not self.cfg.get("groq_api_key")):
-                self.state.set(phase="error", message="Groq provera traži Google transkripciju i Groq ključ")
-                value = False
-            self.cfg["groq_enabled"] = value
         elif key:
             self.cfg[key] = value
         config.save(self.cfg)
@@ -1661,6 +1691,16 @@ class DictateApp(rumps.App):
                 insert.set_clipboard(value)
             except (ValueError, IndexError):
                 pass
+        elif action == "update":
+            self._azur_klik()
+        elif action.startswith("prepisi_"):
+            self._prepisi_sacuvan(int(action.removeprefix("prepisi_")))
+        elif action.startswith("obrisi_"):
+            sacuvani = rezerva.sacuvani(aktivni=self._aktivni_snimci())
+            index = int(action.removeprefix("obrisi_"))
+            if index < len(sacuvani):
+                sacuvani[index].obrisi()
+            self._sacuvani_dirty = True
         elif action == "check_api":
             self._check_api_keys(sender)
         elif action == "quit":
@@ -1751,6 +1791,180 @@ class DictateApp(rumps.App):
 
 
 
+    # ------------------------------------------------------ rezervni snimci
+
+    def _aktivni_snimci(self):
+        snimak = getattr(self._recorder, "snimak", None)
+        return [snimak.putanja] if snimak is not None else []
+
+    def sacuvani_snimci(self):
+        return rezerva.sacuvani(aktivni=self._aktivni_snimci())
+
+    def _prepisi_sacuvan(self, index: int):
+        if self._prepis_radi:
+            return
+        sacuvani = self.sacuvani_snimci()
+        if index >= len(sacuvani):
+            return
+        sacuvan = sacuvani[index]
+        self._prepis_radi = True
+        self.prepis_status = "Prepisujem…"
+        self._sacuvani_dirty = True
+        self.state.set(phase="thinking", message="Prepisujem sačuvan snimak…")
+
+        def worker():
+            try:
+                pcm, _rate = sacuvan.procitaj()
+                tekst = self._prepisi_pcm(pcm).strip()
+                if not tekst:
+                    self.prepis_status = "U snimku nije prepoznat govor."
+                    self.state.set(phase="idle", message="")
+                    return
+                insert.set_clipboard(tekst)
+                self._remember(tekst)
+                sacuvan.obrisi()
+                self.state.set(phase="idle", message="")
+                self.prepis_status = "Prepis je u clipboard-u i u istoriji. Nalepi ga sa ⌘V."
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                self.prepis_status = f"Prepis nije uspeo: {_short_error(exc)}"
+                self.state.set(phase="idle", message="")
+            finally:
+                self._prepis_radi = False
+                self._sacuvani_dirty = True
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _prepisi_pcm(self, pcm: bytes) -> str:
+        """Ceo snimak kroz izabran servis, bez mikrofona.
+
+        Google prima najvise ~30 s po zahtevu, pa se snimak sece na pauzama,
+        isto kao u neprekidnom rezimu. Gemini i OpenAI primaju ceo snimak.
+        """
+        if (self.cfg.get("transcription_provider", "google") == "openai"
+                or geministt.enabled(self.cfg)):
+            return self._apply_rules(self._recognize(pcm))
+        rate = int(self.cfg["sample_rate"])
+        korak = rate // 10 * 2
+        detektor = audio.PauseDetector(pause_seconds=float(self.cfg.get("pause_seconds", 0.7)))
+        granica = float(self.cfg.get("max_request_seconds", 30))
+        delovi, tekuci, sekundi = [], [], 0.0
+        for i in range(0, len(pcm), korak):
+            komad = pcm[i:i + korak]
+            tekuci.append(komad)
+            sekundi += len(komad) / 2 / rate
+            pauza = detektor.feed(audio.peak(komad), len(komad) / 2 / rate)
+            if (pauza and sekundi >= 15) or sekundi >= granica:
+                delovi.append(self._recognize(b"".join(tekuci)))
+                tekuci, sekundi = [], 0.0
+                detektor.reset()
+        if tekuci:
+            delovi.append(self._recognize(b"".join(tekuci)))
+        return " ".join(d.strip() for d in delovi if d and d.strip())
+
+    # ---------------------------------------------------------- azuriranje
+
+    def azur_dostupno(self) -> bool:
+        izdanje = self._azur_izdanje
+        return izdanje is not None and azuriranje.novije(
+            azuriranje.trenutna_verzija(), izdanje.oznaka
+        )
+
+    def azur_dugme_stanje(self) -> tuple[str, bool]:
+        """Natpis dugmeta u zaglavlju i da li je zeleno.
+
+        Dugme nosi i trenutnu verziju, pa zasebna oznaka verzije ne postoji.
+        Pun opis poslednjeg ishoda je u opisu dugmeta (tooltip).
+        """
+        trenutna = azuriranje.trenutna_verzija() or "?"
+        if self._azur_radi:
+            return self._azur_status or "Sačekaj…", False
+        if self.azur_dostupno():
+            return f"Ažuriraj {trenutna} → {self._azur_izdanje.oznaka}", True
+        if self._azur_ishod:
+            return f"{self._azur_ishod} ({trenutna})", False
+        return f"Proveri ažuriranje ({trenutna})", False
+
+    def _tick_azuriranje(self):
+        if self._azur_restart and self._recorder is None and not self._starting:
+            with self._count_lock:
+                pending = self._pending
+            if pending == 0:
+                self._azur_restart = False
+                print(f"[diktat] azurirano na {azuriranje.trenutna_verzija() or '?'}"
+                      ", ponovo pokrecem", flush=True)
+                try:
+                    self.listener.stop()
+                finally:
+                    azuriranje.ponovo_pokreni()
+        if (self.cfg.get("update_check", True) and not self._azur_radi
+                and time.time() - self._azur_proveren_u > azuriranje.RAZMAK_PROVERE):
+            self._azur_proveri(rucno=False)
+
+    def _azur_proveri(self, rucno: bool):
+        self._azur_radi = True
+        self._azur_proveren_u = time.time()
+        if rucno:
+            self._azur_status = "Proveravam…"
+            self._azur_ishod = ""
+        self._azur_dirty = True
+
+        def worker():
+            try:
+                izdanje = azuriranje.poslednje()
+                self._azur_izdanje = izdanje
+                trenutna = azuriranje.trenutna_verzija()
+                if azuriranje.novije(trenutna, izdanje.oznaka):
+                    self._azur_status = f"Dostupna je nova verzija {izdanje.oznaka}."
+                else:
+                    self._azur_status = f"Imaš najnoviju verziju ({trenutna})."
+                    if rucno:
+                        self._azur_ishod = "Najnovija verzija"
+            except Exception as exc:  # noqa: BLE001
+                # Tiha provera bez mreze ne sme da prepise poslednji dobar ishod.
+                if rucno or not self._azur_status:
+                    self._azur_status = f"Provera nije uspela: {_short_error(exc)}"
+                if rucno:
+                    self._azur_ishod = "Provera nije uspela"
+            finally:
+                self._azur_radi = False
+                self._azur_dirty = True
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _azur_klik(self):
+        if self._azur_radi:
+            return
+        if not self.azur_dostupno():
+            self._azur_proveri(rucno=True)
+            return
+        if self._recorder is not None or self._starting:
+            self._azur_status = "Sačekaj da se diktat završi, pa klikni ponovo."
+            self._azur_ishod = "Sačekaj kraj diktata"
+            self._azur_dirty = True
+            return
+        izdanje = self._azur_izdanje
+        self._azur_radi = True
+        self._azur_dirty = True
+
+        def javi(poruka):
+            self._azur_status = poruka
+            self._azur_dirty = True
+
+        def worker():
+            try:
+                azuriranje.instaliraj(izdanje, javi=javi)
+                javi("Ponovo pokrećem…")
+                self._azur_restart = True
+            except Exception as exc:  # noqa: BLE001
+                javi(f"Ažuriranje nije uspelo: {_short_error(exc)}")
+                self._azur_ishod = "Ažuriranje nije uspelo"
+            finally:
+                self._azur_radi = False
+                self._azur_dirty = True
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _check_api_keys(self, _):
         if self._api_check_running:
             self.state.set(phase="thinking", message="Provera API ključeva već traje…")
@@ -1767,36 +1981,6 @@ class DictateApp(rumps.App):
             self._api_check_running = False
 
         threading.Thread(target=worker, daemon=True).start()
-
-    def _toggle_listen(self, _):
-        if self._own_audio_model():
-            self.state.set(
-                phase="error",
-                message="Provera snimka je isključena: izabrano prepoznavanje već sluša zvuk.",
-            )
-            return
-        if not polish.gemini_available(self.cfg):
-            self.state.set(phase="error", message="Upiši Gemini API ključ u API ključevi")
-            return
-        self.cfg["audio_check"] = not bool(self.cfg.get("audio_check", False))
-        config.save(self.cfg)
-        self._sync_menu_marks()
-        self._keep_menu_open()
-
-    def _toggle_groq(self, _):
-        if self._own_audio_model():
-            self.state.set(
-                phase="error",
-                message="Groq provera je isključena: izabrano prepoznavanje već sluša zvuk.",
-            )
-            return
-        if not self.cfg.get("groq_api_key"):
-            self._set_groq_key(_)
-            if not self.cfg.get("groq_api_key"):
-                return
-        self.cfg["groq_enabled"] = not bool(self.cfg.get("groq_enabled", False))
-        config.save(self.cfg)
-        self._sync_menu_marks()
 
     def _set_transcription_provider(self, provider):
         self.cfg["transcription_provider"] = (
@@ -1881,29 +2065,9 @@ class DictateApp(rumps.App):
         config.save(self.cfg)
         self._sync_menu_marks()
 
-    def _own_audio_model(self) -> bool:
-        """Da li prepoznavanje vec radi jak audio model.
-
-        Provera snimka (Gemini `audio_check`, Groq Whisper) postoji zato sto
-        besplatni Web Speech endpoint gresi. Uz OpenAI GPT Transcribe ili
-        Gemini 3.5 Transcribe drugi prolaz salje ISTI zvuk jos jednom slabijem
-        modelu — dupli saobracaj za losiji rezultat. AI obrada teksta (prevod,
-        tacke, pasusi) ostaje netaknuta; gasi se samo drugo slusanje.
-        """
-        return (
-            self.cfg.get("transcription_provider", "google") == "openai"
-            or geministt.enabled(self.cfg)
-        )
-
-    def _batch(self) -> bool:
-        """Ceka li se kraj diktata zbog provere snimka."""
-        if self._own_audio_model():
-            return False
-        return listen.enabled(self.cfg) or groq.enabled(self.cfg)
-
     def _deferred(self) -> bool:
-        """Ceka li se kraj diktata uopste — zbog modela ili zbog provere."""
-        return self._formal() or self._batch()
+        """Ceka li se kraj diktata zbog modela."""
+        return self._formal()
 
     def _formal(self) -> bool:
         """Ceka li se ceo diktat zbog modela.

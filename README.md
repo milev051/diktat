@@ -80,17 +80,12 @@ snimanja**; tekst stoji uz tajmer, a u polje se ubacuje konačan rezultat po
 zaustavljanju.
 
 Mana: komadi sa mikrofona se čitaju samo jednom, pa neuspeo poziv nema šta da
-ponovi — takav diktat propada. Zvuk se nigde ne čuva ni na disku ni u kešu,
-ni na Mac-u ni na telefonu.
+ponovi. Na telefonu takav diktat propada. Mac zato usput čuva zvuk dok prepis
+ne uspe (vidi **Sačuvani snimci** ispod).
 
 > **Obična `gemini-3.5-transcribe` varijanta je isprobana pa uklonjena.** Na
 > besplatnom nivou ima 3 zahteva u minuti i **25 dnevno**, što za svakodnevni
 > rad ne znači ništa. Live varijanta nema ni jednu ni drugu granicu.
-
-Kada je izabran OpenAI ili Gemini, **provera snimka se gasi** (Gemini sluša
-snimak, Groq preciznost): prepoznavanje već radi jak audio model, pa bi drugi
-prolaz slao isti zvuk još jednom, slabijem. Na Mac-u se ta grupa tada i ne
-prikazuje. AI obrada teksta (tačke, pasusi) radi normalno.
 
 Prepis stiže na **latinici** — endpoint za `sr-RS` vraća ćirilicu, i to
 nedosledno, pa se pismo poravnava pre svega ostalog. Izmereno: snimak od 19s sa
@@ -102,8 +97,7 @@ U **Podešavanja → Snimanje i tekst → AI obrada teksta** biraš **Gemini** i
 **Groq GPT-OSS 120B**. Na Androidu je isti izbor u AI kartici. Ovo je odvojeno
 od transkripcije: izbor određuje samo podelu na pasuse, tačke, sređivanje i
 ponavljanja. Groq-ov model koristi `openai/gpt-oss-120b` preko Groq
-chat endpointa; postojeća opcija **Groq preciznost** i dalje znači dodatnu
-audio-proveru i nije isto što i ovaj izbor.
+chat endpointa. Zvuk se Groq-u ne šalje.
 
 ---
 
@@ -142,6 +136,54 @@ Ako nešto krene naopako, aplikacija javi prozorčićem, a ceo ispis stoji u
 `~/Library/Logs/Diktat.log`.
 
 Ikona se crta iz koda (`ikona.py`), pa u repozitorijumu ne stoji binarni fajl.
+
+**Ponovni klik na Diktat ga pokreće iznova.** Ako je snimanje zaglavljeno,
+dovoljno je da ponovo otvoriš Diktat iz Launchpad-a ili Spotlight-a: stara
+instanca se ugasi (posle 2s i silom), a nova krene. Za to je glavni program
+bundle-a mali Swift pokretač (`swiftc`, dolazi sa `xcode-select --install`),
+jer macOS pokrenutoj aplikaciji na novi klik ne pokreće ništa iznova, samo joj
+pošalje poruku, a bash skripta tu poruku ne ume da primi.
+
+### Ažuriranje
+
+Na drugom računaru se ništa ne povlači ručno. Aplikacija pri pokretanju i
+jednom dnevno tiho pita GitHub koje je poslednje izdanje (isto koje koristi i
+telefon). Kad je novije od instaliranog:
+
+- u traci menija pored cifara stoji **↑**,
+- u zaglavlju Podešavanja, između „Zaustavi snimanje" i „Zatvori Diktat",
+  dugme pozeleni i piše
+  „Ažuriraj v1.66 → v1.67". Inače piše „Proveri ažuriranje (v1.66)", sa
+  instaliranom verzijom u zagradi, i radi i ručno. Pun ishod provere je u
+  opisu koji iskoči kad se miš zadrži nad dugmetom.
+
+Klik preuzme kod tog izdanja, zameni instaliranu kopiju, doinstalira
+biblioteke ako se `requirements.txt` promenio i ponovo pokrene Diktat.
+`config.json` sa ključevima ostaje. Ako diktat traje, ažuriranje čeka da se
+završi. Automatska provera se gasi sa `"update_check": false` u `config.json`.
+
+Menja se samo kod u `~/Library/Application Support/Diktat/app`, a
+`/Applications/Diktat.app` ostaje isti. Svaki novi potpis bundle-a poništava
+dozvole za Accessibility i Mikrofon, pa bi se posle svakog ažuriranja morale
+davati iznova. Izmena samog pokretača (`make_app.sh`) zato i dalje traži ručno
+`./make_app.sh install`.
+
+Razvojna kopija (pokrenuta iz foldera projekta) se ne ažurira sama: tu važe
+`git pull` pa `./make_app.sh install`.
+
+**Objavljivanje nove verzije.** Mac i telefon čitaju isto izdanje, pa jedno
+izdanje pokriva oba. Izdanje mora da nosi APK (telefon uzima prvi `.apk`), a
+oznaka mora biti veća od prethodne i od `versionName` u
+`android/app/build.gradle.kts`:
+
+```bash
+git push                                  # kod mora biti na main pre izdanja
+cd android && ./build.sh
+gh release create v1.67 app/build/outputs/apk/release/app-release.apk \
+  -R milev051/diktat -t "Diktat 1.67" --target main
+```
+
+Mac iz izdanja uzima kod sa `main` u trenutku objave, telefon APK.
 
 ---
 
@@ -217,8 +259,18 @@ prolazi i kad je duži diktat pokvaren — tako je jedan bug (prepis staje na pr
 pauzi) dugo prolazio neprimećeno.
 
 `replay` ne traži mikrofon: nad istim WAV fajlom se ista greška ponavlja i
-posmatra bez slučajnosti. Putanja se navodi ručno — aplikacija zvuk nigde ne
-čuva.
+posmatra bez slučajnosti. Putanja se navodi ručno. Sačuvan snimak neuspelog
+diktata (`~/Library/Application Support/Diktat/snimci/*.wav`) radi i ovde.
+
+### Sačuvani snimci
+
+Dok diktat traje, Mac usput upisuje zvuk u WAV fajl. Kad prepis uspe, fajl se
+odmah briše. Kad ne uspe (pala mreža, zaglavljen servis, pad aplikacije), fajl
+ostaje i vidi se u Podešavanjima pod **Sačuvani snimci**, sa dugmadima
+**Prepiši** i **Obriši**. Prepis ide u clipboard i u istoriju, pa ga nalepiš
+sa ⌘V gde treba. Ako je snimak ostao od pre pokretanja, Podešavanja se otvore
+sama. Neiskorišćen snimak se briše posle 24 h. Isključuje se prekidačem
+„Čuvaj snimak dok se ne prepiše".
 
 Klik na ikonicu otvara **Podešavanja**, a drugi klik ih sklanja; tokom snimanja
 isti klik zaustavlja diktat. Istorija, mikrofon, izbor
@@ -269,7 +321,6 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `live_preview` | `true` | okvir sa prepisom uživo (Gemini Live) |
 | `overlay_position` | `top-right` | `top-right` ili `bottom` |
 | `text_model` | `gemini` | model za manipulaciju teksta: `gemini` ili `groq` |
-| `groq_enabled` | `false` | Groq Whisper + GPT-OSS drugo mišljenje |
 | `groq_api_key` | `""` | Groq ključ; ne čuvati ga u repozitorijumu |
 
 Posle izmene fajla treba restart (jezik i režim rade odmah iz menija).
@@ -328,12 +379,8 @@ Ako model zakaže, lepi se **nedoteran** tekst — model je dodatak, ne uslov.
 
 Kod prolazne greške transkripcije (mreža, timeout, 429 ili 5xx) Google i OpenAI
 automatski pokušavaju još **5 puta**. Nevažeći ključ i neispravan zahtev se ne
-ponavljaju, a posle poslednjeg pokušaja diktat propada — zvuk se ne čuva.
-
-Ako je *AI sluša snimak* uključeno, taj prolaz već vraća sređen tekst, pa se
-poseban poziv za *sredi tekst* **preskače** — isti posao se ne radi dvaput
-(izmereno: vraćao je identičan tekst za 0.7s). Ostali alati (pasusi, sažimanje,
-emotikoni) se i dalje traže drugim pozivom.
+ponavljaju. Posle poslednjeg pokušaja na telefonu diktat propada, a Mac
+zadrži zvuk pod **Sačuvani snimci** (vidi niže).
 
 Kad je *sredi tekst* uključeno, posle modela se i dalje primenjuju lokalni
 prekidači `lowercase`, `strip_punctuation`, `join_thousands` i
@@ -359,73 +406,20 @@ red veličine 500 poziva dnevno, a jedan diktat je jedan poziv.
 Prepoznavanje govora ne zavisi od ovog ključa — formalni režim može da otkaže u
 celini, a diktat i dalje radi.
 
-## AI sluša snimak (preciznije prepoznavanje)
+## Provera snimka drugim modelom (uklonjeno)
 
-Meni → **AI sluša snimak**. Snimak ide i jezičkom modelu, zajedno sa onim što je
-Web Speech čuo; model sluša zvuk i ispravlja greške. Traži isti API ključ i
-broji se u isti dnevni brojač.
+Mac je ranije mogao da pošalje isti snimak još jednom (Gemini sluša snimak,
+odnosno Groq Whisper uz spajanje preko GPT-OSS) i da ispravi prvi prepis.
+Uklonjeno je 22.09.2026: izlaz je često bio lošiji od prvog prepisa, a zvuk je
+išao dva puta. Kako je radilo, uputstva modelima i merenja su u
+[docs/provera-snimka.md](docs/provera-snimka.md).
 
-Izmereno na tri rečenice, čiste i sa šumom (SNR 5 dB) — greška po reči:
-
-| | čist | sa šumom |
-|---|---|---|
-| Web Speech sam | 0.21 | 0.30 |
-| model sam | **0.12** | 0.29 |
-| model + prepis kao oslonac | 0.17 | **0.17** |
-
-Model **sam** nije zamena: u šumu je vratio `poslao sam ponovo 250.000 dinara u
-1:33` umesto `...ponudu... u utorak u deset i trideset`. Kad ne čuje, dopuni
-umesto da ostavi rupu — zato mu se uvek šalje i prvi prepis kao sidro.
-
-Ceo diktat ide **jednim pozivom**, sa svim segmentima kao odvojenim delovima —
-provera po segmentu je trošila 6–9 poziva na jednu diktiranu poruku, a model je
-uz to video krhotinu umesto celine. Zato tekst, kad je ovo uključeno, stiže
-**tek na kraju diktata** (kao i u AI obradi), a ne deo po deo.
-
-Cena: snimak ide drugi put, kao **AAC 32 kbps** (uz `ffmpeg`; bez njega FLAC pa
-WAV) — oko 4 KB po sekundi govora umesto 19, uz identičan prepis. Odgovor čeka
-nekoliko sekundi. Podstavka **…samo kad je pouzdanost niska** to smanjuje, ali je
-podrazumevano isključena: endpoint prijavljuje 0.93 i za prepis sa odsečenom
-rečju, pa filter štedi podatke a propušta greške.
-
-Merenje na pet rečenica (sintetizovan govor, bez šuma) — greška po reči:
-
-| | web sam | web + AI sluša |
-|---|---|---|
-| prosek | 0.197 | **0.080** |
-| bez ijedne greške | 1/5 | **4/5** |
-
-Šta je popravio: `precizno i model` → `precizno **AI** model`, `za gemini model
-na and` → `za **Gemini** model na **Androidu**`. Preostalo odstupanje je samo
-zapis brojeva (`250.000 RSD` umesto „dvesta pedeset hiljada dinara"), što nije
-greška u prepoznavanju.
-
-Skraćenice i strani nazivi su najslabija tačka endpointa — zato postoji
-`vocabulary`, spisak pojmova koji ide modelu uz snimak.
+Ostala su dva ključa koja su služila i tome:
 
 | ključ | podrazumevano | |
 |---|---|---|
-| `audio_check` | `false` | uključuje se iz menija |
-| `vocabulary` | `AI, API, Gemini, …` | pojmovi koje endpoint stalno greši |
-| `audio_check_max_seconds` | `120` | koliko zvuka najviše čuvamo za grupnu proveru |
-| `compress_audio` | `true` | FLAC preko `ffmpeg`-a; bez njega ide PCM/WAV |
-| `audio_check_threshold` | `0.85` | prag pouzdanosti |
-
-### Groq: Whisper + GPT-OSS
-
-Na macOS-u se podešava u **Podešavanja → Snimanje i tekst → Provera prepisa**, a na
-Androidu u kartici **AI**. Opcija **Gemini sluša snimak** je zasebna; može biti
-isključena dok Groq ostaje uključen. Groq Whisper tada i dalje dobija kompletan
-audio jednog diktata, zatim
-`openai/gpt-oss-120b` dobija Google i Whisper prepis i vraća samo konačan tekst.
-Ako Groq poziv ne uspe, aplikacija zadržava Google prepis. Ugrađeni modeli
-su `whisper-large-v3` i `openai/gpt-oss-120b`; Groq dokumentacija navodi da je
-Whisper dostupan na transkripcijskom endpointu, a GPT-OSS na chat endpointu.
-
-Ključ se unosi lokalno u podešavanja (`config.json` na macOS-u ili Android
-SharedPreferences) i nikad ne treba slati kroz GitHub. Pošto je API ključ iz
-prethodne poruke već izložen, opozovi ga u Groq konzoli i napravi novi pre
-testiranja.
+| `vocabulary` | `AI, API, Gemini, …` | pojmovi koje Gemini Live dobija kao pomoć pri prepoznavanju |
+| `compress_audio` | `true` | FLAC preko `ffmpeg`-a za OpenAI; bez njega ide WAV |
 
 ## Testovi
 
@@ -462,18 +456,6 @@ Izveštaj sam presuđuje gde se gubi:
   `.wav` i čuj šta je unutra.
 - **Nema ga ni u `full.wav`** → gubi se u snimanju, ne u prepoznavanju.
 
-Kada je Groq uključen, isti `.txt` sadrži i:
-
-```text
-[AI PROLAZ] Groq Whisper + GPT-OSS
-     Google prepis: '...'
-     Whisper prepis: '...'
-     Prompt:
-     ...
-     Rezultat modela: '...'
-
-[FINALNI OUTPUT] '...'
-```
 
 Ne upisuju se API ključevi ni sirovi HTTP zahtevi. Ako je uključen i postojeći
 Gemini tekstualni prolaz, i njegov prompt i rezultat se zapisuju kao poseban
@@ -517,7 +499,8 @@ dictate/
   webstt.py    Google Web Speech endpoint
   insert.py    lepljenje/kucanje u aktivnu aplikaciju
   overlay.py   pilula sa vremenom (podrazumevano isključena)
-  settings_window.py  prozor Podešavanja (kartice, raspored po redovima)
+  settings_window.py  prozor Podešavanja (tri kolone na jednom ekranu)
+  azuriranje.py  provera i instalacija novog izdanja sa GitHub-a
   debugdump.py snimanje zvuka i teksta radi poređenja (samo uz `debug: true`)
   config.py    config.json
 doctor.py      dijagnostika

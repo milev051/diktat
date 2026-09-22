@@ -75,6 +75,8 @@ DEFAULTS = {
     "insert_method": "auto",      # "auto" | "type" | "paste" | "clipboard_only"
     "restore_clipboard": True,
     "history_size": 5,            # koliko poslednjih tekstova cuvati za kopiranje
+    "rezervni_snimak": True,      # zvuk diktata na disku dok prepis ne uspe (dictate/rezerva.py)
+    "update_check": True,         # pitaj GitHub za novu verziju pri otvaranju i jednom dnevno
     "show_overlay": False,        # pilula sa vremenom preko ekrana
     "overlay_position": "top-right",
 
@@ -88,11 +90,8 @@ DEFAULTS = {
     "polish_bullets": False,
     # Izbaci slucajno udvojene reci i fraze (govorna ispravka).
     "polish_dedupe": False,    # podeli na pasuse, prazan red izmedju
-    "audio_check": False,         # model slusa snimak i ispravlja prepis
     "compress_audio": True,       # FLAC preko ffmpeg-a ako ga ima; inace PCM/WAV
-    "audio_check_max_seconds": 120,  # koliko zvuka najvise cuvamo za grupnu proveru
-    # --- Groq (Whisper + GPT-OSS drugo misljenje) ---
-    "groq_enabled": False,
+    # --- Groq GPT-OSS kao model za obradu teksta ---
     "groq_api_key": "",
     "groq_reasoning_effort": "medium",
     "groq_max_completion_tokens": 2048,
@@ -210,6 +209,9 @@ def _migrate(cfg: dict, saved=None) -> dict:
                   # zatecen kljuc bi ostao u config.json i lagao da opcija
                   # postoji.
                   "output_language", "pending_dir",
+                  # Provera snimka drugim modelom, uklonjena 22.09.2026
+                  # (docs/provera-snimka.md).
+                  "audio_check", "audio_check_max_seconds", "groq_enabled",
                   "spoken_numbers_to_digits"):
         cfg.pop(mrtvo, None)
     return cfg

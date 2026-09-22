@@ -69,6 +69,11 @@ LIVE_TAIL_SILENCE = 2.0
 # pa čistog signala za kraj nema; tišina je jedino što ga označava.
 LIVE_IDLE_SECONDS = 3.0
 LIVE_QUIET_SECONDS = 1.0
+# Dok ne stigne NIJEDNA poruka sa prepisom, sekunda tisine jos ne znaci kraj:
+# LIVE_QUIET_SECONDS je mereno za tisinu POSLE poslednje celine. Na snimak bez
+# govora server ne vrati nista ni za 10 s (izmereno 22.09.2026. na tri takva),
+# pa se tada ceka ovoliko i odustaje; da li je bilo govora presudjuje app.py.
+LIVE_FIRST_SECONDS = 4.0
 
 
 class GeminiSttError(Exception):
@@ -270,10 +275,15 @@ def recognize_stream(komadi, cfg, timeout=180, on_update=None,
             ws.set_timeout(LIVE_QUIET_SECONDS)
             posle_zadnjeg = ""
             produzeno = False
+            ceka_prvi = False
             while True:
                 try:
                     poruka = ws.recv_json()
                 except WebSocketError:
+                    if not delovi and not posle_zadnjeg and not ceka_prvi:
+                        ceka_prvi = True
+                        ws.set_timeout(LIVE_FIRST_SECONDS)
+                        continue
                     if posle_zadnjeg and not produzeno:
                         # Celina je u toku: video se međurezultat bez svog
                         # finala. Prekid ovde bi je odsekao, pa joj se jednom
@@ -348,7 +358,12 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
                 except WebSocketTimeout:
                     if not poslato.is_set():
                         continue
-                    rok = LIVE_IDLE_SECONDS if stanje["interim"] else LIVE_QUIET_SECONDS
+                    if not delovi and not stanje["interim"]:
+                        rok = LIVE_FIRST_SECONDS
+                    elif stanje["interim"]:
+                        rok = LIVE_IDLE_SECONDS
+                    else:
+                        rok = LIVE_QUIET_SECONDS
                     if time.monotonic() - zadnja_poruka >= rok:
                         if delovi or stanje["interim"]:
                             break
@@ -398,7 +413,7 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
         posalji(ostatak + b"\x00" * (int(rate * LIVE_TAIL_SILENCE) * 2))
         ws.send_json({"realtimeInput": {"audioStreamEnd": True}})
         poslato.set()
-        if not procitano.wait(LIVE_IDLE_SECONDS + LIVE_QUIET_SECONDS + 2):
+        if not procitano.wait(LIVE_FIRST_SECONDS + LIVE_IDLE_SECONDS + 2):
             raise GeminiSttError("Gemini Transcribe Live nije završio odgovor.", True)
         if stanje["error"] is not None:
             raise stanje["error"]

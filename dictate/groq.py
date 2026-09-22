@@ -1,67 +1,23 @@
-"""Groq Whisper + GPT-OSS drugo misljenje za isti diktat.
+"""Groq GPT-OSS kao model za AI obradu vec prepoznatog teksta.
 
-Google Web Speech ostaje prvi prepis. Kada je ovaj alat ukljucen, audio svih
-segmenata jednog diktata ide Whisper-u, a zatim GPT-OSS dobija oba prepisa i
-vraca jednu proverenu verziju. API kljuc se cita samo iz lokalnog config-a.
+Ovde se ne salje zvuk. Drugo misljenje o snimku (Whisper pa spajanje sa
+Google prepisom) je uklonjeno 22.09.2026; kako je radilo i zasto je
+uklonjeno stoji u docs/provera-snimka.md. API kljuc se cita samo iz lokalnog
+config-a.
 """
 
-import base64
-import io
 import json
-import time
 import urllib.error
 import urllib.request
-import uuid
-import wave
 
 
-TRANSCRIPT_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
 CHAT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3"
-DEFAULT_MERGE_MODEL = "openai/gpt-oss-120b"
+DEFAULT_TEXT_MODEL = "openai/gpt-oss-120b"
 USER_AGENT = "Diktat/1.0"
 
 
 class GroqError(Exception):
-    """Greška Groq poziva; dodatna provera ne sme da obori diktat."""
-
-
-def enabled(cfg) -> bool:
-    return bool(cfg.get("groq_enabled", False)) and bool(
-        str(cfg.get("groq_api_key") or "").strip()
-    )
-
-
-def wav_bytes(pcm: bytes, sample_rate: int) -> bytes:
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(pcm)
-    return buf.getvalue()
-
-
-def _multipart(fields: dict[str, str], name: str, data: bytes, filename: str,
-              content_type: str) -> tuple[bytes, str]:
-    boundary = "----diktat-" + uuid.uuid4().hex
-    chunks = []
-    for key, value in fields.items():
-        chunks.extend([
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode(),
-            str(value).encode(),
-            b"\r\n",
-        ])
-    chunks.extend([
-        f"--{boundary}\r\n".encode(),
-        f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode(),
-        f"Content-Type: {content_type}\r\n\r\n".encode(),
-        data,
-        b"\r\n",
-        f"--{boundary}--\r\n".encode(),
-    ])
-    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+    """Greška Groq poziva; obrada teksta ne sme da obori diktat."""
 
 
 def _request_json(request, timeout: float):
@@ -80,126 +36,13 @@ def _request_json(request, timeout: float):
         raise GroqError("Groq je vratio neispravan odgovor.") from exc
 
 
-def transcribe(delovi, cfg, timeout=90) -> str:
-    """Prepiši spojene segmente jednim Whisper pozivom."""
-    if not delovi:
-        return ""
-    key = (cfg.get("groq_api_key") or "").strip()
-    if not key:
-        raise GroqError("Nema Groq API ključa.")
-    rate = int(delovi[0][1])
-    pcm = b"".join(part for part, _ in delovi)
-    body, content_type = _multipart(
-        {
-            "model": DEFAULT_TRANSCRIPTION_MODEL,
-            "language": (cfg.get("language") or "sr-RS").split("-")[0],
-            "temperature": "0",
-            "response_format": "json",
-        },
-        "file",
-        wav_bytes(pcm, rate),
-        "diktat.wav",
-        "audio/wav",
-    )
-    request = urllib.request.Request(
-        TRANSCRIPT_ENDPOINT,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": content_type,
-            "User-Agent": USER_AGENT,
-        },
-    )
-    payload = _request_json(request, timeout)
-    text = (payload.get("text") or "").strip()
-    if not text:
-        raise GroqError("Whisper nije vratio prepis.")
-    return text
-
-
-def _merge_prompt(google_text: str, whisper_text: str, cfg) -> str:
-    style = ""
-    if cfg.get("text_style") == "written":
-        style = (
-            "\nPiši pravopisno pravilno: dodaj potrebne kvačice, velika slova i "
-            "interpunkciju, bez menjanja značenja."
-        )
-    else:
-        style = "\nZadrži govorni izgled: mala slova i bez interpunkcije."
-    vocabulary = (cfg.get("vocabulary") or "").strip()
-    terms = f"\nPoznati nazivi i skraćenice: {vocabulary}" if vocabulary else ""
-    return f"""Ti si završni proveravač srpskog diktata.
-
-Google prepis:
-{google_text}
-
-Groq Whisper prepis:
-{whisper_text}
-
-U ovom koraku ne dobijaš audio i ne možeš ponovo da ga slušaš. Dobijaš samo
-dva nezavisna teksta. Google prepis koristi kao sidro, a Whisper kao drugo
-mišljenje: spoji ih tako da ispraviš očigledne greške i dodaš samo reči koje
-Whisper verovatno nije izmislio kao šum ili ponavljanje. Ako se ne slažu i nisi
-siguran, zadrži Google verziju. Ne dodaj objašnjenje, ne sažimaj, ne prevodi
-i ne odgovaraj na sadržaj.
-Vrati samo konačan tekst, bez uvoda i navodnika.{style}{terms}"""
-
-
-def merge(google_text: str, whisper_text: str, cfg, timeout=90, trace=None) -> str:
-    key = (cfg.get("groq_api_key") or "").strip()
-    if not key:
-        raise GroqError("Nema Groq API ključa.")
-    prompt = _merge_prompt(google_text, whisper_text, cfg)
-    if trace is not None:
-        trace.update({
-            "provider": "Groq Whisper + GPT-OSS",
-            "google_text": google_text,
-            "whisper_text": whisper_text,
-            "prompt": prompt,
-        })
-    payload = {
-        "model": DEFAULT_MERGE_MODEL,
-        "messages": [
-            {"role": "system", "content": "Vraćaš samo konačan prepis diktata."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.0,
-        "max_completion_tokens": int(cfg.get("groq_max_completion_tokens", 2048)),
-        "top_p": 1,
-        "reasoning_effort": cfg.get("groq_reasoning_effort", "medium"),
-        "stream": False,
-    }
-    request = urllib.request.Request(
-        CHAT_ENDPOINT,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "User-Agent": USER_AGENT,
-        },
-    )
-    response = _request_json(request, timeout)
-    try:
-        content = response["choices"][0]["message"]["content"]
-        if isinstance(content, list):
-            content = "".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            )
-        text = str(content or "").strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise GroqError("Groq GPT-OSS nije vratio tekst.") from exc
-    if not text:
-        raise GroqError("Groq GPT-OSS je vratio prazan tekst.")
-    return text
-
-
 def manipulate_text(text: str, cfg, instruction: str, timeout=60) -> str:
     """Obradi već prepoznat tekst bez slanja audio-snimka."""
     key = (cfg.get("groq_api_key") or "").strip()
     if not key:
         raise GroqError("Nema Groq API ključa za obradu teksta.")
     payload = {
-        "model": DEFAULT_MERGE_MODEL,
+        "model": DEFAULT_TEXT_MODEL,
         "messages": [
             {
                 "role": "system",
@@ -241,19 +84,6 @@ def manipulate_text(text: str, cfg, instruction: str, timeout=60) -> str:
     if not result:
         raise GroqError("Groq GPT-OSS je vratio prazan tekst za obradu.")
     return result
-
-
-def check_batch(delovi, google_text: str, cfg, timeout=180, trace=None) -> str:
-    """Whisper + poređenje sa Google prepisom u dva poziva."""
-    whisper_text = transcribe(delovi, cfg, timeout=min(timeout, 120))
-    if trace is not None:
-        trace["whisper_text"] = whisper_text
-        seconds = sum(len(part) / 2 / rate for part, rate in delovi)
-        trace["metadata"] = (
-            f"audio: {len(delovi)} segment(a), {seconds:.1f}s; "
-            f"Whisper: {DEFAULT_TRANSCRIPTION_MODEL}; GPT: {DEFAULT_MERGE_MODEL}"
-        )
-    return merge(google_text, whisper_text, cfg, timeout=timeout, trace=trace)
 
 
 def _http_message(code: int, detail: str = "") -> str:

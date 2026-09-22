@@ -1,4 +1,4 @@
-"""Tok diktata: redosled zvuka, praznjenje bafera, kada se ceka kraj.
+"""Tok diktata: sesije, kada se ceka kraj, pravila nad tekstom.
 
 Aplikacija se pravi preko `__new__` da se ne pokrece rumps petlja — ovde se
 proverava sama logika, bez ekrana i bez mikrofona.
@@ -16,8 +16,7 @@ from dictate import insert
 def napravi(**kw):
     app = app_mod.DictateApp.__new__(app_mod.DictateApp)
     app.cfg = {
-        "sample_rate": 16000, "audio_check": True, "polish_api_key": "x",
-        "audio_check_max_seconds": 120, "polish_paragraphs": False,
+        "sample_rate": 16000, "polish_api_key": "x", "polish_paragraphs": False,
         "text_style": "spoken", "join_thousands": True,
         "lowercase": True, "strip_punctuation": True,
     }
@@ -26,9 +25,6 @@ def napravi(**kw):
         app.cfg["lowercase"] = app.cfg["text_style"] != "written"
     if "strip_punctuation" not in kw:
         app.cfg["strip_punctuation"] = app.cfg["text_style"] != "written"
-    app._audio_lock = threading.Lock()
-    app._audio_parts = {}
-    app._audio_seconds = {}
     app._formal_lock = threading.Lock()
     app._formal_parts = {}
     app._count_lock = threading.Lock()
@@ -37,62 +33,8 @@ def napravi(**kw):
     return app
 
 
-SEKUNDA = b"\x00" * 32000       # 16000 semplova po 2 bajta
-
-
-class RedosledZvuka(unittest.TestCase):
-    def test_delovi_izlaze_hronoloski(self):
-        # Segmenti se prepoznaju paralelno, pa stizu van reda; tiket ih vraca.
-        app = napravi()
-        app._keep_audio(1, 3, b"\x33" + SEKUNDA)
-        app._keep_audio(1, 1, b"\x11" + SEKUNDA)
-        app._keep_audio(1, 2, b"\x22" + SEKUNDA)
-        prvi_bajtovi = [pcm[:1] for pcm, _ in app._take_audio(1)]
-        self.assertEqual(prvi_bajtovi, [b"\x11", b"\x22", b"\x33"])
-
-    def test_granica_zaustavlja_gomilanje(self):
-        # Neprekidan rezim ume da traje satima — bez granice bi bafer rastao.
-        app = napravi(audio_check_max_seconds=2)
-        for tiket in range(1, 6):
-            app._keep_audio(1, tiket, SEKUNDA)
-        self.assertEqual(len(app._take_audio(1)), 2)
-
-    def test_uzimanje_prazni_bafer(self):
-        # Inace bi model u sledecoj proveri "cuo" prosli diktat.
-        app = napravi()
-        app._keep_audio(1, 1, SEKUNDA)
-        app._take_audio(1)
-        self.assertEqual(app._take_audio(1), [])
-        self.assertEqual(app._audio_seconds, {})
-
-    def test_iskljucena_provera_ne_cuva_zvuk(self):
-        app = napravi(audio_check=False)
-        app._keep_audio(1, 1, SEKUNDA)
-        self.assertEqual(app._take_audio(1), [])
-
-    def test_prazan_segment_se_ne_pamti(self):
-        app = napravi()
-        app._keep_audio(1, 1, b"")
-        self.assertEqual(app._take_audio(1), [])
-
-
 class DvaDiktataOdjednom(unittest.TestCase):
     """Nov diktat sme da pocne dok se prethodni obradjuje."""
-
-    def test_zvuk_se_ne_mesa_izmedju_sesija(self):
-        app = napravi()
-        app._keep_audio(1, 1, b"\x11" + SEKUNDA)
-        app._keep_audio(2, 2, b"\x22" + SEKUNDA)
-        self.assertEqual([p[:1] for p, _ in app._take_audio(1)], [b"\x11"])
-        self.assertEqual([p[:1] for p, _ in app._take_audio(2)], [b"\x22"])
-
-    def test_granica_vazi_po_sesiji(self):
-        app = napravi(audio_check_max_seconds=2)
-        for tiket in range(1, 6):
-            app._keep_audio(1, tiket, SEKUNDA)
-            app._keep_audio(2, tiket, SEKUNDA)
-        self.assertEqual(len(app._take_audio(1)), 2)
-        self.assertEqual(len(app._take_audio(2)), 2)
 
     def test_zavrsene_preskacu_sesiju_koja_jos_snima(self):
         app = napravi()
@@ -118,7 +60,7 @@ class DvaDiktataOdjednom(unittest.TestCase):
 
 class DirektanGeminiUnos(unittest.TestCase):
     def test_potvrdjeni_delovi_idu_odmah_i_ne_dupliraju_se_na_kraju(self):
-        app = napravi(audio_check=False, polish_paragraphs=False)
+        app = napravi(polish_paragraphs=False)
         app._insert_q = queue.Queue()
         app._pending = 2
         app._pending_by = {1: 1, 2: 1}
@@ -148,41 +90,21 @@ class DirektanGeminiUnos(unittest.TestCase):
 
 
 class KadaSeCekaKraj(unittest.TestCase):
-    def test_provera_snimka_odlaze_ubacivanje(self):
-        app = napravi()
-        self.assertTrue(app._batch())
-        self.assertTrue(app._deferred())
-
-    def test_groq_provera_odlaze_ubacivanje(self):
-        app = napravi(audio_check=False, groq_enabled=True, groq_api_key="x")
-        self.assertTrue(app._batch())
-        self.assertTrue(app._deferred())
-
-    def test_groq_bez_kljuceva_ne_odlaze(self):
-        app = napravi(audio_check=False, groq_enabled=True, groq_api_key="")
-        self.assertFalse(app._batch())
-
-    def test_openai_je_jedini_izvor_transkripcije(self):
-        app = napravi(
-            transcription_provider="openai",
-            audio_check=True,
-            groq_enabled=True,
-            groq_api_key="x",
-        )
-        self.assertFalse(app._batch())
+    def test_openai_bez_alata_ne_ceka(self):
+        app = napravi(transcription_provider="openai")
         self.assertFalse(app._deferred())
 
     def test_bez_provere_i_bez_alata_tekst_ide_odmah(self):
-        app = napravi(audio_check=False)
+        app = napravi()
         self.assertFalse(app._deferred())
 
     def test_izabran_alat_sam_po_sebi_pali_ai(self):
         # Glavnog prekidaca nema: izabran alat znaci da se AI koristi.
-        app = napravi(audio_check=False, polish_paragraphs=True)
+        app = napravi(polish_paragraphs=True)
         self.assertTrue(app._deferred())
 
     def test_bez_kljuca_nema_ai_ja_ma_sta_bilo_izabrano(self):
-        app = napravi(audio_check=False, polish_paragraphs=True, polish_api_key="")
+        app = napravi(polish_paragraphs=True, polish_api_key="")
         self.assertFalse(app._deferred())
 
 
@@ -458,7 +380,6 @@ class JedanZahtevPoDiktatu(unittest.TestCase):
         app._tracked = lambda rec: iter(())
         app._settle_phase = lambda *a, **k: None
         app._recognize_or_keep = lambda pcm: ""
-        app._keep_audio = lambda *a: None
         app._transcribe(Snimak())
         return izabrano
 

@@ -31,4 +31,22 @@ if [ "${1:-}" = "replay" ]; then
   exec .venv/bin/python selftest.py "$@"
 fi
 
+# Ako se pokrece razvojna kopija iz projekta, zaustavi prethodni run.py iz
+# istog foldera pre nego sto se pokrene nova instanca.
+for pid in $(pgrep -f "run\.py" 2>/dev/null); do
+  case "$(ps -o comm= -p "$pid" 2>/dev/null)" in
+    *[Pp]ython*) ;;
+    *) continue ;;
+  esac
+  putanja="$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p')"
+  if [ "$putanja" = "$(pwd)" ]; then
+    kill -TERM "$pid" 2>/dev/null || true
+    for cekanje in {1..20}; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+done
+
 exec .venv/bin/python run.py

@@ -12,11 +12,6 @@ if [ ! -x .venv/bin/python ]; then
   ./setup.sh
 fi
 
-if pgrep -f "$(pwd)/run.py" >/dev/null 2>&1; then
-  echo "Diktat vec radi."
-  exit 0
-fi
-
 if [ -d Diktat.app ]; then
   open Diktat.app
   echo "Diktat je pokrenut. Ikonica je u traci menija."

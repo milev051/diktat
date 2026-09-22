@@ -87,13 +87,38 @@ satima i poslao ogromnu količinu podataka. Posle prekida se **traži nov
 pritisak** — a prekidač se mora vratiti u mirovanje (`listener.reset()`), inače
 sledeći pritisak radi STOP umesto START i korisnik pritiska dvaput.
 
-**Snimljen glas se nigde ne upisuje.** Ni na Mac-u ni na telefonu: ni pri
-otkazu poziva, ni kao privremena kopija Live strima, ni u kešu. Zvuk postoji
-samo u radnoj memoriji dok traje prepoznavanje. Ranije je neuspeo diktat
-završavao u `~/Diktat-neuspeli` (Android: `PendingStore`) i slao se ponovo iz
-menija; to je uklonjeno na izričit zahtev — snimak glasa koji leži na disku je
-veća cena od izgubljenog diktata. Ostaje samo automatsko ponavljanje prolaznih
-grešaka (mreža, 429, 5xx); 400 i 403 nikad, drugi pokušaj bi dao isto.
+**Mac čuva zvuk diktata samo dok prepis ne uspe** (`dictate/rezerva.py`, od
+22.09.2026). Odluka je obrnuta na izričit zahtev, pa je ne vraćaj bez novog:
+zaglavljen Live strim je progutao diktat od 90 s, a izgovarati sve iznova je
+veća cena od fajla koji kratko stoji na disku. Pravila:
+
+| pravilo | zašto |
+|---|---|
+| fajl je u `~/Library/Application Support/Diktat/snimci`, nikad na Desktopu | Launchpad aplikacija tamo ne sme da piše, a folder ne ide u git |
+| upisuje ga nit pumpe mikrofona (`_tracked`), komad po komad, `writeframes` | zaglavlje se prepravlja posle svakog komada, pa je fajl čitljiv i posle pada procesa; `procitaj` ipak ne veruje dužini iz zaglavlja |
+| briše se čim prepis stigne bez greške | glas ne stoji na disku bez razloga |
+| kraći od 1 s se ne čuva | slučajan pritisak tastera |
+| tih snimak (vrh ispod `GOVOR_PEAK`, 0.10) se briše i **ne prijavljuje kao greška** | Gemini Live na tišinu ne vrati ništa ni za 10 s, pa je slučajan pritisak izlazio kao „Isteklo vreme čekanja odgovora" i kao sačuvan snimak. Izmereno 22.09.2026: tri takva, vrh 0.002-0.022, dok isti kod na govoru vrati prepis za 3.2 s |
+| ostatak stariji od 24 h briše se sam | pri svakom čitanju spiska |
+| „Prepiši" ide u clipboard i istoriju, ne u polje | dok je prozor Podešavanja otvoren, fokus je u njemu, pa bi kucanje otišlo na pogrešno mesto |
+| prekidač „Čuvaj snimak dok se ne prepiše" (`rezervni_snimak`) | ko neće glas na disku, isključi ga |
+
+Telefon i dalje ne čuva ništa. Ranije je neuspeo diktat završavao u
+`~/Diktat-neuspeli` (Android: `PendingStore`) i to je uklonjeno 13.09.2026.
+Automatsko ponavljanje prolaznih grešaka (mreža, 429, 5xx) ostaje; 400 i 403
+nikad, drugi pokušaj bi dao isto.
+
+**Mikrofon ne sme da zavisi od mreže.** Do 22.09.2026. mikrofon je čitao onaj
+ko šalje na mrežu. Kad Gemini Live prestane da prima („Isteklo vreme čekanja
+odgovora" u logu), slanje stane, mikrofon niko ne čita, snimanje se ne
+završava i `_recorder` ostaje zauzet: taster deluje mrtav do isteka mrežnog
+roka od 180 s. Sada zvuk čita zasebna nit (`_tracked`), koja pusti mikrofon
+čim snimanje stane, a Live ima rok od 20 s (`LIVE_MREZNI_ROK`). Uz to
+`_cuvar_zaustavljanja` 3 s posle repa silom oslobodi mikrofon ako snimač još
+nije pušten (npr. PortAudio zapne pri zatvaranju strima) i upiše „snimanje
+nije stalo … oslobadjam mikrofon silom" u log. Ta linija u logu znači da
+postoji još jedan uzrok, i odatle se traži.
+`tests/test_mikrofon_odvojen.py` pada na starom kodu i prolazi na novom.
 
 **Prazan prepis se i dalje prijavljuje.** Web Speech ume da vrati prazan
 rezultat za uredan govor: izmereno na tri snimka (15.7s, 3.5s i 1.8s, vrh
@@ -258,11 +283,6 @@ udara u kvotu („exceeded your current quota").
 poruke paralelno sa slanjem zvuka i pokazuje ih u neaktivirajućem overlay-u.
 U polje se ubacuje samo konačan prepis po Stop-u.
 
-Uz njega se **gasi druga provera snimka** (`_own_audio_model`): `audio_check` i
-Groq postoje zato što besplatni Web Speech greši, a slati isti zvuk još jednom
-slabijem modelu je dupli saobraćaj za lošiji rezultat. AI obrada teksta (tačke,
-pasusi) ostaje netaknuta.
-
 **Zvuk se strimuje DOK snimanje traje, ne posle Stop-a.** Izmereno na 64.7s
 zvuka: slanje posle Stop-a ostavlja **15.6s** čekanja, slanje u toku **0.0s** —
 server stiže u realnom vremenu, pa je prepis gotov u trenutku kad pustiš taster.
@@ -413,6 +433,25 @@ tiho odustane od pokretanja, što izgleda kao da `open` ne radi. Traži se i da
 je proces baš Python (`ps -o comm=`), pa tek onda radna putanja. Ovo je
 pojelo pola sata traženja greške na pogrešnom mestu (Gatekeeper, Launch
 Services), jer je sama test komanda obarala proveru.
+
+**macOS: ponovni klik na aplikaciju ne pokreće ništa iznova.** Launch Services
+pokrenutoj aplikaciji samo pošalje „reopen" poruku. Dok je glavni program
+bundle-a bio bash skripta, poruka je padala u prazno, pa se zaglavljena
+instanca klikom nije mogla ugasiti (mereno 22.09.2026: posle `open -a Diktat`
+ni jedne nove linije u logu). Zato je `Contents/MacOS/Diktat` Swift pokretač
+koji na reopen iznova pokrene `Contents/Resources/diktat.sh`, a skripta ugasi
+staru instancu. Python ostaje dete pokretača, pa TCC dozvole idu na Diktat.
+`exec` Python-a iz skripte NIJE rešenje: reopen tada stiže, ali proces postane
+`org.python.python` i dozvole bi se vezale za Python.
+
+**macOS ažuriranje menja samo kod, nikad bundle.** Svaki novi ad-hoc potpis
+poništi Accessibility i Mikrofon (izmereno: posle `make_app.sh install` u logu
+„This process is not trusted"). Zato `dictate/azuriranje.py` iz GitHub izdanja
+menja samo `~/Library/Application Support/Diktat/app` i pokrene se iznova
+kroz `os.execv`, u istom procesu. Verzija je u fajlu `VERZIJA`, koji piše
+`make_app.sh install` (`git describe --tags`, uz `git fetch --tags` jer se
+izdanja prave na GitHub-u) i samo ažuriranje. Mac i Android čitaju isto
+izdanje.
 
 **Boja u menu baru ide preko `nsstatusitem.button().setAttributedTitle_`**, jer
 `rumps.title` ne ume boju. Font mora biti `monospacedDigit` — inače se širina
@@ -592,47 +631,25 @@ nalog, isti je u svakoj Chromium instalaciji i bez njega besplatni Web Speech
 endpoint ne radi. Zato u oba fajla stoji komentar da se ne obriše u nekoj
 budućoj čistki ključeva.
 
-**Provera snimka ide JEDNIM pozivom za ceo diktat.** Po segmentu je trošila 6–9
-poziva na jednu diktiranu poruku (neprekidni režim sa `segment_after_seconds: 0`
-seče na svakoj pauzi), a model je video krhotinu umesto celine. Zvuk se drži u
-memoriji do kraja diktata, pa postoji granica `audio_check_max_seconds` (120s):
-preko nje se više ne čuva — neprekidni režim ume da traje satima. Segmenti se
-pamte **po tiketu**, jer se prepoznaju paralelno pa bi redosled inače bio
-proizvoljan. Otkazan diktat mora da isprazni taj bafer, inače bi model u
-sledećoj proveri „čuo" prethodni diktat.
-
-**Groq je zasebna alternativa za proveru snimka.** `groq_enabled` +
-`groq_api_key` uključuju dva poziva za ceo diktat: WAV ide na Whisper, a
-`openai/gpt-oss-120b` dobija Google i Whisper prepis i vraća konačan tekst.
-Kada je Groq uključen, ima prednost nad Gemini `audio_check` prolazom da se
-audio ne šalje dvaput. Mac i Android moraju imati istu logiku i podrazumevane
-modele (`whisper-large-v3`, `openai/gpt-oss-120b`). Ako bilo koji Groq poziv
-padne, zadržava se Google prepis; brojač AI poziva tada ne sme da spreči diktat.
-API ključ se nikad ne upisuje u git.
-
-**Sređivanje se ne radi dvaput.** Prolaz u kome model sluša snimak vraća tekst
-sa interpunkcijom, velikim slovima i kvačicama — pa je poseban poziv za „sredi
-tekst" bio drugi poziv za isti posao. Izmereno: vraćao je **identičan** tekst za
-0.7s. Zato `tools(cfg, vec_sredjeno=True)` izbacuje `tidy`; ako ništa drugo nije
-izabrano, drugog poziva uopšte nema. Uz to prvi prolaz sada **izričito** dobija
-zadatak da piše pravilno (`SREDI_DEO`), da oblikovanje ne bi zavisilo od sreće.
-
-**Model koji sluša snimak mora da dobije i prvi prepis.** Izmereno (greška po
-reči, tri rečenice, SNR 5 dB): Web Speech 0.30, Gemini sam 0.29, Gemini uz
-prepis **0.17**. Sam model u šumu **halucinira** — vratio je „poslao sam ponovo
-250.000 dinara u 1:33" umesto „...ponudu... u utorak u deset i trideset". Kad ne
-čuje, dopuni umesto da ostavi rupu; prvi prepis mu je sidro.
+**Provera snimka drugim modelom je uklonjena** (22.09.2026, na izričit
+zahtev). Gemini koji sluša snimak i Groq Whisper uz spajanje preko GPT-OSS
+davali su lošije izlaze od prvog prepisa, a slali su isti zvuk dva puta. Tok,
+uputstva modelima, merenja i commit u kome je kod poslednji put postojao su u
+`docs/provera-snimka.md`. Ne vraćaj je bez izričitog zahteva. Groq ostaje kao
+model za AI obradu teksta (`groq.manipulate_text`), bez zvuka.
 
 **Skraćenice i strani nazivi su najslabija tačka endpointa.** Izmereno: „AI"
 postane „pa" ili „i", „Gemini" postane „gemini", „na Androidu" postane „na and".
-Zato uz snimak ide `vocabulary` — spisak pojmova sa uputstvom da se napišu tačno
-tako. Merenje na pet rečenica: WER 0.197 → 0.080, bez greške 1/5 → 4/5.
+Zato postoji `vocabulary`, spisak pojmova. Danas ga dobija Gemini Live kao
+pomoć pri prepoznavanju; merenje iz vremena provere snimka (WER 0.197 → 0.080)
+je u `docs/provera-snimka.md`.
 
 **Endpoint sam piše većinu engleskih reči izvorno.** Izmereno: `deploy`,
 `build`, `push`, `screenshot`, `dashboard` prolaze bez pomoći. Greši na
 **skraćenicama** (`AI` → `pa`/`i`) i na oblicima koji zvuče srpski (`brenč`).
-Zato uputstvo ima i pravilo („engleske reči piši izvorno") pored spiska — samo
-pravilo je jednom dalo nepostojeće `repositorijum`, pa idu zajedno.
+Uputstvo provere snimka je zato imalo i pravilo („engleske reči piši
+izvorno") pored spiska: samo pravilo je jednom dalo nepostojeće
+`repositorijum`, pa su išli zajedno. Isto važi za svako buduće uputstvo.
 
 **Pouzdanost endpointa nije merilo tačnosti.** Izmereno: prepis sa odsečenom
 rečju („...sastanak sa kolegama iz kragu") prijavljen sa 0.93, isto koliko i
@@ -849,15 +866,49 @@ bio međukorak do prozora u kome je ionako sve; zato `_StatusClickDelegate`
 skida meni sa statusne stavke (`item.setMenu_(None)`) i zove `_toggle_settings`.
 Dok se snima, isti klik je rezervno „Zaustavi snimanje".
 
-**Prozor podešavanja ima svoja četiri pravila** (`dictate/settings_window.py`):
+**Prozor podešavanja je jedan ekran u tri kolone, bez kartica** (od
+22.09.2026, na izričit zahtev). Kartice su krile ključeve i istoriju iza
+klika, a sve staje odjednom: kolone su visoke ~350-460 px. Kolone su
+1) mikrofon, prepoznavanje, dozvole, 2) AI obrada i lokalna pravila,
+3) ključevi i istorija. Zaglavlje ima tri dugmeta na sredini i ukupno vreme
+ispod njih. Prozor ne menja veličinu rukom: širina je zbir kolona, a visinu
+postavlja `_rasporedi` po najvišoj koloni, uz fiksnu gornju ivicu, pa se
+prozor sam produži kad se uključi grupa sa više stavki. Skrol postoji samo za
+ekran niži od sadržaja.
 
 | pravilo | zašto |
 |---|---|
-| dokument je `isFlipped` | AppKit računa od dna, pa je kartica kraća od prozora padala na dno i ostavljala praznu polovinu iznad sebe |
-| sadržaj u koloni od 520 px, obe margine gipke | preko celog ekrana bi redovi bili dugački po metar, a polja za ključeve rastegnuta |
-| nepotrebno se **sklanja**, ne sivi | sivo podešavanje izgleda kao greška; zato red pamti uslov (`vidljivo`) i kartica se pri svakoj izmeni ponovo slaže, da sklonjen red ne ostavi rupu |
+| dokument je `isFlipped` | AppKit računa od dna, pa je sadržaj kraći od prozora padao na dno i ostavljao praznu polovinu iznad sebe |
+| kolona je široka 330 px | tri kolone staju na ekran od 13" (prozor 1142 px), a polja za ključeve nisu rastegnuta |
+| na Mac-u se nedostupno **zatamni**, ne sklanja (od 22.09.2026, na izričit zahtev) | na jednom ekranu se vidi sve što postoji; red pamti uslov (`vidljivo`), a `_omoguci` ga gasi i spusti mu providnost na 40%. Stvarno nestaju samo redovi sa `sakrij=True`: upozorenja o dozvolama, istorija i sačuvani snimci. Telefon i dalje sklanja |
 | dozvola se traži samo kad fali | „Otvori Accessibility" nad odobrenom dozvolom ne radi ništa; stanje se čita iz `hotkey.accessibility_granted` i `audio.microphone_granted` |
-| `NSApplicationActivationPolicyRegular` dok je otvoren | menu-bar aplikacija je `Accessory`, pa joj se prozor ponaša kao panel iznad tuđeg — bez svog mesta u Dock-u, Cmd+Tab-u i punom ekranu; po zatvaranju se vraća na `Accessory` |
+| `NSApplicationActivationPolicyRegular` dok je otvoren | menu-bar aplikacija je `Accessory`, pa joj se prozor ponaša kao panel iznad tuđeg, bez svog mesta u Dock-u i Cmd+Tab-u; po zatvaranju se vraća na `Accessory` |
+
+**Prvi klik na ikonicu je čekao ~2,3s.** Izmereno 22.09.2026: prvi poziv
+`audio.microphone_granted` učitava AVFoundation i traje **2057ms**, gradnja
+prozora još 282ms, a svako sledeće osvežavanje ~30ms. Zato se AVFoundation
+učita u pozadinskoj niti odmah po pokretanju, a prozor napravi unapred
+(`SettingsWindow.pripremi`) iz `_tick`, dok se ne snima. Otvaranje je posle
+toga 68ms.
+
+**Prozor ima svoj glavni meni** (`_glavni_meni`), iako ga menu-bar aplikacija
+inače nema. macOS prečice ne vezuje za prozor nego za stavke glavnog menija,
+pa bez njega ⌘W nije zatvarao prozor, a ⌘V nije lepio ključ u polje. Stavke
+nemaju `target`, pa idu prvom u lancu koji ume da ih izvrši.
+
+Prva verzija je meni postavljala samo „ako glavnog menija nema", i u
+aplikaciji ⌘W i dalje nije radio: macOS sam napravi podrazumevani meni sa
+jednom stavkom („Python") čim aplikacija postane `Regular`, pa se naš nikad
+nije postavio. Sam prozor u probnom procesu je radio, pa je greška prošla
+proveru. Sada se naš meni prepoznaje po naslovu (`NASLOV_MENIJA`), a prozor
+(`_Prozor.performKeyEquivalent_`) prečice hvata i sam, nezavisno od menija.
+Provereno 22.09.2026. na instaliranoj aplikaciji: `osascript` ⌘W zatvori
+prozor, Diktat ostaje u traci menija. Prečicu uvek proveravaj na pravoj
+aplikaciji, ne na probnom prozoru.
+
+**„Zaustavi snimanje" u zaglavlju je sivo, ne sklonjeno**, dok nema šta da se
+zaustavi: dugme koje iskače pomera ostala dva. Trenutna verzija stoji
+u natpisu dugmeta za ažuriranje, a pun ishod provere u njegovom tooltip-u.
 
 Raspored se ne upisuje kao fiksna visina dokumenta. Ranije je stajala konstanta
 (`DOCUMENT_HEIGHT = 2450`) koja se razilazila sa sadržajem pri svakoj izmeni;

@@ -51,6 +51,57 @@ if "$IZVOR/.venv/bin/python" "$IZVOR/ikona.py" "$RADNI/ikona-1024.png" >/dev/nul
 fi
 [ -n "$IKONA" ] || echo "Upozorenje: ikona nije napravljena, ostaje sistemska."
 
+# --------------------------------------------------------------- pokretac
+# Glavni izvrsni fajl bundle-a je mali Swift program, ne bash skripta. Kad je
+# aplikacija vec pokrenuta, macOS na novi klik ne pokrece nista iznova, nego
+# samo posalje dogadjaj "ponovo otvori" procesu koji je pokrenuo. Bash taj
+# dogadjaj ne ume da primi, pa se zaglavljena instanca nikako nije gasila
+# klikom na ikonicu (mereno: posle `open -a Diktat` u logu nijedna nova
+# linija). Swift pokretac primi dogadjaj i pokrene diktat.sh iznova, a ta
+# skripta zaustavi staru instancu. Python ostaje njegovo dete, pa dozvole za
+# mikrofon i Accessibility i dalje idu na Diktat.
+POKRETAC=""
+cat > "$RADNI/pokretac.swift" <<'SWIFT'
+import AppKit
+
+final class Pokretac: NSObject, NSApplicationDelegate {
+    let skripta = Bundle.main.path(forResource: "diktat", ofType: "sh")!
+    var tekuci: Process?
+
+    func pokreni() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [skripta]
+        p.terminationHandler = { zavrsen in
+            DispatchQueue.main.async {
+                // Staru skriptu ubija nova, to nije kraj aplikacije.
+                if self.tekuci === zavrsen { NSApp.terminate(nil) }
+            }
+        }
+        tekuci = p
+        do { try p.run() } catch { NSApp.terminate(nil) }
+    }
+
+    func applicationDidFinishLaunching(_ n: Notification) { pokreni() }
+
+    func applicationShouldHandleReopen(_ a: NSApplication, hasVisibleWindows f: Bool) -> Bool {
+        pokreni()
+        return false
+    }
+}
+
+let app = NSApplication.shared
+let pokretac = Pokretac()
+app.delegate = pokretac
+app.run()
+SWIFT
+if swiftc -O -o "$RADNI/Diktat" "$RADNI/pokretac.swift" >/dev/null 2>&1; then
+  POKRETAC="$RADNI/Diktat"
+  echo "Pokretac preveden."
+else
+  echo "Upozorenje: swiftc nije uspeo (xcode-select --install), ponovni klik nece gasiti staru instancu."
+fi
+
 # --------------------------------------------------------------- bundle
 # $1 = gde se pravi, $2 = folder sa kodom, $3 = python koji ga pokrece
 napravi_app() {
@@ -85,7 +136,7 @@ PLIST
 
   # Kad se klikne iz Launchpad-a nema terminala da primi gresku, pa sve ide u
   # log, a ono sto korisnik mora da vidi ide u prozorcic.
-  cat > "$app/Contents/MacOS/Diktat" <<LAUNCHER
+  cat > "$app/Contents/Resources/diktat.sh" <<LAUNCHER
 #!/bin/bash
 ROOT="$root"
 PY="$py"
@@ -101,9 +152,10 @@ if [ ! -x "\$PY" ]; then
   exit 1
 fi
 
-# Drugo pokretanje ne pravi drugu ikonicu u traci menija, ni drugi hotkey.
-# Proces se prepoznaje po radnoj putanji, jer run.py u komandnoj liniji ume da
-# bude i relativan. Gleda se i instalirana kopija i folder projekta.
+# Drugo pokretanje prvo zaustavlja staru instancu, da nikad ne ostanu dva
+# hotkey-a i dve ikonice u traci menija. Proces se prepoznaje po radnoj
+# putanji, jer run.py u komandnoj liniji ume da bude i relativan. Gleda se i
+# instalirana kopija i folder projekta.
 for pid in \$(pgrep -f "run\\\\.py" 2>/dev/null); do
   # Mora da bude bas Python. Svaka druga komanda kojoj se "run.py" nadje u
   # komandnoj liniji (grep, pgrep, editor) inace prodje kao pokrenut Diktat,
@@ -114,7 +166,25 @@ for pid in \$(pgrep -f "run\\\\.py" 2>/dev/null); do
   esac
   putanja="\$(lsof -a -d cwd -p "\$pid" -Fn 2>/dev/null | sed -n 's/^n//p')"
   if [ "\$putanja" = "\$ROOT" ] || [ "\$putanja" = "\$IZVOR" ]; then
-    exit 0
+    stari_launcher=""
+    roditelj="\$(ps -o ppid= -p "\$pid" 2>/dev/null | tr -d ' ')"
+    case "\$(ps -o command= -p "\$roditelj" 2>/dev/null)" in
+      *"/Diktat.app/Contents/"*) stari_launcher="\$roditelj" ;;
+    esac
+    echo "Zaustavljam prethodnu instancu (PID \$pid)." >> "\$LOG"
+    kill -TERM "\$pid" 2>/dev/null || true
+    # Zatvori i njen shell-omotac; inace bi mogao da ceka izlazni kod i
+    # prikaze lazni prozor greske za namerno zaustavljanje.
+    [ -z "\$stari_launcher" ] || kill -TERM "\$stari_launcher" 2>/dev/null || true
+    for cekanje in {1..20}; do
+      kill -0 "\$pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    # Ako se aplikacija zaglavila u pozivu biblioteke, ne dozvoli da nova
+    # instanca ostane bez mikrofona ili hotkey-a.
+    if kill -0 "\$pid" 2>/dev/null; then
+      kill -KILL "\$pid" 2>/dev/null || true
+    fi
   fi
 done
 
@@ -123,11 +193,17 @@ mkdir -p "\$HOME/Library/Logs"
 echo "--- \$(date '+%Y-%m-%d %H:%M:%S') pokretanje: \$ROOT ---" >> "\$LOG"
 "\$PY" "\$ROOT/run.py" >> "\$LOG" 2>&1
 kod=\$?
-if [ \$kod -ne 0 ]; then
+if [ \$kod -ne 0 ] && [ \$kod -ne 143 ] && [ \$kod -ne 137 ]; then
   javi "Diktat se ugasio sa greskom (\$kod).\n\nPoslednje linije su u:\n\$LOG"
 fi
 exit \$kod
 LAUNCHER
+  chmod +x "$app/Contents/Resources/diktat.sh"
+  if [ -n "$POKRETAC" ]; then
+    cp "$POKRETAC" "$app/Contents/MacOS/Diktat"
+  else
+    cp "$app/Contents/Resources/diktat.sh" "$app/Contents/MacOS/Diktat"
+  fi
   chmod +x "$app/Contents/MacOS/Diktat"
 
   [ -n "$IKONA" ] && cp "$IKONA" "$app/Contents/Resources/Diktat.icns"
@@ -156,6 +232,17 @@ if [ "${1:-}" = "install" ]; then
   mkdir -p "$DOM/app"
   cp -R dictate run.py doctor.py selftest.py requirements.txt config.example.json "$DOM/app/"
   find "$DOM/app" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+  # Oznaka poslednjeg izdanja u ovom kodu. Po njoj aplikacija zna da li na
+  # GitHub-u postoji novija verzija (Podesavanja > Verzija i azuriranje).
+  # Izdanja se prave na GitHub-u (gh release create), pa oznaka lokalno ume
+  # da fali dok se ne povuce.
+  git -C "$IZVOR" fetch --tags --quiet 2>/dev/null || true
+  VERZIJA="$(git -C "$IZVOR" describe --tags --abbrev=0 2>/dev/null || true)"
+  if [ -n "$VERZIJA" ]; then
+    echo "$VERZIJA" > "$DOM/app/VERZIJA"
+    echo "Verzija: $VERZIJA"
+  fi
 
   if [ -n "$CUVANI" ]; then
     cp "$CUVANI" "$DOM/app/config.json"

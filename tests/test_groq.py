@@ -1,37 +1,19 @@
-import struct
 import unittest
 
 from dictate import groq
 
 
 class GroqTest(unittest.TestCase):
-    def test_wav_zaglavlje(self):
-        pcm = b"\x00\x01" * 100
-        wav = groq.wav_bytes(pcm, 16000)
-        self.assertEqual(wav[:4], b"RIFF")
-        self.assertEqual(wav[8:12], b"WAVE")
-        self.assertEqual(struct.unpack("<I", wav[24:28])[0], 16000)
-        self.assertEqual(struct.unpack("<I", wav[40:44])[0], len(pcm))
-
     def test_user_agent_je_aplikacioni(self):
         self.assertEqual(groq.USER_AGENT, "Diktat/1.0")
 
-    def test_poredi_oba_prepisa(self):
-        prompt = groq._merge_prompt(
-            "google tekst", "whisper tekst",
-            {"text_style": "written", "vocabulary": "AI, API"},
-        )
-        self.assertIn("google tekst", prompt)
-        self.assertIn("whisper tekst", prompt)
-        self.assertIn("AI, API", prompt)
-        self.assertIn("pravopisno pravilno", prompt)
-        self.assertIn("ne dobijaš audio", prompt)
+    def test_bez_kljuca_nema_obrade(self):
+        with self.assertRaises(groq.GroqError):
+            groq.manipulate_text("tekst", {"groq_api_key": "  "}, "uputstvo")
 
-    def test_podrazumevano_ne_ukljucuje_groq(self):
-        self.assertFalse(groq.enabled({"groq_enabled": False, "groq_api_key": "x"}))
-        self.assertFalse(groq.enabled({"groq_enabled": True, "groq_api_key": ""}))
-        self.assertFalse(groq.enabled({"groq_enabled": True, "groq_api_key": "   "}))
-        self.assertTrue(groq.enabled({"groq_enabled": True, "groq_api_key": "x"}))
+    def test_poruke_za_http_greske(self):
+        self.assertIn("API ključ", groq._http_message(401))
+        self.assertIn("429", groq._http_message(429))
 
 
 if __name__ == "__main__":

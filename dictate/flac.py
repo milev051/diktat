@@ -24,16 +24,6 @@ def encode(pcm: bytes, sample_rate: int, timeout=20):
     return _run(pcm, sample_rate, ["-c:a", "flac", "-f", "flac"], timeout)
 
 
-def encode_aac(pcm: bytes, sample_rate: int, timeout=20):
-    """AAC 32 kbps za snimak koji ide MODELU — endpoint prima samo PCM i FLAC.
-
-    Izmereno na istom snimku: WAV 139 KB, FLAC 85 KB, AAC 18 KB, uz identican
-    prepis. Zvuk modelu ide u base64 (jos trecina vise), pa je bas ta velicina
-    bila glavni razlog cekanja na telefonu.
-    """
-    return _run(pcm, sample_rate, ["-c:a", "aac", "-b:a", "32k", "-f", "adts"], timeout)
-
-
 def _run(pcm: bytes, sample_rate: int, izlaz: list, timeout: int):
     if not pcm or not available():
         return None
