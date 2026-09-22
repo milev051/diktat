@@ -11,8 +11,8 @@ android {
         applicationId = "studio.room211.diktat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 81
-        versionName = "1.68"
+        versionCode = 82
+        versionName = "1.69"
     }
 
     buildTypes {

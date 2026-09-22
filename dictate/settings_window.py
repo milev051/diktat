@@ -653,8 +653,7 @@ class SettingsWindow:
         self._accessibility_ok = hotkey.accessibility_granted()
         self._mikrofon_ok = audio.microphone_granted()
 
-        with self.app._hist_lock:
-            history = list(self.app._history)
+        history = self.app.upis.istorija()
         self._history_len = len(history)
         for index, view in enumerate(self.history_buttons):
             if index < len(history):

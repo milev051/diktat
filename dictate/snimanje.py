@@ -100,7 +100,7 @@ class Snimanje:
         if recorder.live_insert:
             # Živi delovi moraju da zauzmu mesto u istom redu kao ostali
             # diktati pre nego što prvi od njih stigne sa servera.
-            recorder.ticket = self._next_ticket(recorder.session)
+            recorder.ticket = self.upis.novi_tiket(recorder.session)
         threading.Thread(target=self._run_session, args=(recorder,), daemon=True).start()
         if propusteni_stop:
             self._on_stop()
@@ -210,7 +210,7 @@ class Snimanje:
         # Ticket se uzima dok slot jos drzimo, da nova sesija ne preuzme nizi broj.
         recorder.close()
         if not recorder.ticket:
-            recorder.ticket = self._next_ticket(recorder.session)
+            recorder.ticket = self.upis.novi_tiket(recorder.session)
         with self._session_lock:
             if self._recorder is recorder:
                 self._recorder = None
@@ -239,9 +239,8 @@ class Snimanje:
         with self._session_lock:
             if self._recorder is not None:
                 return
-            with self._count_lock:
-                busy = self._pending > 0
-            if self._polishing:
+            busy = self.upis.na_cekanju() > 0
+            if self.ceka_obradu.radi():
                 return                      # cekamo model, ne gasi prikaz
             self.state.set(phase="thinking" if busy else "idle", message=message)
 
@@ -316,7 +315,7 @@ class Snimanje:
         # inace red ubacivanja stane zauvek.
         ticket = recorder.ticket
         if recorder.cancelled or error:
-            self._deliver(ticket, "", recorder.session)
+            self.upis.predaj(ticket, "", recorder.session)
             if error and not recorder.cancelled:
                 if sacuvan:
                     error = f"{error[:120]} · snimak je sačuvan u Podešavanjima"
@@ -327,13 +326,13 @@ class Snimanje:
 
         if getattr(recorder, "live_insert", False):
             if text.strip():
-                self._remember(text)
-            self._deliver(ticket, "", recorder.session)
+                self.upis.zapamti(text)
+            self.upis.predaj(ticket, "", recorder.session)
             return
 
         text = text.strip()
         if not text:
-            self._deliver(ticket, "", recorder.session)
+            self.upis.predaj(ticket, "", recorder.session)
             self._settle_phase("(nista)")
             return
 
@@ -342,7 +341,7 @@ class Snimanje:
             debug_session = self._debug_sessions.pop(recorder.session, None)
             if debug_session is not None:
                 debug_session.final(text)
-        self._deliver(ticket, text, recorder.session)
+        self.upis.predaj(ticket, text, recorder.session)
 
     def _finish(self, text: str) -> str:
         # Razmak na kraju je uvek: bez njega se recenice slepe pri nadovezivanju.
@@ -355,6 +354,32 @@ class Snimanje:
         if geministt.enabled(self.cfg):
             return self._transcribe_live(recorder)
         return self._transcribe_google(recorder)
+
+    # Ispod ovog vrha amplitude nema govora: tiha soba je ~0.01, bucna ~0.08.
+    # Prazan prepis tise od toga je stvarno tisina, ne izgubljen deo diktata.
+    GOVOR_PEAK = 0.10
+
+    GOVOR_SEKUNDI = 1.0
+
+    def _bilo_je_govora(self, pcm: bytes) -> bool:
+        """Gruba provera da snimak nije puka tisina."""
+        return (
+            self._seconds(pcm) >= self.GOVOR_SEKUNDI
+            and audio.peak(pcm) >= self.GOVOR_PEAK
+        )
+
+    def _recognize_or_keep(self, pcm: bytes) -> str:
+        """Prepis segmenta; prazan rezultat za jasan govor se samo prijavi.
+
+        Ispis u logu je trag da deo diktata nije stigao. Zvuk celog diktata
+        ostaje u rezervnom snimku (`rezerva.py`) dok prepis ne uspe.
+        """
+        text = self._recognize(pcm)
+        if not text and self._bilo_je_govora(pcm):
+            print(
+                f"[diktat] prazan prepis za {self._seconds(pcm):.1f}s govora"
+            )
+        return text
 
     def _recognize(self, pcm: bytes) -> str:
         """Ceo snimak (ili segment) kroz izabran servis."""

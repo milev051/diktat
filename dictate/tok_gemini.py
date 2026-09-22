@@ -76,7 +76,7 @@ class GeminiTok:
             return
         text = geministt.post_process(raw, self.cfg).strip()
         if text:
-            self._deliver_live_part(recorder.ticket, text + " ", recorder.session)
+            self.upis.predaj_deo(recorder.ticket, text + " ", recorder.session)
 
     def _tick_live_panel(self):
         """Okvir sa prepisom uživo; sve se crta sa glavne niti."""

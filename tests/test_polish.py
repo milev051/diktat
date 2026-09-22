@@ -87,27 +87,6 @@ class PosleSlusanja(unittest.TestCase):
         self.assertNotIn(polish.NE_ISPRAVLJAJ, u)
 
 
-class PosleSlusanjaNastavak(unittest.TestCase):
-    def test_sredjivanje_otpada(self):
-        self.assertEqual(polish.tools(cfg(), vec_sredjeno=True), ["paragraphs"])
-
-    def test_bez_ostalih_alata_nema_poziva(self):
-        c = cfg(polish_paragraphs=False)
-        self.assertEqual(polish.tools(c, vec_sredjeno=True), [])
-        self.assertEqual(polish.polish("tekst", c, vec_sredjeno=True), "tekst")
-
-    def test_uputstvo_vise_ne_trazi_sredjivanje(self):
-        u = polish._uputstvo(cfg(), vec_sredjeno=True)
-        self.assertNotIn(polish.SREDI, u)
-        self.assertIn(polish.PASUSI, u)
-
-    def test_ostali_alati_ostaju(self):
-        c = cfg(polish_dedupe=True)
-        self.assertEqual(
-            sorted(polish.tools(c, vec_sredjeno=True)), ["dedupe", "paragraphs"]
-        )
-
-
 class BezPrevoda(unittest.TestCase):
     """Prevod je uklonjen: zatecen opis jezika ne sme da ozivi alat."""
 

@@ -39,7 +39,7 @@ class PrepisSacuvanog:
                     self.state.set(phase="idle", message="")
                     return
                 insert.set_clipboard(tekst)
-                self._remember(tekst)
+                self.upis.zapamti(tekst)
                 sacuvan.obrisi()
                 self.state.set(phase="idle", message="")
                 self.prepis_status = "Prepis je u clipboard-u i u istoriji. Nalepi ga sa ⌘V."

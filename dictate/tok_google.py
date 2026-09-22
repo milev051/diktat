@@ -7,37 +7,11 @@ svaki deo salje cim se odsece. Redosled cuvaju tiketi (`upis.py`).
 import threading
 import traceback
 
-from . import audio, polish, rezerva, webstt
+from . import audio, polish, webstt
 
 
 class GoogleTok:
     """Deo DictateApp-a; stanje drzi DictateApp.__init__."""
-
-    # Ispod ovog vrha amplitude nema govora: tiha soba je ~0.01, bucna ~0.08.
-    # Prazan prepis tise od toga je stvarno tisina, ne izgubljen deo diktata.
-    GOVOR_PEAK = 0.10
-
-    GOVOR_SEKUNDI = 1.0
-
-    def _bilo_je_govora(self, pcm: bytes) -> bool:
-        """Gruba provera da snimak nije puka tisina."""
-        return (
-            self._seconds(pcm) >= self.GOVOR_SEKUNDI
-            and audio.peak(pcm) >= self.GOVOR_PEAK
-        )
-
-    def _recognize_or_keep(self, pcm: bytes) -> str:
-        """Prepis segmenta; prazan rezultat za jasan govor se samo prijavi.
-
-        Ispis u logu je trag da deo diktata nije stigao. Zvuk celog diktata
-        ostaje u rezervnom snimku (`rezerva.py`) dok prepis ne uspe.
-        """
-        text = self._recognize(pcm)
-        if not text and self._bilo_je_govora(pcm):
-            print(
-                f"[diktat] prazan prepis za {self._seconds(pcm):.1f}s govora"
-            )
-        return text
 
     def _recognize_google(self, pcm: bytes) -> str:
         text, _conf = webstt.recognize_full(
@@ -120,7 +94,7 @@ class GoogleTok:
 
     def _ship_segment(self, pcm: bytes, sesija: int, session=None):
         """Posalji odsecen deo na prepoznavanje, a snimanje ide dalje."""
-        ticket = self._next_ticket(sesija)
+        ticket = self.upis.novi_tiket(sesija)
         index = session.next_index() if session is not None else 0
 
         def work():
@@ -137,6 +111,6 @@ class GoogleTok:
             finally:
                 if session is not None:
                     session.segment(index, pcm, text)
-                self._deliver(ticket, text, sesija)
+                self.upis.predaj(ticket, text, sesija)
 
         threading.Thread(target=work, daemon=True).start()

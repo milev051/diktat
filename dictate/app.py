@@ -23,7 +23,6 @@ Niti:
 AppKit se dira iskljucivo iz glavne niti; radne niti samo upisuju u `State`.
 """
 
-import queue
 import threading
 import time
 
@@ -33,14 +32,14 @@ import rumps
 from Foundation import NSAttributedString
 
 from . import (
-    audio, config, debugdump, geministt, hotkey, insert, overlay, rezerva,
-    settings_window,
+    audio, config, debugdump, geministt, hotkey, insert, obrada, overlay,
+    rezerva, settings_window,
 )
 from .snimanje import Snimanje
 from .tok_google import GoogleTok
 from .tok_openai import OpenAiTok
 from .tok_gemini import GeminiTok
-from .upis import Upis
+from . import upis
 from .obrada import Obrada
 from .prozor_akcije import ProzorAkcije
 from .prepis_sacuvanog import PrepisSacuvanog
@@ -106,7 +105,6 @@ class DictateApp(
     GoogleTok,
     OpenAiTok,
     GeminiTok,
-    Upis,
     Obrada,
     ProzorAkcije,
     PrepisSacuvanog,
@@ -146,27 +144,25 @@ class DictateApp(
         self._record_started_at = 0.0
         self._last_clock = ""
         self._menubar = (None, None)
-        self._count_lock = threading.Lock()
         self._stats_lock = threading.Lock()
-        self._pending = 0        # snimci koji se prepoznaju
-        self._ticket = 0         # redni broj segmenta za ubacivanje
-        self._insert_q: queue.Queue = queue.Queue()
         self._dump = None
         self._debug_sessions = {}
-        self._hist_lock = threading.Lock()
-        self._history: list[str] = []
-        self._history_dirty = True
-        # Sve sto ceka kraj diktata drzi se PO SESIJI: nov diktat sme da pocne
-        # dok se prethodni jos obradjuje, pa bi u zajednickoj kanti dva diktata
-        # zavrsila u jednom pozivu i zalepila se spojena.
+        # Red za upis ima svoje stanje (tiketi, brojaci, istorija); ostatak
+        # aplikacije ga koristi samo kroz njegove metode.
+        self.upis = upis.RedUpisa(
+            upisi=lambda tekst: insert.insert(
+                tekst,
+                method=self.cfg.get("insert_method", "auto"),
+                restore_clipboard=self.cfg.get("restore_clipboard", True),
+            ),
+            upisi_deo=insert.insert_live,
+            ceka_celinu=self._deferred,
+            za_obradu=self._za_obradu,
+            posle=self._posle_upisa,
+        )
         self._session_seq = 0
-        self._formal_lock = threading.Lock()
-        self._formal_parts: dict[int, list[str]] = {}
-        self._pending_by: dict[int, int] = {}
-        # Zvuk segmenata; unutrasnji kljuc je ticket, da redosled ostane
-        # hronoloski i kad se segmenti prepoznaju paralelno.
-        self._polishing = False
-        self._polishing_count = 0
+        # Delovi diktata koji cekaju AI obradu, po sesiji (obrada.py).
+        self.ceka_obradu = obrada.CekanjeObrade()
         self._api_check_result = None
         self._api_check_running = False
         self._settings_window_ui = None
@@ -199,7 +195,7 @@ class DictateApp(
 
         self._apply_debug(self.cfg.get("debug", False))
         self._preflight()
-        threading.Thread(target=self._insert_worker, daemon=True).start()
+        self.upis.pokreni()
 
         self.listener = self._make_listener()
 
@@ -265,8 +261,7 @@ class DictateApp(
             )
 
         # Istoriju puni radna nit, a prozor sme da se dira samo odavde.
-        if self._history_dirty:
-            self._history_dirty = False
+        if self.upis.istorija_promenjena():
             if self._settings_window_ui is not None:
                 self._settings_window_ui.refresh()
         if self._settings_window_ui is not None:
@@ -309,9 +304,7 @@ class DictateApp(
                 else:
                     self.hud.set_text(clock, mono=True)
                 self.hud.set_state("recording")
-                with self._count_lock:
-                    pending = self._pending
-                self.hud.set_busy(pending > 0)
+                self.hud.set_busy(self.upis.na_cekanju() > 0)
             return
 
         if self._azur_dirty:
@@ -383,11 +376,10 @@ class DictateApp(
         crvenom (blizu granice) — jer je cekanje na tudji odgovor vaznije od
         toga koliko dugo traje ovaj snimak.
         """
-        if self._polishing:
+        if self.ceka_obradu.radi():
             return "polishing"
-        with self._count_lock:
-            if self._pending > 0:
-                return "busy"
+        if self.upis.na_cekanju() > 0:
+            return "busy"
         # OpenAI ima duži sigurnosni limit; crvena boja posle 15 s bi izgledala
         # kao greška iako snimanje normalno traje. Obrada se i dalje prikazuje
         # narandžasto preko `busy`, a model plavo preko `polishing`.

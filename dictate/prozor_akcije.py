@@ -98,8 +98,7 @@ class ProzorAkcije:
         if action.startswith("copy_history_"):
             try:
                 index = int(action.removeprefix("copy_history_"))
-                with self._hist_lock:
-                    value = self._history[index]
+                value = self.upis.istorija()[index]
                 insert.set_clipboard(value)
             except (ValueError, IndexError):
                 pass

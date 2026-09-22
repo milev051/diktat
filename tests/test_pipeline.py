@@ -10,7 +10,14 @@ import time
 import unittest
 
 from dictate import app as app_mod
-from dictate import insert
+from dictate import obrada, upis
+
+
+def red_upisa():
+    return upis.RedUpisa(
+        upisi=lambda t: None, upisi_deo=lambda t: None,
+        ceka_celinu=lambda: False, za_obradu=lambda s, t: None, posle=lambda: None,
+    )
 
 
 def napravi(**kw):
@@ -25,10 +32,8 @@ def napravi(**kw):
         app.cfg["lowercase"] = app.cfg["text_style"] != "written"
     if "strip_punctuation" not in kw:
         app.cfg["strip_punctuation"] = app.cfg["text_style"] != "written"
-    app._formal_lock = threading.Lock()
-    app._formal_parts = {}
-    app._count_lock = threading.Lock()
-    app._pending_by = {}
+    app.ceka_obradu = obrada.CekanjeObrade()
+    app.upis = red_upisa()
     app._session_seq = 0
     return app
 
@@ -38,17 +43,21 @@ class DvaDiktataOdjednom(unittest.TestCase):
 
     def test_zavrsene_preskacu_sesiju_koja_jos_snima(self):
         app = napravi()
-        app._formal_parts = {1: ["prvi"], 2: ["drugi"]}
-        app._pending_by = {1: 0, 2: 0}
+        app.ceka_obradu.dodaj(1, "prvi")
+        app.ceka_obradu.dodaj(2, "drugi")
         # Sesija 2 je jos na mikrofonu — njen tekst ne sme da krene modelu.
         self.assertEqual(app._zavrsene(aktivna=2), [1])
 
     def test_zavrsene_cekaju_prepoznavanje(self):
         app = napravi()
-        app._formal_parts = {1: ["prvi"]}
-        app._pending_by = {1: 1}
+        app.ceka_obradu.dodaj(1, "prvi")
+        tiket = app.upis.novi_tiket(1)          # deo sesije 1 se jos prepoznaje
         self.assertEqual(app._zavrsene(aktivna=None), [])
-        app._pending_by[1] = 0
+        gotovo = threading.Event()
+        app.upis._posle = gotovo.set
+        app.upis.pokreni()
+        app.upis.predaj(tiket, "", 1)
+        self.assertTrue(gotovo.wait(1))
         self.assertEqual(app._zavrsene(aktivna=None), [1])
 
     def test_sesije_dobijaju_razlicite_brojeve(self):
@@ -58,35 +67,34 @@ class DvaDiktataOdjednom(unittest.TestCase):
         self.assertNotEqual(app._nova_sesija(), app._nova_sesija())
 
 
-class DirektanGeminiUnos(unittest.TestCase):
-    def test_potvrdjeni_delovi_idu_odmah_i_ne_dupliraju_se_na_kraju(self):
-        app = napravi(polish_paragraphs=False)
-        app._insert_q = queue.Queue()
-        app._pending = 2
-        app._pending_by = {1: 1, 2: 1}
-        app._maybe_polish = lambda: None
-        app._settle_phase = lambda: None
-        app._remember = lambda _: None
-        written = []
-        old_live, old_insert = insert.insert_live, insert.insert
-        insert.insert_live = lambda text: written.append(text)
-        insert.insert = lambda text, **kw: written.append(text)
-        try:
-            threading.Thread(target=app._insert_worker, daemon=True).start()
-            app._deliver_live_part(2, "drugi ", 2)
-            time.sleep(0.02)
-            self.assertEqual(written, [])
-            app._deliver(1, "prvi ", 1)
-            deadline = time.monotonic() + 1
-            while len(written) < 2 and time.monotonic() < deadline:
-                time.sleep(0.01)
-            self.assertEqual(written, ["prvi ", "drugi "])
-            app._deliver(2, "", 2)
-            time.sleep(0.02)
-            self.assertEqual(written, ["prvi ", "drugi "])
-            self.assertEqual(app._pending, 0)
-        finally:
-            insert.insert_live, insert.insert = old_live, old_insert
+class CekanjeObrade(unittest.TestCase):
+    """Delovi koji cekaju AI obradu, po sesiji."""
+
+    def test_delovi_iste_sesije_se_spajaju(self):
+        c = obrada.CekanjeObrade()
+        c.dodaj(1, "prvi")
+        c.dodaj(1, "drugi")
+        self.assertEqual(c.uzmi(1), "prvi drugi")
+        self.assertEqual(c.sesije(), [])
+
+    def test_dve_sesije_se_ne_mesaju(self):
+        c = obrada.CekanjeObrade()
+        c.dodaj(1, "prvi")
+        c.dodaj(2, "drugi")
+        self.assertEqual(c.uzmi(2), "drugi")
+        self.assertEqual(c.sesije(), [1])
+
+    def test_brojac_obrada_ne_pada_ispod_nule(self):
+        c = obrada.CekanjeObrade()
+        c.pocni()
+        c.pocni()
+        c.zavrsi()
+        self.assertTrue(c.radi())
+        c.zavrsi()
+        c.zavrsi()
+        self.assertFalse(c.radi())
+        c.pocni()
+        self.assertTrue(c.radi())
 
 
 class KadaSeCekaKraj(unittest.TestCase):
@@ -259,20 +267,19 @@ class BojaNaslova(unittest.TestCase):
     def napravi_sat(self, **kw):
         import time
         app = napravi(**kw)
-        app._polishing = False
-        app._pending = 0
         app._record_started_at = time.monotonic()
         return app
 
     def test_model_ima_prednost(self):
         app = self.napravi_sat()
-        app._polishing = True
-        app._pending = 3
+        app.ceka_obradu.pocni()
+        for _ in range(3):
+            app.upis.novi_tiket(1)
         self.assertEqual(app._title_color(), "polishing")
 
     def test_prepoznavanje_je_narandzasto(self):
         app = self.napravi_sat()
-        app._pending = 1
+        app.upis.novi_tiket(1)
         self.assertEqual(app._title_color(), "busy")
 
     def test_neprekidno_nema_crvenu_granicu(self):

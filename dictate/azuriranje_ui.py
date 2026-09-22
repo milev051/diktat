@@ -34,9 +34,7 @@ class AzuriranjeUI:
 
     def _tick_azuriranje(self):
         if self._azur_restart and self._recorder is None and not self._starting:
-            with self._count_lock:
-                pending = self._pending
-            if pending == 0:
+            if self.upis.na_cekanju() == 0:
                 self._azur_restart = False
                 print(f"[diktat] azurirano na {azuriranje.trenutna_verzija() or '?'}"
                       ", ponovo pokrecem", flush=True)

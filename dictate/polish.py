@@ -117,15 +117,10 @@ def tidy_on(cfg) -> bool:
     return config.style(cfg) == "written"
 
 
-def tools(cfg, vec_sredjeno=False) -> list[str]:
-    """Izabrani alati. Prazna lista znaci da modelu nema sta da se posalje.
-
-    `vec_sredjeno` znaci da je tekst stigao iz prolaza u kome je model slusao
-    snimak — on vec vraca interpunkciju, velika slova i kvacice, pa bi
-    sredjivanje bio drugi poziv za posao koji je vec obavljen.
-    """
+def tools(cfg) -> list[str]:
+    """Izabrani alati. Prazna lista znaci da modelu nema sta da se posalje."""
     izabrani = []
-    if tidy_on(cfg) and not vec_sredjeno:
+    if tidy_on(cfg):
         izabrani.append("tidy")
     if cfg.get("polish_dedupe", False):
         izabrani.append("dedupe")
@@ -137,11 +132,11 @@ def tools(cfg, vec_sredjeno=False) -> list[str]:
     return izabrani
 
 
-def polish(text: str, cfg, timeout=60, vec_sredjeno=False) -> str:
+def polish(text: str, cfg, timeout=60) -> str:
     """Vrati obradjen tekst. Na bilo kakav problem podize PolishError."""
     if not text.strip():
         return text
-    if not tools(cfg, vec_sredjeno):
+    if not tools(cfg):
         return text                 # nema alata — nema ni poziva
     model_izbor = text_model(cfg)
     if model_izbor == GROQ_TEXT_MODEL:
@@ -150,7 +145,7 @@ def polish(text: str, cfg, timeout=60, vec_sredjeno=False) -> str:
         try:
             from . import groq
             rezultat = groq.manipulate_text(
-                text, cfg, _uputstvo(cfg, vec_sredjeno), timeout=timeout
+                text, cfg, _uputstvo(cfg), timeout=timeout
             )
         except groq.GroqError as exc:
             raise PolishError(str(exc), retryable=True) from exc
@@ -162,22 +157,22 @@ def polish(text: str, cfg, timeout=60, vec_sredjeno=False) -> str:
 
     model = cfg.get("polish_model") or DEFAULT_MODEL
     try:
-        return _proveri(text, _pozovi(model, text, key, cfg, timeout, vec_sredjeno), cfg)
+        return _proveri(text, _pozovi(model, text, key, cfg, timeout), cfg)
     except PolishError as exc:
         # Ako podeseni model nestane ili se preimenuje, probaj podrazumevani —
         # inace bi jedna Google-ova izmena ugasila celu AI obradu.
         if "ne postoji" in str(exc) and model != DEFAULT_MODEL:
             print(f"[diktat] model {model} ne postoji, prelazim na {DEFAULT_MODEL}")
             return _proveri(
-                text, _pozovi(DEFAULT_MODEL, text, key, cfg, timeout, vec_sredjeno), cfg
+                text, _pozovi(DEFAULT_MODEL, text, key, cfg, timeout), cfg
             )
         raise
 
 
-def _pozovi(model, text, key, cfg, timeout, vec_sredjeno=False):
+def _pozovi(model, text, key, cfg, timeout):
     url = f"{ENDPOINT}/{model}:generateContent?key={key}"
     payload = {
-        "systemInstruction": {"parts": [{"text": _uputstvo(cfg, vec_sredjeno)}]},
+        "systemInstruction": {"parts": [{"text": _uputstvo(cfg)}]},
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {"temperature": 0.0},
     }
@@ -228,12 +223,12 @@ def _reci(text: str) -> list[str]:
     return webstt.to_ascii(_NEREC.sub(" ", text)).lower().split()
 
 
-def _sme_da_menja(cfg, vec_sredjeno=False) -> bool:
+def _sme_da_menja(cfg) -> bool:
     """Menja li ijedan izabrani alat same reci."""
     return (
         bool(cfg.get("polish_bullets", False))   # tacke prepisuju recenice
         or bool(cfg.get("polish_dedupe", False))  # brisanje ponavljanja skida reci
-        or "tidy" in tools(cfg, vec_sredjeno)
+        or "tidy" in tools(cfg)
     )
 
 
@@ -251,7 +246,7 @@ def _proveri(ulaz: str, izlaz: str, cfg) -> str:
     return ulaz
 
 
-def _uputstvo(cfg, vec_sredjeno=False) -> str:
+def _uputstvo(cfg) -> str:
     """Sklopi uputstvo od izabranih alata.
 
     Zadaci i granice moraju da se slazu: kad sredjivanje nije izabrano, modelu
@@ -261,7 +256,7 @@ def _uputstvo(cfg, vec_sredjeno=False) -> str:
     if cfg.get("polish_prompt"):
         return cfg["polish_prompt"]
 
-    izabrani = tools(cfg, vec_sredjeno)
+    izabrani = tools(cfg)
 
     zadaci = []
     granice = list(GRANICE)

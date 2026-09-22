@@ -9,10 +9,20 @@ Dva dela, isti Google Web Speech endpoint (Chromium, javni ključ):
 **Mac kod je po delovima** (od 22.09.2026). `DictateApp` u `dictate/app.py`
 drži samo pokretanje, stanje, tajmer i traku menija, a ostalo nasleđuje od
 klasa u zasebnim fajlovima: `snimanje.py` (start, stop, osigurač, sesija, izbor
-servisa), `tok_google.py`, `tok_openai.py`, `tok_gemini.py` (po jedan tok
-snimanja za svaki servis), `upis.py` (redosled i upis), `obrada.py` (pravila i
-AI), `prozor_akcije.py`, `prepis_sacuvanog.py`, `azuriranje_ui.py`. Stanje
-(`self.cfg`, katanci, redovi) i dalje pravi samo `DictateApp.__init__`. Nov
+servisa, provera govora), `tok_google.py`, `tok_openai.py`, `tok_gemini.py`
+(po jedan tok snimanja za svaki servis), `obrada.py` (pravila i AI),
+`prozor_akcije.py`, `prepis_sacuvanog.py`, `azuriranje_ui.py`. Njihovo stanje
+pravi `DictateApp.__init__`.
+
+**Upis je izuzetak: `upis.RedUpisa` drži svoje stanje sam** (red, tiketi,
+brojači, istorija) i koristi se samo kroz `novi_tiket`, `predaj`, `predaj_deo`,
+`na_cekanju`, `zapamti`, `istorija`. Ranije su ti brojači bili zajednički sa
+celim `DictateApp`-om, pa je odluka o rezervnom snimku u sesiji mogla tiho da
+promeni tekst koji ide u upis (greška od 22.09.2026, tekst nije stizao u
+polje). Isto važi za AI obradu: `obrada.CekanjeObrade` drži delove diktata
+koji čekaju model (po sesiji) i broj obrada u toku (`dodaj`, `uzmi`, `sesije`,
+`pocni`, `zavrsi`, `radi`). `tests/test_upis.py` testira red bez ostatka
+aplikacije. Nov
 servis dobija svoj `tok_*.py` i jednu granu u `Snimanje._transcribe` i
 `_recognize`, ne novu granu usred tuđeg toka. Stari padajući meni (rumps
 stavke, ~500 linija) je uklonjen: od kada klik na ikonicu otvara Podešavanja,

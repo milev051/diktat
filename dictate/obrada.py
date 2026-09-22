@@ -10,6 +10,48 @@ from . import abbrev, config, insert, polish, webstt
 from .pomoc import _label
 
 
+class CekanjeObrade:
+    """Stanje AI obrade: delovi diktata koji cekaju model i obrade u toku.
+
+    Drzi ga samo ova klasa, kao sto `upis.RedUpisa` drzi svoje; ostatak
+    aplikacije ga koristi kroz metode ispod. Delovi se drze PO SESIJI: nov
+    diktat sme da pocne dok se prethodni obradjuje, pa bi u zajednickoj kanti
+    dva diktata zavrsila u jednom pozivu i zalepila se spojena.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._delovi: dict[int, list[str]] = {}
+        self._u_toku = 0
+
+    def dodaj(self, sesija: int, tekst: str):
+        with self._lock:
+            self._delovi.setdefault(sesija, []).append(tekst)
+
+    def sesije(self) -> list[int]:
+        with self._lock:
+            return list(self._delovi)
+
+    def uzmi(self, sesija: int) -> str:
+        """Ceo tekst sesije, i sesija vise ne ceka."""
+        with self._lock:
+            delovi = self._delovi.pop(sesija, [])
+        return " ".join(d for d in delovi if d).strip()
+
+    def pocni(self):
+        with self._lock:
+            self._u_toku += 1
+
+    def zavrsi(self):
+        with self._lock:
+            self._u_toku = max(0, self._u_toku - 1)
+
+    def radi(self) -> bool:
+        """Ceka li se trenutno model (plava boja u traci menija)."""
+        with self._lock:
+            return self._u_toku > 0
+
+
 class Obrada:
     """Deo DictateApp-a; stanje drzi DictateApp.__init__."""
 
@@ -118,14 +160,10 @@ class Obrada:
         with self._session_lock:
             aktivna = self._recorder.session if self._recorder is not None else None
         for sesija in self._zavrsene(aktivna):
-            with self._formal_lock:
-                delovi = self._formal_parts.pop(sesija, [])
-            tekst = " ".join(d for d in delovi if d).strip()
+            tekst = self.ceka_obradu.uzmi(sesija)
             if not tekst:
                 continue
-            with self._count_lock:
-                self._polishing_count += 1
-                self._polishing = True
+            self.ceka_obradu.pocni()
             self.state.set(phase="polishing", message="")
             threading.Thread(
                 target=self._do_polish, args=(sesija, tekst), daemon=True
@@ -133,13 +171,19 @@ class Obrada:
 
     def _zavrsene(self, aktivna):
         """Sesije kojima je i zvuk i prepoznavanje gotovo."""
-        with self._formal_lock:
-            kandidati = list(self._formal_parts)
-        with self._count_lock:
-            return [
-                s for s in kandidati
-                if s != aktivna and self._pending_by.get(s, 0) == 0
-            ]
+        return [
+            s for s in self.ceka_obradu.sesije()
+            if s != aktivna and self.upis.na_cekanju_sesije(s) == 0
+        ]
+
+    def _za_obradu(self, sesija: int, tekst: str):
+        """Red za upis predaje deo diktata koji ceka AI obradu na kraju."""
+        self.ceka_obradu.dodaj(sesija, tekst)
+
+    def _posle_upisa(self):
+        """Posle svakog prolaza reda: mozda je neki diktat ceo, i prikaz."""
+        self._maybe_polish()
+        self._settle_phase()
 
     def _do_polish(self, sesija: int, tekst: str):
         # Tekst je cekao kraj diktata pa je jos sirov: ako model ne doteruje,
@@ -148,9 +192,7 @@ class Obrada:
             self._doteraj(tekst, session=sesija) if self._formal()
             else self._rules_over_paragraphs(tekst)
         )
-        with self._count_lock:
-            self._polishing_count = max(0, self._polishing_count - 1)
-            self._polishing = self._polishing_count > 0
+        self.ceka_obradu.zavrsi()
         # Uz tacke ide nov red, a uz podelu na pasuse dva nova reda: sledeci
         # diktat tako ne moze da se zalepi za poslednji pasus.
         if self.cfg.get("polish_bullets", False):
@@ -162,7 +204,7 @@ class Obrada:
         debug_session = self._debug_sessions.pop(sesija, None)
         if debug_session is not None:
             debug_session.final(doteran)
-        self._remember(doteran)
+        self.upis.zapamti(doteran)
         try:
             insert.insert(
                 doteran,
@@ -173,10 +215,10 @@ class Obrada:
             traceback.print_exc()
         self._settle_phase()
 
-    def _doteraj(self, tekst: str, vec_sredjeno=False, session=None) -> str:
-        prompt = polish._uputstvo(self.cfg, vec_sredjeno) if self._dump else ""
+    def _doteraj(self, tekst: str, session=None) -> str:
+        prompt = polish._uputstvo(self.cfg) if self._dump else ""
         try:
-            doteran = polish.polish(tekst, self.cfg, vec_sredjeno=vec_sredjeno)
+            doteran = polish.polish(tekst, self.cfg)
             self._count_polish()
             if polish.tidy_on(self.cfg):
                 # Uz sredjivanje ostaju samo podesavanja koja se sa njim ne

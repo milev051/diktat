@@ -1,94 +1,143 @@
 """Upis teksta u aktivno polje, strogo po redosledu snimanja, i istorija.
+
+`RedUpisa` drzi SVE svoje stanje sam: red, tikete, brojace i istoriju. Ostatak
+aplikacije ga koristi samo kroz metode ispod i nikad ne dira njegove
+promenljive. Ranije je to stanje bilo zajednicko sa celim DictateApp-om, pa je
+greska u jednom delu tiho menjala tekst koji ide u drugi.
+
+Redosled: prepoznavanja teku paralelno i mogu da se zavrse van reda (kratak
+drugi snimak lako stigne pre dugog prvog). Zato svaki deo dobije tiket u
+trenutku kad se njegov ZVUK zavrsi, a upis ceka na red po tiketu.
 """
 
+import queue
+import threading
 import traceback
 from collections import deque
 
-from . import config, insert
+VELICINA_ISTORIJE = 5
 
 
-class Upis:
-    """Deo DictateApp-a; stanje drzi DictateApp.__init__."""
+class RedUpisa:
+    """Red za upis sa tiketima; radi u svojoj niti.
 
-    def _next_ticket(self, session: int) -> int:
-        """Redni broj za ubacivanje.
+    upisi(tekst)            upise gotov tekst u aktivno polje
+    upisi_deo(tekst)        upise potvrdjenu celinu dok diktat jos traje
+    ceka_celinu()           True kad AI obrada ceka kraj diktata
+    za_obradu(sesija, t)    preda deo teksta AI obradi umesto upisa
+    posle()                 zove se posle svake obrade reda (glavni tok)
+    """
 
-        Dodeljuje se u trenutku kad se AUDIO tog segmenta zavrsi, ne kad se
-        prepoznavanje zavrsi. Posto mikrofon moze da snima samo jedno po jedno,
-        taj redosled je uvek hronoloski — pa tekst stigne onako kako si govorio.
+    def __init__(self, upisi, upisi_deo, ceka_celinu, za_obradu, posle):
+        self._upisi = upisi
+        self._upisi_deo = upisi_deo
+        self._ceka_celinu = ceka_celinu
+        self._za_obradu = za_obradu
+        self._posle = posle
+        self._red: queue.Queue = queue.Queue()
+        self._lock = threading.Lock()
+        self._tiket = 0
+        self._na_cekanju = 0
+        self._po_sesiji: dict[int, int] = {}
+        self._istorija: list[str] = []
+        self._istorija_promenjena = True
+
+    # ------------------------------------------------------------ tiketi
+
+    def novi_tiket(self, sesija: int) -> int:
+        """Redni broj za upis.
+
+        Dodeljuje se kad se ZVUK tog dela zavrsi, ne kad se prepoznavanje
+        zavrsi. Mikrofon snima jedno po jedno, pa je taj redosled hronoloski.
+        Svaki tiket mora da se preda tacno jednom (`predaj`), inace red stane.
         """
-        with self._count_lock:
-            self._ticket += 1
-            self._pending += 1
-            self._pending_by[session] = self._pending_by.get(session, 0) + 1
-            return self._ticket
+        with self._lock:
+            self._tiket += 1
+            self._na_cekanju += 1
+            self._po_sesiji[sesija] = self._po_sesiji.get(sesija, 0) + 1
+            return self._tiket
 
-    def _deliver(self, ticket: int, text: str, session: int):
-        self._insert_q.put((ticket, text, session, False))
+    def predaj(self, tiket: int, tekst: str, sesija: int):
+        """Gotov tekst za tiket; prazan tekst samo pomera red."""
+        self._red.put((tiket, tekst, sesija, False))
 
-    def _deliver_live_part(self, ticket: int, text: str, session: int):
-        if text.strip():
-            self._insert_q.put((ticket, text, session, True))
+    def predaj_deo(self, tiket: int, tekst: str, sesija: int):
+        """Potvrdjena celina dok diktat traje; tiket ostaje otvoren."""
+        if tekst.strip():
+            self._red.put((tiket, tekst, sesija, True))
 
-    def _insert_worker(self):
-        """Lepi tekst strogo po redosledu snimanja.
+    def na_cekanju(self) -> int:
+        """Koliko delova se jos prepoznaje."""
+        with self._lock:
+            return self._na_cekanju
 
-        Prepoznavanja teku paralelno i mogu da se zavrse van reda — kratak
-        drugi snimak lako stigne pre dugog prvog. Ovde se ceka na red.
-        """
-        buffered = {}
-        expected = 1
-        while True:
-            seq, text, sesija, partial = self._insert_q.get()
-            buffered.setdefault(seq, deque()).append((text, sesija, partial))
-            while expected in buffered:
-                events = buffered[expected]
-                if not events:
-                    break
-                ready, cija, is_partial = events.popleft()
-                if is_partial:
-                    try:
-                        insert.insert_live(ready)
-                    except Exception:  # noqa: BLE001
-                        traceback.print_exc()
-                    continue
-                del buffered[expected]
-                expected += 1
-                with self._count_lock:
-                    if self._pending > 0:
-                        self._pending -= 1
-                    if self._pending_by.get(cija, 0) > 0:
-                        self._pending_by[cija] -= 1
-                if ready and self._deferred():
-                    # Ceka se ceo diktat: model treba da vidi pun kontekst.
-                    with self._formal_lock:
-                        self._formal_parts.setdefault(cija, []).append(ready.strip())
-                elif ready:
-                    self._remember(ready)
-                    try:
-                        insert.insert(
-                            ready,
-                            method=self.cfg.get("insert_method", "auto"),
-                            restore_clipboard=self.cfg.get("restore_clipboard", True),
-                        )
-                    except Exception:  # noqa: BLE001
-                        traceback.print_exc()
-            self._maybe_polish()
-            self._settle_phase()
+    def na_cekanju_sesije(self, sesija: int) -> int:
+        with self._lock:
+            return self._po_sesiji.get(sesija, 0)
 
-    def _remember(self, text: str):
-        """Zapamti ubacen tekst. Zove se iz radne niti, pa meni ne dira —
-        samo podigne zastavicu koju _tick pokupi na glavnoj niti."""
-        clean = text.strip()
-        if not clean:
+    # ------------------------------------------------------------ istorija
+
+    def zapamti(self, tekst: str):
+        """Poslednjih pet diktata, najnoviji prvi, bez ponavljanja."""
+        cist = tekst.strip()
+        if not cist:
             return
-        # Istorija je namerno kratka da meni ostane pregledan. Stari config.json
-        # Istorija je kratka, ali ista na desktopu i telefonu.
-        size = max(1, min(int(self.cfg.get("history_size", 5)), 5))
-        with self._hist_lock:
-            if clean in self._history:
-                self._history.remove(clean)
-            self._history.insert(0, clean)
-            del self._history[size:]
-        config.save(self.cfg)
-        self._history_dirty = True
+        with self._lock:
+            if cist in self._istorija:
+                self._istorija.remove(cist)
+            self._istorija.insert(0, cist)
+            del self._istorija[VELICINA_ISTORIJE:]
+            self._istorija_promenjena = True
+
+    def istorija(self) -> list[str]:
+        with self._lock:
+            return list(self._istorija)
+
+    def istorija_promenjena(self) -> bool:
+        """Da li je istorija menjana od prethodnog pitanja (pa prozor da se osvezi)."""
+        with self._lock:
+            bilo = self._istorija_promenjena
+            self._istorija_promenjena = False
+            return bilo
+
+    # ------------------------------------------------------------ nit
+
+    def pokreni(self):
+        threading.Thread(target=self._radi, name="diktat-upis", daemon=True).start()
+
+    def _radi(self):
+        zadrzano: dict[int, deque] = {}
+        sledeci = 1
+        while True:
+            tiket, tekst, sesija, deo = self._red.get()
+            zadrzano.setdefault(tiket, deque()).append((tekst, sesija, deo))
+            while sledeci in zadrzano:
+                dogadjaji = zadrzano[sledeci]
+                if not dogadjaji:
+                    break
+                gotov, cija, je_deo = dogadjaji.popleft()
+                if je_deo:
+                    self._bezbedno(self._upisi_deo, gotov)
+                    continue
+                del zadrzano[sledeci]
+                sledeci += 1
+                with self._lock:
+                    if self._na_cekanju > 0:
+                        self._na_cekanju -= 1
+                    if self._po_sesiji.get(cija, 0) > 0:
+                        self._po_sesiji[cija] -= 1
+                if gotov and self._ceka_celinu():
+                    # AI obrada treba da vidi ceo diktat.
+                    self._za_obradu(cija, gotov.strip())
+                elif gotov:
+                    self.zapamti(gotov)
+                    self._bezbedno(self._upisi, gotov)
+            self._bezbedno(self._posle)
+
+    @staticmethod
+    def _bezbedno(posao, *args):
+        # Jedan pokvaren upis ne sme da zaustavi red za sve sledece diktate.
+        try:
+            posao(*args)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()

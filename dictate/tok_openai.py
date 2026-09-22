@@ -13,9 +13,9 @@ class OpenAiTok:
     def _transcribe_whole(self, recorder, oznaka="ceo"):
         """Snimi CEO diktat u privremeni fajl i posalji ga tek posle Stop-a.
 
-        Koriste ga izvori kojima se salje ceo diktat odjednom: OpenAI i Gemini
-        Transcribe Live. Model tako vidi celinu umesto krhotina odsecenih na
-        pauzama — isti razlog iz kog formalni rezim zove model jednom, na kraju.
+        Model tako vidi celinu umesto krhotina odsecenih na pauzama, isto kao
+        sto AI obrada zove model jednom, na kraju. (Gemini ima svoj tok koji
+        salje zvuk dok snimas, tok_gemini.py.)
 
         Privremeni disk sprecava da dugacak neprekidan diktat sve vreme raste u
         memoriji; sat vremena je preko 100 MB.
