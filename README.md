@@ -110,29 +110,61 @@ audio-proveru i nije isto što i ovaj izbor.
 ## Instalacija
 
 ```bash
-./setup.sh          # venv + zavisnosti + config.json
-./make_app.sh       # pravi Diktat.app (preporučeno, vidi 'Dozvole')
-./run.sh doctor     # provera
+./setup.sh              # venv + zavisnosti + config.json
+./make_app.sh install   # ikona u Launchpad-u, pokretanje bez terminala
+./run.sh doctor         # provera
 ```
 
-To je sve. Pokreni `Diktat.app` i radi.
+Posle toga se Diktat otvara kao i svaka druga aplikacija: iz **Launchpad-a**,
+iz **Spotlight-a** (cmd+razmak pa „Diktat") ili iz Finder-a, folder
+**Applications**. Terminal više nije potreban ni za pokretanje ni za rad.
+Ikonica je u traci menija, bez prozora i bez stavke u Dock-u.
+
+`./make_app.sh` bez `install` pravi samo `Diktat.app` u ovom folderu, za rad
+na kodu.
+
+### Šta radi `install`
+
+Kopira kod i Python okruženje u `~/Library/Application Support/Diktat` i pravi
+`/Applications/Diktat.app` koji ih pokreće.
+
+**Zašto kopija, a ne pokretanje odavde:** macOS aplikaciji pokrenutoj iz
+Launchpad-a tiho zabranjuje čitanje foldera Desktop, Documents i Downloads.
+Projekat stoji na Desktopu, pa je aplikacija pucala na prvom redu, bez ijednog
+pitanja korisniku, i bez ičega u logu osim `PermissionError` na
+`.venv/pyvenv.cfg`. U Application Support te zabrane ne važe.
+
+Zbog toga **posle svake izmene koda ide `./make_app.sh install` ponovo**,
+inače instalirana aplikacija ostaje na starom. Podešavanja i ključevi
+(`config.json`) se pri tome prenose i ne gube se.
+
+Ako nešto krene naopako, aplikacija javi prozorčićem, a ceo ispis stoji u
+`~/Library/Logs/Diktat.log`.
+
+Ikona se crta iz koda (`ikona.py`), pa u repozitorijumu ne stoji binarni fajl.
 
 ---
 
 ## Dozvole
 
-macOS traži dve. Ako si napravio `Diktat.app`, pokreni ga dvoklikom pa odobri:
+macOS traži dve. Pokreni Diktat jednom, pa odobri:
 
 | Dozvola | Gde | Čemu služi |
 |---|---|---|
 | **Microphone** | System Settings → Privacy & Security → Microphone | snimanje govora |
 | **Accessibility** | System Settings → Privacy & Security → Accessibility | čitanje desnog Option-a i lepljenje |
 
+Posle instalacije se dozvole traže za **Diktat**, ne za Terminal. Ako je
+aplikacija ranije bila odobrena kao Terminal, obe stavke treba dodati iznova,
+sada na ime Diktat.
+
 **Zašto `.app` a ne `./run.sh`:** iz terminala macOS veže dozvole za Terminal,
 pa ti hotkey pukne čim promeniš terminal ili ga apdejtuješ. `Diktat.app` je
-potpisan i ima svoj identitet, pa dozvole drže.
+potpisan i ima svoj identitet, pa dozvole drže. Pošto se bundle pri ponovnoj
+instalaciji ne menja (kod stoji izvan njega), jednom date dozvole ostaju.
 
-Autostart: System Settings → General → Login Items → `+` → `Diktat.app`.
+Autostart: System Settings → General → Login Items → `+` → `Diktat.app`
+(uzmi onaj iz foldera Applications).
 
 ---
 
@@ -491,5 +523,6 @@ dictate/
 doctor.py      dijagnostika
 selftest.py    snimi 5s i ispiši šta je čuo
 run.py         ulazna tačka
-make_app.sh    pravi Diktat.app
+ikona.py       crta ikonu aplikacije (poziva je make_app.sh)
+make_app.sh    pravi Diktat.app; `install` ga stavlja u /Applications
 ```

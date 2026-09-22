@@ -392,6 +392,28 @@ ništa.
 servis koje jezike zna; bez odgovora pretpostavi engleski i odbije srpski.
 Gboard to ne pita.
 
+**macOS: aplikacija pokrenuta iz Launchpad-a ne sme da čita ~/Desktop.** TCC
+to zabranjuje tiho, bez ijednog pitanja korisniku: proces pukne na prvom
+`open()` sa `PermissionError`, a pošto nema terminala, ispis ne vidi niko.
+Mereno 22.09.2026. na `.venv/pyvenv.cfg`. Dodavanje `NSDesktopFolderUsage‐
+Description` u `Info.plist` ne pomaže, jer TCC gleda Python koji se pokreće, a
+ne bundle. Zato `make_app.sh install` prepisuje kod i okruženje u
+`~/Library/Application Support/Diktat`, gde zabrane ne važe. Isto važi za
+Documents i Downloads.
+
+**macOS: bundle se posle `codesign` ne sme dirati.** Jedan `touch` nad
+`.app` folderom obori potpis, a macOS tada ubije Python koji aplikacija
+pokrene, opet bez ijedne linije u logu. Ako treba osvežiti ikonu u Finder-u,
+koristi `lsregister -u` pa `-f`, ne `touch`.
+
+**Provera „da li već radi" ne sme da se osloni samo na `pgrep -f run.py`.**
+Taj obrazac hvata svaku komandu kojoj se `run.py` nađe u komandnoj liniji,
+uključujući `grep`, `pgrep` i editor otvoren u istom folderu. Aplikacija tada
+tiho odustane od pokretanja, što izgleda kao da `open` ne radi. Traži se i da
+je proces baš Python (`ps -o comm=`), pa tek onda radna putanja. Ovo je
+pojelo pola sata traženja greške na pogrešnom mestu (Gatekeeper, Launch
+Services), jer je sama test komanda obarala proveru.
+
 **Boja u menu baru ide preko `nsstatusitem.button().setAttributedTitle_`**, jer
 `rumps.title` ne ume boju. Font mora biti `monospacedDigit` — inače se širina
 naslova menja svake sekunde i ostale ikonice poskakuju.
