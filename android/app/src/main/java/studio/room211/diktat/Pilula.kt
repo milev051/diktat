@@ -8,6 +8,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -31,7 +32,7 @@ class Pilula(
     private val windows = context.getSystemService(WindowManager::class.java)
     private var pill: View? = null
     private var pillCounter: TextView? = null
-    private var pillToggle: TextView? = null
+    private var pillToggle: ImageView? = null
     private var pillPreview: TextView? = null
 
     /** Prikazi pilulu; vraca false ako nema dozvolu za prikaz preko drugih aplikacija. */
@@ -54,17 +55,16 @@ class Pilula(
         // Dugme za „pravilno", LEVO od brojaca. Menja sva cetiri prekidaca za
         // izgled teksta odjednom i to stanje OSTAJE za sledeci diktat.
         //
-        // Sam natpis nosi stanje: „Aa" znaci pravopisno, „aa" znaci kako si
-        // izgovorio. Ikonica bi ovde bila gora — pilula je siroka par
-        // centimetara i gleda se krajickom oka usred diktata, pa dva slova
-        // kazu vise nego bilo koji simbol.
-        val prekidac = TextView(context).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            gravity = Gravity.CENTER
+        // Ikonica „spellcheck" (slovo A sa kvacicom) umesto ranijih slova
+        // „Aa/aa", na izricit zahtev od 22.09.2026. Stanje nosi boja: bela
+        // pozadina znaci pravopisno, tamna znaci kako si izgovorio.
+        val prekidac = ImageView(context).apply {
+            setImageResource(R.drawable.ikona_pravilno)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             // Sirok dodir: prst ide na dugme dok govoris, ne gledajuci.
-            minWidth = dp(46)
-            minHeight = dp(44)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minimumWidth = dp(46)
+            minimumHeight = dp(44)
+            setPadding(dp(11), dp(10), dp(11), dp(10))
             isClickable = true
             setOnClickListener { togglePravilno() }
         }
@@ -156,8 +156,8 @@ class Pilula(
     private fun updateToggle() {
         val dugme = pillToggle ?: return
         val ukljuceno = cfg.pravilno
-        dugme.text = if (ukljuceno) "Aa" else "aa"
-        dugme.setTextColor(if (ukljuceno) Color.parseColor("#10331C") else Color.WHITE)
+        dugme.setColorFilter(if (ukljuceno) Color.parseColor("#10331C") else Color.WHITE)
+        dugme.contentDescription = if (ukljuceno) "Pravopisno: uključeno" else "Pravopisno: isključeno"
         dugme.background = GradientDrawable().apply {
             cornerRadius = dp(22).toFloat()
             setColor(Color.parseColor(if (ukljuceno) "#FFFFFF" else "#33000000"))

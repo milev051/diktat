@@ -231,11 +231,15 @@ class MainActivity : AppCompatActivity() {
                 { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) },
             )
         }
+        // Samsung tastatura za mikrofon prihvata samo Google-ove pakete
+        // (`com.google.android…`), pa Diktat tamo ne moze; Gboard pita sistem
+        // koja je glasovna tastatura izabrana i poštuje izbor (22.09.2026).
         spisak += Provera(
-            "Mikrofon na tastaturi (Voice input)",
-            "zamena za bočni taster, radi i bez Pristupačnosti",
-            { jeNas(secure("voice_recognition_service")) },
-            { openAny(Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_INPUT_METHOD_SETTINGS) },
+            "Mikrofon na Gboard tastaturi",
+            "uključi „Diktat glasovni unos“ u listi tastatura; mikrofon na " +
+                "Gboard-u tada koristi Diktat. Samsung tastatura to ne dozvoljava.",
+            { jeNas(secure("enabled_input_methods")) },
+            { openAny(Settings.ACTION_INPUT_METHOD_SETTINGS) },
             obavezna = false,
         )
         return spisak

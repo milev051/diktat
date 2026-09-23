@@ -101,6 +101,22 @@
                 android:resource="@xml/recognition_service" />
         </service>
 
+        <!-- Glasovna tastatura, kao Google Voice Typing: Samsung tastatura je
+             nudi pod „Voice input", pa mikrofon na tastaturi ne zavisi od
+             Google aplikacije. -->
+        <service
+            android:name=".GlasovnaTastatura"
+            android:exported="true"
+            android:label="@string/glasovna_tastatura"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/glasovna_tastatura" />
+        </service>
+
         <!-- Odgovara tastaturi koje jezike podrzavamo. Bez ovoga Samsung
              tastatura pretpostavi engleski i odbije srpski. -->
         <receiver

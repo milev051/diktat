@@ -155,11 +155,25 @@ Samsungu zakopana.
 Bez trećeg tekst i dalje radi, ali završi u clipboard-u pa ga lepiš ručno.
 Ekran aplikacije jasno kaže da li je Pristupačnost uključena.
 
-**Za mikrofon na tastaturi:** *Voice input* → izaberi Diktat.
+**Za mikrofon na tastaturi (Gboard):** Podešavanja → Opšte upravljanje →
+Lista tastatura → uključi **„Diktat glasovni unos"**. Diktat je glasovna
+tastatura, prijavljena isto kao Google Voice Typing (podtip
+`imeSubtypeMode="voice"`, `isAuxiliary`). Na Gboard mikrofonu se otvori tamni
+panel Diktata: sluša, na dodir upiše tekst u polje (bez Pristupačnosti) i
+vrati Gboard. Radi i bez Google aplikacije. Otvara se i iz sistemskog
+prebacivača tastatura (dugme u navigacionoj traci).
+
+**Samsung tastatura to ne dozvoljava.** Njen „Voice input" ima fiksno samo
+Samsung i Google: u kodu tastature traži se uključena tastatura iz paketa
+koji počinje sa `com.google.android` (provereno 22.09.2026, isto piše i u
+dokumentaciji FUTO Voice Input-a). Kad takve nema, sakrije dugme za glas.
+Dok je Samsung tastatura otvorena, ona presreće i bočni taster za svoj
+glasovni unos, pa uz „Voice input: None" bočni taster javi „diktiranje nije
+podržano" umesto da pokrene Diktat. Sa Gboard-om oba puta rade.
 
 Da li tastatura zaista zove nas ili Google-a, proverava se za dve sekunde:
-reci **„ne znam"**. Ako ispiše `nzm` — naš servis radi. Ako ispiše `Ne znam`
-— tastatura koristi svoje prepoznavanje i ignoriše sistemski izbor.
+reci **„ne znam"**. Ako ispiše `nzm`, radi Diktat. Ako ispiše `Ne znam`,
+tastatura koristi svoje prepoznavanje.
 
 Samsung tastatura pita servis koje jezike podržava (`GET_LANGUAGE_DETAILS`).
 Bez odgovora pretpostavi engleski i odbije srpski, pa `LanguageDetailsReceiver`
@@ -466,9 +480,12 @@ na tamnom telefonu bilo najuočljivije. Podešavanja su grupisana u kartice.
 app/src/main/java/studio/room211/diktat/
   MainActivity.kt        podešavanja i prečice do sistemskih ekrana
   AssistActivity.kt      okidač sa bočnog tastera (providan, odmah se zatvara)
-  DictationService.kt    snimanje, tajmer preko ekrana, isporuka teksta
+  DictationService.kt    snimanje i isporuka teksta (bočni taster)
+  Pilula.kt              pilula preko ekrana: ikonica „pravilno", brojač, pregled
   InsertService.kt       upis u polje u kome je kursor (Pristupačnost)
-  SttService.kt          put A — mikrofon na postojećoj tastaturi
+  SttService.kt          sistemski servis za prepoznavanje govora
+  GlasovnaTastatura.kt   glasovna tastatura (mikrofon na Gboard-u)
+  Prepoznaj.kt           zajedničko prepoznavanje za oba puta preko tastature
   TileService.kt         rezervni okidač
   Recorder.kt            mikrofon → 16 kHz PCM
   WebStt.kt              endpoint i parsiranje odgovora

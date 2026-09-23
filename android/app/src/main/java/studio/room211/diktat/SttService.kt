@@ -71,15 +71,7 @@ class SttService : RecognitionService() {
         listener.endOfSpeech()
         thread {
             try {
-                val text = if (GeminiStt.enabled(cfg)) {
-                    GeminiStt.postProcess(GeminiStt.recognize(pcm, cfg), cfg)
-                } else if (cfg.transcriptionProvider == "openai") {
-                    OpenAiTranscription.postProcess(
-                        OpenAiTranscription.recognize(pcm, cfg), cfg,
-                    )
-                } else {
-                    TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)
-                }
+                val text = Prepoznaj.tekst(pcm, cfg)
                 if (text.isBlank()) {
                     listener.error(SpeechRecognizer.ERROR_NO_MATCH)
                     return@thread

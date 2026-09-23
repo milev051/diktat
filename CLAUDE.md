@@ -37,6 +37,21 @@ tajmer i pilula nikad ne pokazuju različito. Provereno na SM-S911B preko
 i isključuje diktat; telefon mora biti otključan, a tekst se upisuje samo kad
 postoji polje za unos.
 
+**Android: Samsung tastatura ne prima tuđi glasovni unos.** U njenom kodu
+(`ng.a.b`, Honeyboard) mikrofon traži uključenu tastaturu iz paketa koji
+počinje sa `com.google.android` i ima pomoćni podtip; ako je nema, sakrije
+dugme. Dok je otvorena, presreće i bočni taster za svoj glasovni unos. Zato
+Diktat ima `GlasovnaTastatura` (podtip `voice` + `isAuxiliary`, kao Google
+Voice Typing), koja radi sa Gboard-om i iz sistemskog prebacivača tastatura,
+ali ne sa Samsung tastaturom. Ne pokušavaj ponovo preko drugačije
+registracije; jedino zaobilaženje bi bilo ime paketa `com.google.android…`,
+što je predstavljanje kao Google i odbačeno je. Ne isključuj Google-ovu
+glasovnu tastaturu radi probe: Samsung tada sakrije dugme za glas.
+
+**Android: dugme „pravilno" na piluli je ikonica** (`ikona_pravilno.xml`,
+Material Symbols „spellcheck" sa Iconify-ja), na izričit zahtev od
+22.09.2026, umesto ranijih slova „Aa/aa". Stanje nosi boja kruga.
+
 ---
 
 ## Pravila koja se ne smeju prekršiti

@@ -569,14 +569,7 @@ class DictationService : Service() {
      * pilula mogla da pokazuje jednu granicu dok se snimanje seklo na drugoj.
      * Sada je na jednom mestu.
      */
-    private fun limitSeconds(): Int = Granica.sekundi(
-        provider = cfg.transcriptionProvider,
-        dugoSnimanje = cfg.longRecording,
-        geminiLive = cfg.geminiLiveMaxSeconds,
-        openAi = cfg.openAiMaxSeconds,
-        neprekidno = cfg.continuousMaxSeconds,
-        kratko = cfg.maxSeconds,
-    )
+    private fun limitSeconds(): Int = Prepoznaj.granica(cfg)
 
     private fun tick() {
         if (!isRecording) return

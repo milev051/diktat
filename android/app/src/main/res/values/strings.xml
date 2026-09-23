@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Diktat</string>
     <string name="insert_service_description">Upisuje prepoznat tekst u polje u kome je kursor. Bez ovoga tekst završi u clipboard-u.</string>
+    <string name="glasovna_tastatura">Diktat glasovni unos</string>
 </resources>
