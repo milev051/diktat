@@ -12,6 +12,7 @@ u svom fajlu, a DictateApp ih nasledjuje:
   prozor_akcije.py     sta rade dugmad i prekidaci u Podesavanjima
   prepis_sacuvanog.py  Prepisi / Obrisi za sacuvane snimke
   azuriranje_ui.py     dugme i provera azuriranja
+  zvuk.py              utisan racunar i pauziran plejer dok se snima
 
 Niti:
   glavna       rumps / AppKit petlja + tajmer koji 20 puta u sekundi osvezava
@@ -33,7 +34,7 @@ from Foundation import NSAttributedString
 
 from . import (
     audio, config, debugdump, geministt, hotkey, insert, obrada, overlay,
-    rezerva, settings_window,
+    rezerva, settings_window, zvuk,
 )
 from .snimanje import Snimanje
 from .tok_google import GoogleTok
@@ -166,6 +167,11 @@ class DictateApp(
         self._api_check_result = None
         self._api_check_running = False
         self._settings_window_ui = None
+        # Sta je Diktat utisao ili pauzirao, da posle snimanja vrati samo to.
+        self.tisina = zvuk.Tisina()
+        # Aplikacija koja je bila ispred pre otvaranja prozora; u nju se lepi
+        # tekst kliknut u istoriji.
+        self._pre_prozora = None
         # Azuriranje: radna nit samo upisuje stanje i dize `_azur_dirty`, a
         # prozor i naslov osvezava `_tick` sa glavne niti.
         self._azur_izdanje = None
@@ -440,6 +446,8 @@ class DictateApp(
         )
 
     def _quit(self, _):
+        # Racunar ne sme da ostane utisan zato sto je Diktat ugasen usred snimanja.
+        self.tisina.vrati_odmah()
         try:
             self.listener.stop()
         finally:

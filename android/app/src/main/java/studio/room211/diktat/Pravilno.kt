@@ -10,16 +10,19 @@ package studio.room211.diktat
  */
 object Pravilno {
 
-    /** Cetiri prekidaca; svaki UDALJAVA tekst od pravopisa. */
+    /** Prekidaci pravila; svaki UDALJAVA tekst od pravopisa. */
     data class Stanje(
         val malaSlova: Boolean,
         val bezInterpunkcije: Boolean,
         val bezKvacica: Boolean,
         val skracenice: Boolean,
+        /** Tacke postaju zarezi; vazi samo dok je `bezInterpunkcije` ugasen. */
+        val samoZarezi: Boolean = false,
     ) {
-        /** „Pravilno" znaci: sva cetiri ugasena. */
+        /** „Pravilno" znaci: svi ugaseni. */
         val pravilno: Boolean
-            get() = !malaSlova && !bezInterpunkcije && !bezKvacica && !skracenice
+            get() = !malaSlova && !bezInterpunkcije && !bezKvacica && !skracenice &&
+                !samoZarezi
     }
 
     val PODRAZUMEVANO = Stanje(
@@ -27,9 +30,10 @@ object Pravilno {
         bezInterpunkcije = true,
         bezKvacica = false,      // kvacice se podrazumevano ZADRZAVAJU
         skracenice = true,
+        samoZarezi = false,
     )
 
-    val SVE_UGASENO = Stanje(false, false, false, false)
+    val SVE_UGASENO = Stanje(false, false, false, false, false)
 
     /**
      * Sta postaviti kad se „pravilno" gasi.

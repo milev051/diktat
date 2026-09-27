@@ -19,8 +19,8 @@ object TextPolish {
         // izgube pri kopiranju izmedju alata, a onda pravilo tiho oslabi.
         """(?<!\d)[.,:]""" +                                 // tacka/zarez/dvotacka bez cifre ispred
             """|[.,:](?!\d)""" +                             // ili bez cifre iza
-            // Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
-            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]""" +
+            // Apostrof (' i \u2019) NIJE ovde: on je deo reci, vidi `bezNavodnika`.
+            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D"\u2018\u201A\u2039\u203A()\[\]{}]""" +
             """|(?<!\w)[-\u2013\u2014/]|[-\u2013\u2014/](?!\w)""" +
             """|[#&*+<=>@\\^_`|~]"""
     )
@@ -29,7 +29,7 @@ object TextPolish {
     private val PUNCT_EXCEPT_COMMA = Regex(
         """(?<!\d)[.:]""" +
             """|[.:](?!\d)""" +
-            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]""" +
+            """|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"\u2018\u201A\u2039\u203A()\[\]{}]""" +
             """|(?<!\w)[-\u2013\u2014/]|[-\u2013\u2014/](?!\w)""" +
             """|[#&*+<=>@\\^_`|~]"""
     )
@@ -70,8 +70,21 @@ object TextPolish {
     // „rec, rec", a ne „rec rec".
     private val GLUE_COMMA = Regex("""(?<=\p{L}),+(?=\p{L})""")
 
+    // Apostrof je deo reci („je l'", „ć'š", „'ajde") i ostaje. Brisu se samo
+    // jednostruki navodnici u paru oko reci („'ovako'", „‘ovako’") i apostrof
+    // koji stoji sam. Slovo je napisano kao \p{L}\p{N}, jer `\w` na JVM-u ne
+    // vidi „ć". Isto kao `_bez_navodnika` u dictate/webstt.py.
+    private const val REC = """[\p{L}\p{N}_]"""
+    private val NAVODNICI = Regex(
+        """(?<!$REC)['\u2018\u201A](?=$REC)([^'\u2018\u2019\u201A]*?$REC)['\u2019](?!$REC)"""
+    )
+    private val SAM_APOSTROF = Regex("""(?<!$REC)['\u2019](?!$REC)""")
+
+    private fun bezNavodnika(text: String): String =
+        SAM_APOSTROF.replace(NAVODNICI.replace(text, "$1"), "")
+
     fun stripPunctuation(text: String, keepCommas: Boolean = false): String {
-        var razdvojen = GLUE.replace(text, " ")
+        var razdvojen = GLUE.replace(bezNavodnika(text), " ")
         razdvojen = GLUE_COMMA.replace(razdvojen, if (keepCommas) ", " else " ")
         var cleaned = (if (keepCommas) PUNCT_EXCEPT_COMMA else PUNCT).replace(razdvojen, "")
         if (keepCommas) {
@@ -88,6 +101,82 @@ object TextPolish {
             .filter { it.isNotEmpty() }
             .joinToString(" ")
     }
+
+    // Znakovi koji zavrsavaju misao, pa razmak ili kraj teksta. Tacka i
+    // dvotacka IZMEDJU cifara („10:30", „2.0") se ovde ne vide. Isto kao
+    // `samo_zarezi` u dictate/webstt.py; menja se na oba mesta.
+    private val KRAJ_MISLI = Regex("""(\S*?)([.!?;:\u2026]+)(?=\s|$)""")
+    // Isto, ali slepljeno uz sledecu rec: „idem.Sutra", „idem?sutra".
+    private val SLEPLJEN_KRAJ = Regex("""(?<=\p{L})([.!?;:\u2026]+)(?=\p{L})""")
+    // Navodnici, zagrade, crte i simboli nestaju isto kao uz „bez interpunkcije".
+    private val OSTALO = Regex(
+        """[\u00AB\u00BB\u201E\u201C\u201D"\u2018\u201A\u2039\u203A()\[\]{}]""" +
+            """|(?<!\w)[-\u2013\u2014/]|[-\u2013\u2014/](?!\w)""" +
+            """|[#&*+<=>@\\^_`|~]"""
+    )
+
+    /**
+     * Tacke postaju zarezi, a ostaju samo zarezi i upitnici.
+     *
+     * Za pisanje malim slovima: tacka usred teksta tu izgleda cudno, a granica
+     * misli ipak treba da se vidi. Na samom kraju ne ostaje ni tacka ni zarez,
+     * samo upitnik.
+     */
+    fun samoZarezi(text: String): String {
+        if (text.isEmpty()) return text
+        val cist = bezNavodnika(text)
+        var out = SLEPLJEN_KRAJ.replace(cist) { m ->
+            val znakovi = m.groupValues[1]
+            val sledece = cist[m.range.last + 1]
+            when {
+                '?' in znakovi -> "? "
+                // Tacka ispred malog slova je domen ili ime fajla („google.com").
+                znakovi.all { it == '.' } && !sledece.isUpperCase() -> znakovi
+                else -> ", "
+            }
+        }
+        out = GLUE_COMMA.replace(out, ", ")
+        out = OSTALO.replace(out, "").split(Regex("\\s+")).filter { it.isNotEmpty() }
+            .joinToString(" ")
+        val izvor = out
+        out = KRAJ_MISLI.replace(izvor) { m ->
+            val (rec, znakovi) = m.destructured
+            if ('?' in znakovi) return@replace "$rec?"
+            // „2026. godine", „5. mesto", „npr." nisu kraj recenice. Broj ipak
+            // zavrsava recenicu kad iza njega krece nova, velikim slovom.
+            if (znakovi.all { it == '.' } && rec.isNotEmpty() && !endsSentence(rec, ".")) {
+                val dalje = izvor.substring(m.range.last + 1).trimStart()
+                if (!(rec.last().isDigit() && dalje.firstOrNull()?.isUpperCase() == true)) {
+                    return@replace m.value
+                }
+            }
+            "$rec,"
+        }
+        return out
+            .replace(Regex("""\s+(?=[,?])"""), "")
+            .replace(Regex(""",(?:\s*,)+"""), ",")
+            .replace(Regex(""",\s*\?"""), "?")
+            .replace(Regex("""\?\s*,"""), "?")
+            .replace(Regex("""\?(?=\p{L})"""), "? ")
+            .replace(Regex("""^[,\s]+"""), "")
+            .replace(Regex("""[.,\s]+$"""), "")
+    }
+
+    // Glasovne komande: izgovoreno „novi red" i „novi pasus" postaje prelom.
+    // Isto kao `glasovne_komande` u dictate/webstt.py; menja se na oba mesta.
+    private val KOMANDA = Regex(
+        """\s*,?\s*(?<![\p{L}\p{N}_])(?:novi|nov)\s+(red|pasus)(?![\p{L}\p{N}_])[.,;:!]?[ \t]*""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * „novi red" -> nov red, „novi pasus" -> prazan red.
+     *
+     * Radi se tek pri upisu i u istoriji, ne u pravilima: pravila i AI obrada
+     * rade red po red i skupljaju razmake, pa bi prelom izgubili.
+     */
+    fun glasovneKomande(text: String): String =
+        KOMANDA.replace(text) { if (it.groupValues[1].lowercase() == "pasus") "\n\n" else "\n" }
 
     /** č ć ž š đ -> c c z s dj. Opciono; podrazumevano iskljuceno. */
     // Reci koje se zavrsavaju tackom a NE zavrsavaju recenicu. Isti spisak kao
@@ -173,8 +262,11 @@ object TextPolish {
         // ostavlja ono sto Google vrati; „sredjeno" je posao modela, pa se ovde
         // ne dira.
         if (cfg.joinThousands) text = joinThousands(text)
+        // „Ukloni interpunkciju" pobedjuje „samo zareze".
         if (cfg.stripPunctuation) {
             text = stripPunctuation(text, keepCommas = cfg.polishCommas)
+        } else if (cfg.samoZarezi) {
+            text = samoZarezi(text)
         }
         if (cfg.lowercase) {
             text = text.lowercase()

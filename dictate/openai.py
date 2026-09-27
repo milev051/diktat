@@ -106,8 +106,7 @@ def post_process(text: str, cfg) -> str:
     if cfg.get("openai_output_script") == "latin":
         text = to_latin(text)
     text = webstt.join_thousands(text)
-    if cfg.get("strip_punctuation", True):
-        text = "\n".join(webstt.strip_punctuation(red) for red in text.split("\n"))
+    text = "\n".join(webstt.interpunkcija(red, cfg) for red in text.split("\n"))
     if cfg.get("lowercase", True):
         text = text.lower()
     else:

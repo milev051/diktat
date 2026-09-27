@@ -166,11 +166,11 @@ def _explain_http(code: int) -> str:
 # vraca kao decimalni separator ("3,5") i kao satnicu ("10:00"), pa bi ih slepo
 # brisanje spojilo u 35 i 1000. Crtica i simboli se uklanjaju, osim brojčanih
 # separatora (1/2, 10-20).
-_PUNCT = re.compile(
-    r"(?<!\d)[.,:]"     # tacka/zarez/dvotacka bez cifre ispred
-    r"|[.,:](?!\d)"     # ili bez cifre iza
-    # Apostrof i jednostruki navodnici: endpoint ih vraca u „je l'", „ć'š".
-    r"|[!?;\u2026\u00AB\u00BB\u201E\u201C\u201D\"'\u2018\u2019\u201A\u2039\u203A()\[\]{}]"
+# Deo koji je isti i za „samo zarezi i upitnici": navodnici, zagrade, crte i
+# simboli nestaju u oba slucaja.
+_OSTALI_ZNACI = (
+    # Apostrof (' i \u2019) NIJE ovde: on je deo reci, vidi `_bez_navodnika`.
+    r"[\u00AB\u00BB\u201E\u201C\u201D\"\u2018\u201A\u2039\u203A()\[\]{}]"
     # Crtica i kosa crta nestaju samo kad STOJE SAME. Uslov je `\w`, ne `\d`:
     # sa `\d` je i „crno-beli" gubio crtu i postajao „crnobeli", jer slovo nije
     # cifra. Sada spoj dve reci prezivi („crno-beli", „and/or"), a crta izmedju
@@ -180,6 +180,11 @@ _PUNCT = re.compile(
     # „popust je dvadeset procenata" -> „popusti je 20%"), pa bi brisanje pojelo
     # jedini trag jedinice. Isto vazi za `$` i `€`, koji nikad nisu ni bili tu.
     r"|[#&*+<=>@\\^_`|~]"
+)
+_PUNCT = re.compile(
+    r"(?<!\d)[.,:]"     # tacka/zarez/dvotacka bez cifre ispred
+    r"|[.,:](?!\d)"     # ili bez cifre iza
+    r"|[!?;\u2026]|" + _OSTALI_ZNACI
 )
 
 
@@ -203,10 +208,24 @@ def join_thousands(text: str) -> str:
 _LEPAK = re.compile(r"(?<=[^\W\d_])[.,:;!?\u2026]+(?=[^\W\d_])")
 
 
+# Apostrof je deo reci („je l'", „ć'š", „'ajde") i ostaje. Brisu se samo
+# jednostruki navodnici u paru oko reci („'ovako'", „‘ovako’") i apostrof koji
+# stoji sam, izmedju razmaka.
+_NAVODNICI = re.compile(
+    r"(?<!\w)['\u2018\u201A](?=\w)([^'\u2018\u2019\u201A]*?\w)['\u2019](?!\w)"
+)
+_SAM_APOSTROF = re.compile(r"(?<!\w)['\u2019](?!\w)")
+
+
+def _bez_navodnika(text: str) -> str:
+    return _SAM_APOSTROF.sub("", _NAVODNICI.sub(r"\1", text))
+
+
 def strip_punctuation(text: str) -> str:
     """Skloni interpunkciju, ali ne diraj brojeve ni spojene reci."""
     if not text:
         return text
+    text = _bez_navodnika(text)
     text = _LEPAK.sub(" ", text)
     return " ".join(_PUNCT.sub("", text).split())
 
@@ -285,6 +304,99 @@ def capitalize_sentences(text: str) -> str:
         return rec + znak + razmak + slovo.upper()
 
     return _GRANICA.sub(_veliko, text)
+
+
+# Znakovi koji zavrsavaju misao. Tacka i dvotacka IZMEDJU cifara („10:30",
+# „2.0") se ovde ne vide, jer iza njih nije razmak.
+_KRAJ_MISLI = re.compile(r"(\S*?)([.!?;:\u2026]+)(?=\s|$)")
+# Isto, ali slepljeno uz sledecu rec: „idem.Sutra", „idem?sutra".
+_SLEPLJEN_KRAJ = re.compile(r"(?<=[^\W\d_])([.!?;:\u2026]+)(?=[^\W\d_])")
+_SLEPLJEN_ZAREZ = re.compile(r"(?<=[^\W\d_]),+(?=[^\W\d_])")
+_OSTALO = re.compile(_OSTALI_ZNACI)
+
+
+def _slepljen_kraj(m) -> str:
+    znakovi = m.group(1)
+    if "?" in znakovi:
+        return "? "
+    # Tacka ispred malog slova je domen ili ime fajla („google.com").
+    if set(znakovi) == {"."} and not m.string[m.end()].isupper():
+        return znakovi
+    return ", "
+
+
+def _kraj_misli(m) -> str:
+    rec, znakovi = m.groups()
+    if "?" in znakovi:
+        return rec + "?"
+    # „2026. godine", „5. mesto", „npr." nisu kraj recenice, tacka ostaje.
+    # Broj ipak zavrsava recenicu kad iza njega krece nova, velikim slovom:
+    # „u 10:30. Sutra".
+    if set(znakovi) == {"."} and rec and not _kraj_recenice(rec, "."):
+        dalje = m.string[m.end():].lstrip()
+        if not (rec[-1].isdigit() and dalje[:1].isupper()):
+            return m.group(0)
+    return rec + ","
+
+
+def samo_zarezi(text: str) -> str:
+    """Tacke postaju zarezi, a ostaju samo zarezi i upitnici.
+
+    Za pisanje malim slovima: tacka usred teksta tu izgleda cudno, a granica
+    misli ipak treba da se vidi. Uzvicnik, tri tacke, tacka-zarez i dvotacka
+    postaju zarez; navodnici, zagrade i crte nestaju kao uz „bez
+    interpunkcije". Na samom kraju ne ostaje ni tacka ni zarez, samo upitnik.
+    """
+    if not text:
+        return text
+    text = _bez_navodnika(text)
+    text = _SLEPLJEN_KRAJ.sub(_slepljen_kraj, text)
+    text = _SLEPLJEN_ZAREZ.sub(", ", text)
+    text = " ".join(_OSTALO.sub("", text).split())
+    text = _KRAJ_MISLI.sub(_kraj_misli, text)
+    text = re.sub(r"\s+(?=[,?])", "", text)       # „idem ," -> „idem,"
+    text = re.sub(r",(?:\s*,)+", ",", text)        # „idem,, ," -> „idem,"
+    text = re.sub(r",\s*\?", "?", text)            # „zar ne,?" -> „zar ne?"
+    text = re.sub(r"\?\s*,", "?", text)
+    text = re.sub(r"\?(?=[^\W\d_])", "? ", text)   # posle upitnika ide razmak
+    text = re.sub(r"^[,\s]+", "", text)
+    return re.sub(r"[.,\s]+$", "", text)
+
+
+# Glasovne komande: izgovoreno „novi red" i „novi pasus" postaje prelom.
+# Google ih vraca kao obicne reci, bez znakova (izmereno 27.09.2026). Zarez i
+# razmak ispred komande nestaju, a tacka ostaje („grad. Novi red." -> „grad.\n").
+_KOMANDA = re.compile(
+    r"\s*,?\s*\b(?:novi|nov)\s+(red|pasus)\b[.,;:!]?[ \t]*", re.IGNORECASE
+)
+
+
+def glasovne_komande(text: str) -> str:
+    """„novi red" -> nov red, „novi pasus" -> prazan red.
+
+    Radi se tek pri upisu (insert.py) i u istoriji, ne u pravilima: pravila i
+    AI obrada rade red po red i skupljaju razmake, pa bi prelom izgubili.
+    Komanda izgovorena sama, posle pauze, stigne kao zaseban deo diktata;
+    prelom tada pojede i razmak koji je dobila na kraju.
+    """
+    if not text or "n" not in text.lower():
+        return text
+    return _KOMANDA.sub(
+        lambda m: "\n\n" if m.group(1).lower() == "pasus" else "\n", text
+    )
+
+
+def interpunkcija(text: str, cfg) -> str:
+    """Lokalni izbor interpunkcije za jedan red teksta.
+
+    „Bez interpunkcije" pobedjuje „samo zareze": uz oba upaljena ne ostaje
+    nista. Ni jedno ni drugo znaci da tekst ostaje onakav kakav je stigao.
+    """
+    if cfg.get("strip_punctuation", True):
+        return strip_punctuation(text)
+    if cfg.get("samo_zarezi", False):
+        return samo_zarezi(text)
+    return text
 
 
 def tidy(text: str) -> str:

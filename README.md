@@ -103,9 +103,16 @@ chat endpointa. Zvuk se Groq-u ne šalje.
 
 ## Instalacija
 
+Najlakše: **dvoklik na `Instaliraj.command`** u Finder-u. Prvi put napravi
+`/Applications/Diktat.app`, a svaki sledeći put zameni samo kod i pokrene
+Diktat iznova, pa dozvole za Mikrofon i Accessibility ostaju.
+
+Isto iz terminala:
+
 ```bash
 ./setup.sh              # venv + zavisnosti + config.json
 ./make_app.sh install   # ikona u Launchpad-u, pokretanje bez terminala
+./make_app.sh azuriraj  # posle izmene koda; isto što radi Instaliraj.command
 ./run.sh doctor         # provera
 ```
 
@@ -128,9 +135,17 @@ Projekat stoji na Desktopu, pa je aplikacija pucala na prvom redu, bez ijednog
 pitanja korisniku, i bez ičega u logu osim `PermissionError` na
 `.venv/pyvenv.cfg`. U Application Support te zabrane ne važe.
 
-Zbog toga **posle svake izmene koda ide `./make_app.sh install` ponovo**,
-inače instalirana aplikacija ostaje na starom. Podešavanja i ključevi
-(`config.json`) se pri tome prenose i ne gube se.
+Zbog toga **posle svake izmene koda ide dvoklik na `Instaliraj.command`**
+(ili `./make_app.sh azuriraj`), inače instalirana aplikacija ostaje na
+starom. Podešavanja i ključevi (`config.json`) se pri tome prenose i ne gube
+se.
+
+`install` svaki put pravi i potpisuje bundle iznova, a nov potpis poništava
+dozvole za Mikrofon i Accessibility. `azuriraj` zato menja samo kod
+(`./make_app.sh kod`), osim kad se promenio deo `make_app.sh` koji pravi
+bundle (pokretač i `napravi_app`). Otisak tog dela se pamti pri instalaciji u
+`~/Library/Application Support/Diktat/pokretac-otisak`, bez komentara, pa
+izmena komentara ne traži novu instalaciju.
 
 Ako nešto krene naopako, aplikacija javi prozorčićem, a ceo ispis stoji u
 `~/Library/Logs/Diktat.log`.
@@ -165,11 +180,11 @@ završi. Automatska provera se gasi sa `"update_check": false` u `config.json`.
 Menja se samo kod u `~/Library/Application Support/Diktat/app`, a
 `/Applications/Diktat.app` ostaje isti. Svaki novi potpis bundle-a poništava
 dozvole za Accessibility i Mikrofon, pa bi se posle svakog ažuriranja morale
-davati iznova. Izmena samog pokretača (`make_app.sh`) zato i dalje traži ručno
-`./make_app.sh install`.
+davati iznova. Izmena samog pokretača (`make_app.sh`) zato i dalje traži punu
+instalaciju, koju `Instaliraj.command` sam prepozna.
 
 Razvojna kopija (pokrenuta iz foldera projekta) se ne ažurira sama: tu važe
-`git pull` pa `./make_app.sh install`.
+`git pull` pa dvoklik na `Instaliraj.command`.
 
 **Objavljivanje nove verzije.** Mac i telefon čitaju isto izdanje, pa jedno
 izdanje pokriva oba. Izdanje mora da nosi APK (telefon uzima prvi `.apk`), a
@@ -293,6 +308,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `recorded_seconds` | `0` | ukupno vreme uhvaćenog zvuka na računaru |
 | `lowercase` | `true` | sva slova mala, nezavisno od interpunkcije |
 | `strip_punctuation` | `true` | ukloni znakove; separatori `10:30`, `3,5`, `2.0` ostaju |
+| `samo_zarezi` | `false` | tačke postaju zarezi, ostaju samo zarezi i upitnici; važi dok je `strip_punctuation` ugašen |
 | `profanity_filter` | `false` | `true` bi maskirao psovke (`sranje` → `s*****`) |
 | `compress_audio` | `true` | FLAC ka endpointu, 36% manje; bez `ffmpeg`-a ide PCM |
 | `text_style` | `spoken` | stil koji traži AI; lokalni prekidači za mala slova i interpunkciju su odvojeni |
@@ -305,6 +321,8 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `max_request_seconds` | `30` | **snimanje staje ovde**; servis odbija duže |
 | `max_seconds` | `290` | gornja granica jednog pritiska tastera |
 | `tail_seconds` | `0.8` | koliko još snima pošto pustiš taster |
+| `utisaj_zvuk` | `false` | utišaj ceo računar dok snimaš, pa vrati |
+| `pauziraj_plejer` | `false` | pauziraj muziku ili video koji svira, pa nastavi |
 | `input_device` | `null` | `null` = sistemski; ili ime uređaja |
 | `hotkey` | `alt_r` | desni Option; `cmd_r`, `ctrl_r`, `f13`… |
 | `hotkey_section` | `true` | i taster `§` pokreće diktat; znak se tada guta |

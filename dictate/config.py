@@ -43,6 +43,9 @@ DEFAULTS = {
     "text_style": "spoken",
     "lowercase": True,             # nezavisno od interpunkcije
     "strip_punctuation": True,     # brojevi tipa 10:30 i 3,5 ostaju čitavi
+    # Tačke postaju zarezi, ostaju samo zarezi i upitnici. Važi samo dok je
+    # `strip_punctuation` ugašen; u prozoru su oba jedan izbor „Interpunkcija".
+    "samo_zarezi": False,
     "ascii_diacritics": False,    # č ć ž š đ -> c c z s dj; nezavisno od stila
     "abbreviations": True,        # „ne znam" -> „nzm"
     "abbreviation_rules": "",     # prazno = ugradjena lista (dictate/abbrev.py)
@@ -56,6 +59,10 @@ DEFAULTS = {
     "sample_rate": 16000,
     "input_device": None,         # None = sistemski mikrofon, ili ime uredjaja
     "tail_seconds": 0.8,          # koliko jos snima posle pustanja tastera
+    # Tisina dok se snima (dictate/zvuk.py). Dve odvojene opcije: poziv ne moze
+    # da se pauzira, samo da se utisa.
+    "utisaj_zvuk": False,         # utisaj ceo racunar, pa vrati
+    "pauziraj_plejer": False,     # pauziraj muziku ili video koji svira, pa nastavi
 
     # --- Hotkey ---
     "hotkey": "alt_r",            # desni Option; cmd_r | ctrl_r | f13 ...
@@ -217,27 +224,28 @@ def _migrate(cfg: dict, saved=None) -> dict:
     return cfg
 
 
-# Cetiri prekidaca koja zajedno odlucuju da li tekst izlazi „pravilno".
-# Svaki od njih UDALJAVA tekst od pravopisa, pa „pravilno" znaci: sva cetiri
+# Prekidaci koji zajedno odlucuju da li tekst izlazi „pravilno".
+# Svaki od njih UDALJAVA tekst od pravopisa, pa „pravilno" znaci: svi
 # ugasena. Redosled je isti kao u meniju i u Config.kt na Androidu.
-PRAVILNO_KLJUCEVI = ("lowercase", "strip_punctuation", "ascii_diacritics", "abbreviations")
+PRAVILNO_KLJUCEVI = ("lowercase", "strip_punctuation", "ascii_diacritics", "abbreviations",
+                     "samo_zarezi")
 
 # Gde se pamti zatecen izbor dok je „pravilno" upaljeno.
 _PRE_PRAVILNO = "pravilno_pre"
 
 
 def pravilno(cfg) -> bool:
-    """Da li tekst izlazi pravopisno uredjen: sva cetiri prekidaca ugasena."""
+    """Da li tekst izlazi pravopisno uredjen: svi prekidaci ugaseni."""
     return not any(bool(cfg.get(k, False)) for k in PRAVILNO_KLJUCEVI)
 
 
 def postavi_pravilno(cfg, upaljeno: bool) -> None:
-    """Upali ili ugasi sva cetiri odjednom.
+    """Upali ili ugasi sve prekidace odjednom.
 
     Gasenje NE vraca fiksne podrazumevane vrednosti nego bas ono sto je
     korisnik imao pre nego sto je upalio „pravilno". Razlika je stvarna:
     `ascii_diacritics` je podrazumevano iskljucen, pa bi povratak na
-    podrazumevano tiho ukinuo izbor onome ko ga drzi upaljenog. Cetiri
+    podrazumevano tiho ukinuo izbor onome ko ga drzi upaljenog. Svi
     prekidaca su i dalje tu i smeju da se menjaju pojedinacno; ovo je samo
     precica za dva stanja izmedju kojih se najcesce skace.
     """

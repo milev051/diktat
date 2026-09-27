@@ -174,9 +174,29 @@ stigao samo kraj govora. `_recognize_or_keep` zato ispisuje koliko je sekundi
 govora ostalo bez prepisa, ako je duži od 1.0s i vrh amplitude preko 0.10 (tiha
 soba je ~0.01, bučna ~0.08). Ispod toga je stvarno tišina i ne prijavljuje se.
 
-**Apostrof ide sa ostalim znacima.** Endpoint ga vraća u „je l'", „ć'š", i to u
-oba oblika — pravom (`'`) i krivom (`\u2019`). Oba moraju u pravilo, zajedno sa
-jednostrukim navodnicima; jedan bez drugog ostavlja pola slučajeva.
+**Apostrof je deo reči i ostaje** (od 27.09.2026, na izričit zahtev; ranije
+se brisao sa ostalim znacima). Endpoint ga vraća u „je l'", „ć'š", „'ajde", i to
+u oba oblika, pravom (`'`) i krivom (`\u2019`). Bez njega „je l" izgleda kao
+greška. Brišu se samo jednostruki navodnici **u paru** oko reči („'ovako'",
+„‘ovako’") i apostrof koji stoji sam između razmaka (`_bez_navodnika` /
+`bezNavodnika`). Opcija za ovo namerno ne postoji: niko ne želi krnje „je l".
+Na Androidu je slovo napisano kao `\p{L}\p{N}`, jer `\w` na JVM-u ne vidi „ć".
+
+**„Samo zarezi i upitnici"** (`samo_zarezi`, od 27.09.2026, na izričit zahtev)
+je treći izbor interpunkcije, za pisanje malim slovima: tačka usred teksta tu
+izgleda čudno, a granica misli ipak treba da se vidi. Tačka, uzvičnik, tri
+tačke, tačka-zarez i dvotačka postaju zarez, upitnik ostaje, a navodnici,
+zagrade i crte nestaju kao uz „bez interpunkcije". Na kraju komada ne ostaje ni
+tačka ni zarez, samo upitnik. Zato između dva dela diktata isečena na pauzi
+stoji samo razmak: da bi tu stajao zarez, trebalo bi znati da li je deo
+poslednji, a to se ne zna kad se deo upisuje. Tačka koja nije kraj rečenice
+ostaje („2026. godine", „npr."), osim broja iza koga kreće nova rečenica
+velikim slovom („u 10:30. Sutra"). „Bez interpunkcije" pobeđuje ako su upaljena
+oba (`webstt.interpunkcija`). U prozoru i na telefonu to je jedan izbor sa tri
+stanja (Sva / Samo zarezi i upitnici / Bez), a ispod su dva ključa, pa
+„Pravilno" i dalje radi nad prekidačima. Uz AI obradu pravilo radi **posle**
+modela (`_after_model`, `TextPolish.afterModel`): model slobodno deli rečenice,
+a tačke tek onda postaju zarezi.
 
 **Interpunkcija se ne briše slepo.** Endpoint vraća zarez kao decimalni
 separator (`3,5`) i dvotačku kao satnicu (`10:00`). Tačka, zarez **i dvotačka**
@@ -499,6 +519,14 @@ kroz `os.execv`, u istom procesu. Verzija je u fajlu `VERZIJA`, koji piše
 izdanja prave na GitHub-u) i samo ažuriranje. Mac i Android čitaju isto
 izdanje.
 
+**Lokalna instalacija isto menja samo kod** (`Instaliraj.command` ->
+`make_app.sh azuriraj`, od 27.09.2026). Pun `install` ide samo kad se promeni
+otisak dela `make_app.sh` koji pravi bundle (od „pokretac" do „instalacija",
+bez komentara); otisak se pamti u `$DOM/pokretac-otisak`. Prvi otisak je
+upisan ručno 27.09.2026, posle provere da instaliran `diktat.sh`, `Info.plist`
+i Swift pokretač odgovaraju tadašnjem kodu. Ko menja pokretač ili
+`napravi_app`, zna da korisnik posle toga daje dozvole iznova.
+
 **Boja u menu baru ide preko `nsstatusitem.button().setAttributedTitle_`**, jer
 `rumps.title` ne ume boju. Font mora biti `monospacedDigit` — inače se širina
 naslova menja svake sekunde i ostale ikonice poskakuju.
@@ -532,6 +560,40 @@ pravila sačuvana; pokupi nova tek dugmetom u aplikaciji.
 
 **Regex pravila (`~`) primenjuju se pre prostih.** Inače `dolara=$` pojede reč
 pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
+
+**Tišina dok se snima su dve opcije, ne jedna** (`dictate/zvuk.py` i
+`Tisina.kt`, od 27.09.2026, na izričit zahtev). Na telefonu je lako: utišava se
+`STREAM_MUSIC`, a pauza je audio fokus (`AUDIOFOCUS_GAIN_TRANSIENT`), pa plejer
+sam stane i nastavi; vezano je za `Recorder`, jer svako snimanje završava kroz
+njegov `stop()`. Na Mac-u: `utisaj_zvuk` utiša ceo računar
+(`osascript`, ~0,4 s) i jedino radi za poziv, koji ne može da se pauzira.
+`pauziraj_plejer` šalje taster ⏯. Taj taster je **prekidač**: kad ništa ne
+svira, pokrenuo bi poslednju aplikaciju (najčešće Muziku). Zato se šalje samo
+kad CoreAudio (`kAudioHardwarePropertyProcessObjectList`, macOS 14.2+) kaže
+da aplikacija sa spiska `PLEJERI` upravo pušta zvuk. Now Playing iz
+MediaRemote je probano: iz našeg procesa vraća „ne svira" i `nil`, pa na
+njega ne može da se osloni. Poznata rupa: Chrome drži izlaz otvoren i za
+stranicu koja ćuti (WhatsApp Web, Meet), pa taster tada može da pokrene
+pauziran YouTube. Vraća se samo ono što je Diktat promenio: već utišan
+računar ostaje utišan. Sve ide kroz jednu radnu nit, redom, a vraćanje ide
+pre oslobađanja mikrofona, da ga sledeće snimanje ne pretekne.
+
+**Glasovne komande „novi red" i „novi pasus"** (od 27.09.2026). Google ih vraća
+kao obične reči, bez znakova (izmereno sintetičkim glasom kroz isti endpoint).
+Pretvaraju se **tek pri upisu** (`insert.insert`, `insert.insert_live`,
+`insertNow` na telefonu) i u istoriji, ne u pravilima: pravila i AI obrada rade
+red po red i skupljaju razmake, pa bi prelom izgubili, a svako mesto koje dodaje
+razmak ili seče tekst bi moralo da zna za njega. Tekst sa prelomom na Mac-u ide
+lepljenjem, jer kucan prelom stiže kao Enter i u ćaskanju šalje poruku. Zarez
+oko komande nestaje, tačka i upitnik ostaju. Opcija za ovo ne postoji.
+
+**Nabrajanje u crtice kroz uputstvo za pasuse je probano i odbačeno**
+(27.09.2026). Dopuna „stavke u nabrajanju u svoj red sa crticom, reči ne
+menjaj" je na kratkom nabrajanju davala lep spisak, ali na dugačkom diktatu
+(poruke iz razgovora, ~150 reči) Groq GPT-OSS je menjao reči, pa je provera
+reči vraćala nedoteran tekst bez ijednog pasusa, a dvaput je vratio i prazan
+tekst. Ni izričito „zadrži i reči prvo, drugo, i" nije pomoglo. Staro `PASUSI`
+je iste tekstove delilo dobro, i Groq i Gemini.
 
 ---
 
@@ -740,9 +802,10 @@ alata (`config.ai_obrada`, `config.pravilno`), gašenje pamti zatečen izbor
 (`ai_pre`, `pravilno_pre`), a stavke se tada i sklanjaju sa ekrana. Zaseban
 upisan prekidač bi mogao da se raziđe sa stavkama i da laže.
 
-**„Pravilno" je prečica nad četiri prekidača, ne peto podešavanje.** Mala
-slova, brisanje interpunkcije, skidanje kvačica i skraćenice — svaki od njih
-udaljava tekst od pravopisa, pa „pravilno" znači: sva četiri ugašena. Četiri
+**„Pravilno" je prečica nad prekidačima pravila, ne još jedno podešavanje.**
+Mala slova, brisanje interpunkcije, „samo zarezi", skidanje kvačica i
+skraćenice: svaki od njih udaljava tekst od pravopisa, pa „pravilno" znači: svi
+ugašeni. Četiri
 klika za prelazak između dva stanja su četiri prilike da se jedan zaboravi, pa
 tekst izađe na pola puta. Kvačica se **izvodi** iz ta četiri, nikad ne pamti
 zasebno: inače bi ručno gašenje jednog ostavilo nad-prekidač da laže. U prozoru
@@ -929,6 +992,9 @@ ekran niži od sadržaja.
 | na Mac-u se nedostupno **zatamni**, ne sklanja (od 22.09.2026, na izričit zahtev) | na jednom ekranu se vidi sve što postoji; red pamti uslov (`vidljivo`), a `_omoguci` ga gasi i spusti mu providnost na 40%. Stvarno nestaju samo redovi sa `sakrij=True`: upozorenja o dozvolama, istorija i sačuvani snimci. Telefon i dalje sklanja |
 | dozvola se traži samo kad fali | „Otvori Accessibility" nad odobrenom dozvolom ne radi ništa; stanje se čita iz `hotkey.accessibility_granted` i `audio.microphone_granted` |
 | `NSApplicationActivationPolicyRegular` dok je otvoren | menu-bar aplikacija je `Accessory`, pa joj se prozor ponaša kao panel iznad tuđeg, bez svog mesta u Dock-u i Cmd+Tab-u; po zatvaranju se vraća na `Accessory` |
+| klik u drugu aplikaciju zatvara prozor, kao Esc (od 27.09.2026, na izričit zahtev) | prati se `NSApplicationDidResignActiveNotification`, ne gubitak fokusa prozora: klik na našu ikonicu u traci menija ne gasi aplikaciju, pa ikonica i dalje radi kao prekidač. „Otvori Accessibility" zato zatvori prozor, jer se otvara druga aplikacija |
+| Esc zatvara prozor kao ⌘W, i dok je kursor u polju (od 27.09.2026, na izričit zahtev) | hvata se u `_Prozor.sendEvent_`, pre polja: polje bi Esc inače progutalo kao „dopuni reč“. Otvoren padajući meni Esc zatvara sam, prozor ostaje |
+| klik na stavku istorije kopira, zatvori prozor i nalepi (od 27.09.2026, na izričit zahtev) | `_open_settings` pamti aplikaciju koja je bila ispred (`_pre_prozora`); posle klika joj se vraća fokus, a ⌘V ide tek kad ona stvarno bude ispred (najduže 1,5 s). Gde nema polja za unos, ⌘V ne radi ništa, a tekst ostaje u clipboard-u. Tekst se kopira sa razmakom na kraju, kao posle diktata (i na Androidu) |
 
 **Prvi klik na ikonicu je čekao ~2,3s.** Izmereno 22.09.2026: prvi poziv
 `audio.microphone_granted` učitava AVFoundation i traje **2057ms**, gradnja

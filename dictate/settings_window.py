@@ -46,6 +46,7 @@ SECTION_GAP = 26.0    # razmak PRE naslova grupe
 SACUVANI_REDOVA = 3   # koliko sacuvanih snimaka se nudi za prepis
 NASLOV_MENIJA = "Diktat"  # po njemu se prepoznaje nas glavni meni
 TITLE_GAP = 12.0      # razmak izmedju naslova grupe i prve kontrole
+KVK_ESCAPE = 0x35     # Esc zatvara prozor kao i ⌘W
 
 
 def provider_from_title(title: str) -> str:
@@ -54,6 +55,23 @@ def provider_from_title(title: str) -> str:
         if naslov == title:
             return ime
     return "google"
+
+
+# Izbor „Interpunkcija": naslov u prozoru -> (strip_punctuation, samo_zarezi).
+INTERPUNKCIJA = {
+    "Sva": (False, False),
+    "Samo zarezi i upitnici": (False, True),
+    "Bez interpunkcije": (True, False),
+}
+
+
+def interpunkcija_naslov(cfg) -> str:
+    """Koji naslov izbora odgovara podesavanjima."""
+    if cfg.get("strip_punctuation", True):
+        return "Bez interpunkcije"
+    if cfg.get("samo_zarezi", False):
+        return "Samo zarezi i upitnici"
+    return "Sva"
 
 
 def trajanje(seconds: float) -> str:
@@ -83,7 +101,7 @@ class _FlippedView(AppKit.NSView):
 
 
 class _Prozor(AppKit.NSWindow):
-    """Prozor koji sam zna za ⌘W i za ⌘C/⌘V/⌘X/⌘A/⌘Z u poljima.
+    """Prozor koji sam zna za ⌘W, Esc i za ⌘C/⌘V/⌘X/⌘A/⌘Z u poljima.
 
     Glavni meni (`_glavni_meni`) je bio dovoljan kad se prozor pokrene sam, ali
     ne i u aplikaciji: tamo ⌘W nije zatvarao prozor (22.09.2026). Prozor zato
@@ -106,6 +124,16 @@ class _Prozor(AppKit.NSWindow):
                 return True
         return objc.super(_Prozor, self).performKeyEquivalent_(event)
 
+    def sendEvent_(self, event):  # noqa: N802 - ime trazi AppKit
+        # Esc zatvara prozor i dok je kursor u polju: polje bi ga inace
+        # progutalo kao „dopuni rec" i prozor ne bi ni saznao za njega.
+        if (event.type() == AppKit.NSEventTypeKeyDown and event.keyCode() == KVK_ESCAPE
+                and not event.modifierFlags()
+                & AppKit.NSEventModifierFlagDeviceIndependentFlagsMask):
+            self.performClose_(None)
+            return
+        objc.super(_Prozor, self).sendEvent_(event)
+
 
 class _WindowDelegate(AppKit.NSObject):
     """Dok je prozor otvoren, Diktat je obicna aplikacija.
@@ -127,6 +155,15 @@ class _WindowDelegate(AppKit.NSObject):
         AppKit.NSApplication.sharedApplication().setActivationPolicy_(
             AppKit.NSApplicationActivationPolicyAccessory
         )
+
+    def aplikacijaNijeAktivna_(self, _notification):  # noqa: N802 - ime trazi AppKit
+        """Klik u drugu aplikaciju zatvara prozor, isto kao Esc.
+
+        Prati se aplikacija, ne prozor: klik na nasu ikonicu u traci menija ne
+        gasi aplikaciju, pa ikonica i dalje radi kao prekidac.
+        """
+        if self._owner.visible():
+            self._owner.hide()
 
 
 class _Row:
@@ -293,6 +330,10 @@ class SettingsWindow:
         self.window.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorManaged)
         self.delegate = _WindowDelegate.alloc().initWithOwner_(self)
         self.window.setDelegate_(self.delegate)
+        AppKit.NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+            self.delegate, "aplikacijaNijeAktivna:",
+            AppKit.NSApplicationDidResignActiveNotification, None,
+        )
 
         # Skrol postoji samo za ekran nizi od sadrzaja; inace se ne vidi.
         scroll = AppKit.NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, self.WIDTH, 600))
@@ -384,7 +425,7 @@ class SettingsWindow:
         return config.ai_obrada(self.app.cfg)
 
     def _lokalna_ukljucena(self) -> bool:
-        """Sva cetiri ugasena znaci „pravilno", tj. grupa je iskljucena."""
+        """Svi ugaseni znaci „pravilno", tj. grupa je iskljucena."""
         return not config.pravilno(self.app.cfg)
 
     def _dozvole_ok(self) -> bool:
@@ -411,6 +452,9 @@ class SettingsWindow:
                        "hotkey_section", True)
         self._checkbox(page, "Aktiviraj i tasterom ` (znak se ne upisuje)",
                        "hotkey_grave", False)
+        self._checkbox(page, "Utišaj zvuk računara dok snimam", "utisaj_zvuk", False)
+        self._checkbox(page, "Pauziraj muziku i video dok snimam", "pauziraj_plejer",
+                       False)
 
         self._section(page, "Prepoznavanje govora")
         self._popup(
@@ -479,8 +523,8 @@ class SettingsWindow:
         self._checkbox(page, "Uključi lokalna pravila", "lokalna_pravila", True)
         pravila = self._lokalna_ukljucena
         self._checkbox(page, "Sva slova mala", "lowercase", True, vidljivo=pravila)
-        self._checkbox(page, "Bez interpunkcije", "strip_punctuation", True,
-                       vidljivo=pravila)
+        self._popup(page, "Interpunkcija", "interpunkcija", list(INTERPUNKCIJA),
+                    interpunkcija_naslov(self.app.cfg), vidljivo=pravila)
         self._checkbox(page, "Bez kvačica (č ć ž š → c c z s)", "ascii_diacritics",
                        False, vidljivo=pravila)
         self._checkbox(page, "Skraćenice (ne znam → nzm)", "abbreviations", True,
@@ -662,6 +706,9 @@ class SettingsWindow:
 
         for key, view in self.controls.items():
             if key in ("transcription_provider", "text_model", "input_device", "mode"):
+                continue
+            if key == "interpunkcija":
+                view.selectItemWithTitle_(interpunkcija_naslov(self.app.cfg))
                 continue
             if key == "text_style_written":
                 value = self.app.cfg.get("text_style") == "written"

@@ -90,6 +90,7 @@ class Snimanje:
             )
             self._record_started_at = time.monotonic()
             recorder.pokrenuto = self._record_started_at
+            self.tisina.pocni(self.cfg)
             # Faza se upisuje pod katancem, da je _settle_phase prethodne
             # sesije ne prepise natrag na "obradjuje".
             self.state.set(phase="recording", message="")
@@ -209,6 +210,9 @@ class Snimanje:
         # PortAudio, a to ne sme da se desi dok je neki strim jos otvoren.
         # Ticket se uzima dok slot jos drzimo, da nova sesija ne preuzme nizi broj.
         recorder.close()
+        # Pre oslobadjanja slota: vracanje mora u red pre utisavanja sledeceg
+        # snimanja, inace bi ono ostalo bez tisine.
+        self.tisina.vrati()
         if not recorder.ticket:
             recorder.ticket = self.upis.novi_tiket(recorder.session)
         with self._session_lock:

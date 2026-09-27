@@ -79,7 +79,8 @@ class RedUpisa:
 
     def zapamti(self, tekst: str):
         """Poslednjih pet diktata, najnoviji prvi, bez ponavljanja."""
-        cist = tekst.strip()
+        from .webstt import glasovne_komande
+        cist = glasovne_komande(tekst).strip()
         if not cist:
             return
         with self._lock:

@@ -159,10 +159,15 @@ class TextRulesTest {
     }
 
     @Test
-    fun `apostrof odlazi sa ostalim znacima`() {
-        // Endpoint ga vraca u „je l'", „ć'š".
-        assertEquals("je l tako", TextPolish.stripPunctuation("je l' tako"))
-        assertEquals("je l tako", TextPolish.stripPunctuation("je l\u2019 tako"))
+    fun `apostrof ostaje a navodnici odlaze`() {
+        // Apostrof je deo reci („je l'", „ć'š"); isto kao Apostrof u tests/test_text.py.
+        assertEquals("je l' tako", TextPolish.stripPunctuation("je l' tako?"))
+        assertEquals("je l\u2019 tako", TextPolish.stripPunctuation("je l\u2019 tako"))
+        assertEquals("'ajde idemo", TextPolish.stripPunctuation("'ajde idemo"))
+        assertEquals("rekao ovako", TextPolish.stripPunctuation("rekao \u2018ovako\u2019"))
+        assertEquals("rekao ovako sad", TextPolish.stripPunctuation("rekao 'ovako' sad"))
+        assertEquals("ovo ono", TextPolish.stripPunctuation("ovo ' ono"))
+        assertEquals("Je l' tako, Ć'š doći?", TextPolish.samoZarezi("Je l' tako. Ć'š doći?"))
     }
 
     @Test
@@ -339,8 +344,8 @@ class SlepljeneReciTest {
     }
 
     @Test
-    fun `apostrof i dalje spaja`() {
-        assertEquals("ćš ti", sredi("ć'š ti"))
+    fun `apostrof ostaje u reci`() {
+        assertEquals("ć'š ti", sredi("ć'š ti"))
     }
 
     @Test
@@ -414,8 +419,95 @@ class ObicneReciTest {
 }
 
 /**
- * „Pravilno" je precica nad cetiri prekidaca, ne peto podesavanje. Isti
- * slucajevi kao u tests/test_text.py na Mac strani.
+ * Tacke postaju zarezi, ostaju samo zarezi i upitnici. Isti slucajevi kao
+ * `SamoZareziIUpitnici` u tests/test_text.py na Mac strani.
+ */
+class SamoZareziTest {
+
+    private fun z(tekst: String) = TextPolish.samoZarezi(tekst)
+
+    @Test
+    fun `tacka usred postaje zarez na kraju nestaje`() {
+        assertEquals(
+            "Sutra idem u grad, Da li dolaziš? Javi mi",
+            z("Sutra idem u grad. Da li dolaziš? Javi mi."),
+        )
+    }
+
+    @Test
+    fun `upitnik ostaje i na kraju`() {
+        assertEquals("Zar ne?", z("Zar ne?"))
+        assertEquals("Stvarno? Ne verujem", z("Stvarno!? Ne verujem"))
+    }
+
+    @Test
+    fun `uzvicnik tri tacke dvotacka postaju zarez`() {
+        assertEquals("Bravo, Ne znam, Prvo, ovo, pa ono", z("Bravo! Ne znam... Prvo: ovo; pa ono."))
+    }
+
+    @Test
+    fun `tacka koja nije kraj recenice ostaje`() {
+        assertEquals("Rođen je 2026. godine, npr. ovako", z("Rođen je 2026. godine, npr. ovako."))
+    }
+
+    @Test
+    fun `brojevi i domeni ostaju celi`() {
+        assertEquals(
+            "Cena je 3,5 u 10:30, Verzija 2.0 radi",
+            z("Cena je 3,5 u 10:30. Verzija 2.0 radi."),
+        )
+        assertEquals("Otvori google.com sada", z("Otvori google.com sada"))
+    }
+
+    @Test
+    fun `slepljeno se razdvaja`() {
+        assertEquals("Idem, Sutra, ne znam", z("Idem.Sutra,ne znam"))
+    }
+
+    @Test
+    fun `navodnici zagrade i crte nestaju`() {
+        assertEquals("Rekao je idemo sutra ok", z("Rekao je \"idemo\" (sutra) - ok."))
+    }
+
+    @Test
+    fun `bez udvojenih zareza i zareza na pocetku`() {
+        assertEquals("Idemo, dalje", z(". Idemo, , dalje."))
+    }
+}
+
+/** „novi red" i „novi pasus". Isti slucajevi kao GlasovneKomande u tests/test_text.py. */
+class GlasovneKomandeTest {
+
+    private fun k(tekst: String) = TextPolish.glasovneKomande(tekst)
+
+    @Test
+    fun `novi red i pasus`() {
+        assertEquals("Sutra idem u grad\nkupim mleko", k("Sutra idem u grad novi red kupim mleko"))
+        assertEquals("zdravo Marko\n\nJavi mi", k("zdravo Marko novi pasus Javi mi"))
+    }
+
+    @Test
+    fun `zarez oko komande nestaje tacka i upitnik ostaju`() {
+        assertEquals("grad\nkupi", k("grad, novi red, kupi"))
+        assertEquals("grad.\nKupi", k("grad. Novi red. Kupi"))
+        assertEquals("dolaziš?\njavi", k("dolaziš? novi red javi"))
+    }
+
+    @Test
+    fun `komanda kao zaseban deo diktata`() {
+        assertEquals("\n", k("novi red "))
+    }
+
+    @Test
+    fun `slicne reci se ne diraju`() {
+        assertEquals("imam novi redovni posao", k("imam novi redovni posao"))
+        assertEquals("ovo je nov redosled", k("ovo je nov redosled"))
+    }
+}
+
+/**
+ * „Pravilno" je precica nad prekidacima pravila, ne jos jedno podesavanje.
+ * Isti slucajevi kao u tests/test_text.py na Mac strani.
  */
 class PravilnoTest {
 
@@ -436,12 +528,13 @@ class PravilnoTest {
 
     @Test
     fun `jedan ukljucen vise nije pravilno`() {
-        // Nad-prekidac se IZVODI iz cetiri; rucno paljenje jednog ga mora
+        // Nad-prekidac se IZVODI iz prekidaca; rucno paljenje jednog ga mora
         // oboriti, inace bi prekidac u podesavanjima lagao.
         assertEquals(false, Pravilno.SVE_UGASENO.copy(malaSlova = true).pravilno)
         assertEquals(false, Pravilno.SVE_UGASENO.copy(bezInterpunkcije = true).pravilno)
         assertEquals(false, Pravilno.SVE_UGASENO.copy(bezKvacica = true).pravilno)
         assertEquals(false, Pravilno.SVE_UGASENO.copy(skracenice = true).pravilno)
+        assertEquals(false, Pravilno.SVE_UGASENO.copy(samoZarezi = true).pravilno)
     }
 
     @Test

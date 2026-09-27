@@ -102,8 +102,7 @@ class Obrada:
         if red.startswith("- "):
             oznaka, red = "- ", red[2:]
         out = red
-        if self.cfg.get("strip_punctuation", True):
-            out = webstt.strip_punctuation(out)
+        out = webstt.interpunkcija(out, self.cfg)
         if self.cfg.get("lowercase", True):
             out = out.lower()
         else:

@@ -35,7 +35,7 @@ class SttService : RecognitionService() {
         activeListener = listener
         listener.readyForSpeech(Bundle())
         try {
-            recorder = Recorder(cfg.sampleRate).also { it.start() }
+            recorder = Recorder(cfg.sampleRate, Tisina.za(this, cfg)).also { it.start() }
             listener.beginningOfSpeech()
             if (cfg.transcriptionProvider == "openai") {
                 val seconds = if (cfg.openAiLongRecording) {

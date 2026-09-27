@@ -113,7 +113,7 @@ class GlasovnaTastatura : InputMethodService() {
 
     private fun pocni() {
         try {
-            recorder = Recorder(cfg.sampleRate).also { it.start() }
+            recorder = Recorder(cfg.sampleRate, Tisina.za(this, cfg)).also { it.start() }
         } catch (exc: Exception) {
             natpis?.text = "Mikrofon nije dostupan"
             return
@@ -154,8 +154,11 @@ class GlasovnaTastatura : InputMethodService() {
                 obradjuje = false
                 tekst.onSuccess { t ->
                     if (t.isNotBlank()) {
-                        currentInputConnection?.commitText(t.trim() + " ", 1)
-                        cfg.addHistory(t.trim())
+                        // Razmak na kraju, osim kad se diktat zavrsio komandom
+                        // „novi red": tada prelom pojede i razmak.
+                        val gotov = TextPolish.glasovneKomande(t.trim() + " ").trimStart()
+                        currentInputConnection?.commitText(gotov, 1)
+                        cfg.addHistory(gotov)
                     }
                     vratiTastaturu()
                 }.onFailure { greska ->

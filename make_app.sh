@@ -3,6 +3,14 @@
 #
 #   ./make_app.sh           napravi Diktat.app u ovom folderu (za razvoj)
 #   ./make_app.sh install   instaliraj u /Applications, za dvoklik bez terminala
+#   ./make_app.sh kod       zameni samo kod instalirane aplikacije i pokreni je
+#   ./make_app.sh azuriraj  `kod` ako se pokretac nije menjao, inace `install`
+#                           (to radi Instaliraj.command)
+#
+# Zasto `kod` postoji: svaki `install` pravi i potpisuje bundle iznova, a nov
+# ad-hoc potpis ponisti dozvole za Mikrofon i Accessibility. Bundle se menja
+# samo kad se menja deo ovog fajla koji ga pravi, pa se otisak tog dela pamti
+# pri instalaciji.
 #
 # Zasto uopste bundle: kad se pokrece iz terminala, macOS dozvole (Mikrofon,
 # Accessibility) se vezuju za Terminal, pa pucaju cim promenis terminal ili ga
@@ -28,6 +36,84 @@ CILJ="/Applications/Diktat.app"
 if [ ! -x "$IZVOR/.venv/bin/python" ]; then
   echo "Nema .venv — pokreni prvo ./setup.sh"
   exit 1
+fi
+
+OTISAK_FAJL="$DOM/pokretac-otisak"
+# Otisak dela koji pravi bundle (pokretac i napravi_app), bez komentara: izmena
+# komentara ili ostatka skripte ne trazi novu instalaciju.
+OTISAK="$(sed -n '/^# -* pokretac$/,/^# -* instalacija$/p' "$IZVOR/make_app.sh" \
+  | grep -v '^[[:space:]]*#' | shasum -a 256 | cut -d' ' -f1)"
+
+# --------------------------------------------------------------- samo kod
+# Kod i okruzenje idu u $DOM; podesavanja i kljucevi prezivljavaju.
+# $1 = "uvek" prepisuje okruzenje i kad se requirements.txt nije menjao.
+prepisi_kod() {
+  mkdir -p "$DOM"
+  local cuvani=""
+  if [ -f "$DOM/app/config.json" ]; then
+    cuvani="$(mktemp)"
+    cp "$DOM/app/config.json" "$cuvani"
+  fi
+
+  rm -rf "$DOM/app"
+  mkdir -p "$DOM/app"
+  cp -R dictate run.py doctor.py selftest.py requirements.txt config.example.json "$DOM/app/"
+  find "$DOM/app" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+  # Oznaka poslednjeg izdanja u ovom kodu. Po njoj aplikacija zna da li na
+  # GitHub-u postoji novija verzija (Podesavanja > Verzija i azuriranje).
+  # Izdanja se prave na GitHub-u (gh release create), pa oznaka lokalno ume
+  # da fali dok se ne povuce.
+  git -C "$IZVOR" fetch --tags --quiet 2>/dev/null || true
+  VERZIJA="$(git -C "$IZVOR" describe --tags --abbrev=0 2>/dev/null || true)"
+  if [ -n "$VERZIJA" ]; then
+    echo "$VERZIJA" > "$DOM/app/VERZIJA"
+    echo "Verzija: $VERZIJA"
+  fi
+
+  if [ -n "$cuvani" ]; then
+    cp "$cuvani" "$DOM/app/config.json"
+    rm -f "$cuvani"
+  elif [ -f config.json ]; then
+    cp config.json "$DOM/app/config.json"
+    echo "Preuzeta postojeca podesavanja iz config.json."
+  fi
+
+  # Okruzenje se prepisuje kad se promeni requirements.txt, da ne zaostane.
+  # Venv nosi apsolutne putanje samo u skriptama koje ne koristimo;
+  # `venv/bin/python` racuna prefiks iz svoje putanje.
+  if [ "${1:-}" = "uvek" ] || [ ! -x "$DOM/venv/bin/python" ] \
+      || ! cmp -s requirements.txt "$DOM/venv/requirements.txt"; then
+    rm -rf "$DOM/venv"
+    cp -R "$IZVOR/.venv" "$DOM/venv"
+    cp requirements.txt "$DOM/venv/requirements.txt"
+    echo "Okruzenje prepisano."
+  fi
+}
+
+if [ "${1:-}" = "azuriraj" ]; then
+  if [ -d "$CILJ" ] && [ "$(cat "$OTISAK_FAJL" 2>/dev/null)" = "$OTISAK" ]; then
+    set -- kod
+  else
+    echo "Pokretac se promenio ili Diktat nije instaliran: ide puna instalacija."
+    echo "Dozvole za Mikrofon i Accessibility posle nje treba odobriti ponovo."
+    set -- install
+    OTVORI=1
+  fi
+fi
+
+if [ "${1:-}" = "kod" ]; then
+  if [ ! -d "$CILJ" ]; then
+    echo "Diktat nije instaliran. Pokreni:  ./make_app.sh install"
+    exit 1
+  fi
+  prepisi_kod
+  # Ako Diktat radi, pokretac na ovo pokrene kod iznova i ugasi staru
+  # instancu; ako ne radi, samo ga pokrene.
+  open "$CILJ"
+  echo "Kod zamenjen, Diktat pokrenut: $DOM/app"
+  echo "Bundle nije diran, pa dozvole ostaju."
+  exit 0
 fi
 
 # --------------------------------------------------------------- ikona
@@ -219,45 +305,11 @@ echo "Napravljeno: $IZVOR/Diktat.app"
 
 # --------------------------------------------------------------- instalacija
 if [ "${1:-}" = "install" ]; then
-  mkdir -p "$DOM"
-
-  # Podesavanja i kljucevi prezivljavaju svaku ponovnu instalaciju.
-  CUVANI=""
-  if [ -f "$DOM/app/config.json" ]; then
-    CUVANI="$RADNI/config.json"
-    cp "$DOM/app/config.json" "$CUVANI"
-  fi
-
-  rm -rf "$DOM/app"
-  mkdir -p "$DOM/app"
-  cp -R dictate run.py doctor.py selftest.py requirements.txt config.example.json "$DOM/app/"
-  find "$DOM/app" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
-
-  # Oznaka poslednjeg izdanja u ovom kodu. Po njoj aplikacija zna da li na
-  # GitHub-u postoji novija verzija (Podesavanja > Verzija i azuriranje).
-  # Izdanja se prave na GitHub-u (gh release create), pa oznaka lokalno ume
-  # da fali dok se ne povuce.
-  git -C "$IZVOR" fetch --tags --quiet 2>/dev/null || true
-  VERZIJA="$(git -C "$IZVOR" describe --tags --abbrev=0 2>/dev/null || true)"
-  if [ -n "$VERZIJA" ]; then
-    echo "$VERZIJA" > "$DOM/app/VERZIJA"
-    echo "Verzija: $VERZIJA"
-  fi
-
-  if [ -n "$CUVANI" ]; then
-    cp "$CUVANI" "$DOM/app/config.json"
-  elif [ -f config.json ]; then
-    cp config.json "$DOM/app/config.json"
-    echo "Preuzeta postojeca podesavanja iz config.json."
-  fi
-
-  # Okruzenje se prepisuje pri svakoj instalaciji, da ne zaostane iza
-  # requirements.txt. Venv nosi apsolutne putanje samo u skriptama koje ne
-  # koristimo; `venv/bin/python` racuna prefiks iz svoje putanje.
-  rm -rf "$DOM/venv"
-  cp -R "$IZVOR/.venv" "$DOM/venv"
+  prepisi_kod uvek
 
   napravi_app "$CILJ" "$DOM/app" "$DOM/venv/bin/python"
+  # Po ovome `azuriraj` zna da bundle odgovara ovom make_app.sh.
+  echo "$OTISAK" > "$OTISAK_FAJL"
   # Bundle se posle potpisa NE dira. `touch` nad njim obara potpis, a macOS
   # tada ubije Python koji aplikacija pokrene, bez ijedne linije u logu.
   #
@@ -270,12 +322,14 @@ if [ "${1:-}" = "install" ]; then
     "$LSREG" -f "$CILJ" >/dev/null 2>&1 || true
   fi
   echo "Instalirano: $CILJ"
+  [ -z "${OTVORI:-}" ] || open "$CILJ"
   echo "Kod i okruzenje: $DOM"
   echo
   echo "Otvara se iz Launchpad-a, Spotlight-a (cmd+razmak pa 'Diktat') ili iz"
   echo "Finder-a, folder Applications. Terminal vise nije potreban."
   echo
-  echo "Posle izmene koda u ovom folderu, pokreni ponovo:  ./make_app.sh install"
+  echo "Posle izmene koda u ovom folderu: dvoklik na Instaliraj.command"
+  echo "(ili ./make_app.sh azuriraj), dozvole tada ostaju."
 else
   echo
   echo "Za ikonu u Launchpad-u i Spotlight-u:  ./make_app.sh install"

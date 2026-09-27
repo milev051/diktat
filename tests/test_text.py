@@ -96,16 +96,27 @@ class IzborStila(unittest.TestCase):
 
 
 class Apostrof(unittest.TestCase):
-    """Endpoint vraca apostrof u „je l'", „ć'š" — ide sa ostalim znacima."""
+    """Apostrof je deo reci („je l'", „ć'š") i ostaje; navodnici odlaze."""
 
     def test_pravi_apostrof(self):
-        self.assertEqual(webstt.strip_punctuation("je l' tako"), "je l tako")
+        self.assertEqual(webstt.strip_punctuation("je l' tako?"), "je l' tako")
 
     def test_krivi_apostrof(self):
-        self.assertEqual(webstt.strip_punctuation("je l’ tako"), "je l tako")
+        self.assertEqual(webstt.strip_punctuation("je l’ tako"), "je l’ tako")
+
+    def test_apostrof_na_pocetku_reci(self):
+        self.assertEqual(webstt.strip_punctuation("'ajde idemo"), "'ajde idemo")
 
     def test_jednostruki_navodnici(self):
         self.assertEqual(webstt.strip_punctuation("rekao ‘ovako’"), "rekao ovako")
+        self.assertEqual(webstt.strip_punctuation("rekao 'ovako' sad"), "rekao ovako sad")
+
+    def test_apostrof_koji_stoji_sam_odlazi(self):
+        self.assertEqual(webstt.strip_punctuation("ovo ' ono"), "ovo ono")
+
+    def test_samo_zarezi_cuva_apostrof(self):
+        self.assertEqual(webstt.samo_zarezi("Je l' tako. Ć'š doći?"),
+                         "Je l' tako, Ć'š doći?")
 
     def test_brojevi_i_dalje_ostaju_celi(self):
         self.assertEqual(webstt.strip_punctuation("cena 3,5 u 10:00"), "cena 3,5 u 10:00")
@@ -323,10 +334,10 @@ class SlepljeneReciBezInterpunkcije(unittest.TestCase):
         self.assertEqual(self.sredi("Cena je 1.500,25 dinara."),
                          "Cena je 1.500,25 dinara")
 
-    def test_apostrof_i_dalje_spaja(self):
+    def test_apostrof_ostaje_u_reci(self):
         # „ć'š" mora da ostane jedna rec, zato apostrof NIJE u tom pravilu.
-        self.assertEqual(self.sredi("ć'š ti"), "ćš ti")
-        self.assertEqual(self.sredi("je l' ovako"), "je l ovako")
+        self.assertEqual(self.sredi("ć'š ti"), "ć'š ti")
+        self.assertEqual(self.sredi("je l' ovako"), "je l' ovako")
 
     def test_uobicajen_razmak_ostaje_jedan(self):
         self.assertEqual(self.sredi("obicna recenica. druga recenica"),
@@ -387,11 +398,97 @@ class ObicneReciSeNeRazdvajaju(unittest.TestCase):
         self.assertEqual(self.primeni("dugacko 5 m"), "dugacko 5m")
 
 
-class PravilnoNadPrekidac(unittest.TestCase):
-    """„Pravilno" je precica nad cetiri prekidaca, ne peto podesavanje.
+class SamoZareziIUpitnici(unittest.TestCase):
+    """Tacke postaju zarezi; za pisanje malim slovima bez tacaka usred teksta."""
 
-    Svaki od ta cetiri UDALJAVA tekst od pravopisa, pa „pravilno" znaci: sva
-    cetiri ugasena.
+    def z(self, tekst):
+        return webstt.samo_zarezi(tekst)
+
+    def test_tacka_usred_postaje_zarez_na_kraju_nestaje(self):
+        self.assertEqual(self.z("Sutra idem u grad. Da li dolaziš? Javi mi."),
+                         "Sutra idem u grad, Da li dolaziš? Javi mi")
+
+    def test_upitnik_ostaje_i_na_kraju(self):
+        self.assertEqual(self.z("Zar ne?"), "Zar ne?")
+        self.assertEqual(self.z("Stvarno!? Ne verujem"), "Stvarno? Ne verujem")
+
+    def test_uzvicnik_tri_tacke_dvotacka_postaju_zarez(self):
+        self.assertEqual(self.z("Bravo! Ne znam... Prvo: ovo; pa ono."),
+                         "Bravo, Ne znam, Prvo, ovo, pa ono")
+
+    def test_tacka_koja_nije_kraj_recenice_ostaje(self):
+        self.assertEqual(self.z("Rođen je 2026. godine, npr. ovako."),
+                         "Rođen je 2026. godine, npr. ovako")
+
+    def test_brojevi_i_domeni_ostaju_celi(self):
+        self.assertEqual(self.z("Cena je 3,5 u 10:30. Verzija 2.0 radi."),
+                         "Cena je 3,5 u 10:30, Verzija 2.0 radi")
+        self.assertEqual(self.z("Otvori google.com sada"), "Otvori google.com sada")
+
+    def test_slepljeno_se_razdvaja(self):
+        self.assertEqual(self.z("Idem.Sutra,ne znam"), "Idem, Sutra, ne znam")
+
+    def test_navodnici_zagrade_i_crte_nestaju(self):
+        self.assertEqual(self.z('Rekao je "idemo" (sutra) - ok.'),
+                         "Rekao je idemo sutra ok")
+
+    def test_bez_udvojenih_zareza_i_zareza_na_pocetku(self):
+        self.assertEqual(self.z(". Idemo, , dalje."), "Idemo, dalje")
+
+    def test_bez_interpunkcije_pobedjuje(self):
+        cfg = {"strip_punctuation": True, "samo_zarezi": True}
+        self.assertEqual(webstt.interpunkcija("idem. sutra?", cfg), "idem sutra")
+
+    def test_ugaseno_ne_dira_tekst(self):
+        cfg = {"strip_punctuation": False, "samo_zarezi": False}
+        self.assertEqual(webstt.interpunkcija("Idem. Sutra?", cfg), "Idem. Sutra?")
+
+    def test_svi_tokovi_koriste_isto_pravilno(self):
+        from dictate import geministt, openai
+        cfg = {"strip_punctuation": False, "samo_zarezi": True, "lowercase": True,
+               "abbreviations": False, "openai_output_script": "latin"}
+        for tok in (geministt.post_process, openai.post_process):
+            self.assertEqual(tok("Idem sutra. Da li dolaziš?", cfg),
+                             "idem sutra, da li dolaziš?", tok.__module__)
+
+
+class GlasovneKomande(unittest.TestCase):
+    """„novi red" i „novi pasus"; Google ih vraca kao obicne reci."""
+
+    def k(self, tekst):
+        return webstt.glasovne_komande(tekst)
+
+    def test_novi_red_i_pasus(self):
+        self.assertEqual(self.k("Sutra idem u grad novi red kupim mleko"),
+                         "Sutra idem u grad\nkupim mleko")
+        self.assertEqual(self.k("zdravo Marko novi pasus Javi mi"),
+                         "zdravo Marko\n\nJavi mi")
+
+    def test_zarez_oko_komande_nestaje_tacka_i_upitnik_ostaju(self):
+        self.assertEqual(self.k("grad, novi red, kupi"), "grad\nkupi")
+        self.assertEqual(self.k("grad. Novi red. Kupi"), "grad.\nKupi")
+        self.assertEqual(self.k("dolaziš? novi red javi"), "dolaziš?\njavi")
+
+    def test_komanda_kao_zaseban_deo_diktata(self):
+        # Izgovorena posle pauze stigne sama, sa razmakom na kraju.
+        self.assertEqual(self.k("novi red "), "\n")
+
+    def test_slicne_reci_se_ne_diraju(self):
+        self.assertEqual(self.k("imam novi redovni posao"), "imam novi redovni posao")
+        self.assertEqual(self.k("ovo je nov redosled"), "ovo je nov redosled")
+
+    def test_istorija_pamti_prelom(self):
+        from dictate import upis
+        red = upis.RedUpisa(*(lambda *a: None,) * 5)
+        red.zapamti("prva stavka novi red druga stavka ")
+        self.assertEqual(red.istorija(), ["prva stavka\ndruga stavka"])
+
+
+class PravilnoNadPrekidac(unittest.TestCase):
+    """„Pravilno" je precica nad prekidacima pravila, ne jos jedno podesavanje.
+
+    Svaki od njih UDALJAVA tekst od pravopisa, pa „pravilno" znaci: svi
+    ugaseni.
     """
 
     def cfg(self, **izmene):

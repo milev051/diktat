@@ -43,6 +43,13 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         /** Zelena je ista u svetloj i tamnoj temi; Material You je ovde ne dira. */
         val ZELENA = 0xFF2E7D32.toInt()
+
+        /** Izbor „Interpunkcija": kljuc -> natpis na dugmetu. Isto kao na Mac-u. */
+        val INTERPUNKCIJA = listOf(
+            "sva" to "Sva",
+            "zarezi" to "Zarezi i ?",
+            "bez" to "Bez",
+        )
     }
 
     private lateinit var cfg: Config
@@ -472,8 +479,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun copyHistory(text: String) {
+        // Razmak na kraju, kao posle diktata: sledeca rec se inace zalepi za
+        // nalepljen tekst. Isto radi i Mac.
         getSystemService(ClipboardManager::class.java).setPrimaryClip(
-            ClipData.newPlainText("Diktat", text)
+            ClipData.newPlainText("Diktat", text.trimEnd() + " ")
         )
         Toast.makeText(this, "Kopirano u clipboard.", Toast.LENGTH_SHORT).show()
     }
@@ -599,6 +608,16 @@ class MainActivity : AppCompatActivity() {
         box.addView(openAiRecording)
         showProviderOptions(cfg.transcriptionProvider)
 
+        box.addView(switch(this, "Utišaj zvuk dok snimam", cfg.utisajZvuk) {
+            cfg.utisajZvuk = it
+        })
+        box.addView(switch(this, "Pauziraj muziku i video dok snimam", cfg.pauzirajPlejer) {
+            cfg.pauzirajPlejer = it
+        })
+        box.addView(
+            body(this, "Posle snimanja se zvuk vraća, a muzika nastavlja odakle je stala.")
+        )
+
         return card
     }
 
@@ -706,6 +725,13 @@ class MainActivity : AppCompatActivity() {
         return card
     }
 
+    /** Koji izbor odgovara podesavanjima; „bez" pobedjuje „zareze". */
+    private fun interpunkcija() = when {
+        cfg.stripPunctuation -> "bez"
+        cfg.samoZarezi -> "zarezi"
+        else -> "sva"
+    }
+
     private fun tekst(): ViewGroup {
         // Ovo radi nas kod, bez modela i bez kljuca — zato je odvojeno od AI
         // kartice i radi i kad je AI iskljucen.
@@ -716,17 +742,18 @@ class MainActivity : AppCompatActivity() {
         var sinhronizujem = false
         lateinit var swPravilno: com.google.android.material.materialswitch.MaterialSwitch
         lateinit var swMala: com.google.android.material.materialswitch.MaterialSwitch
-        lateinit var swInterpunkcija: com.google.android.material.materialswitch.MaterialSwitch
+        lateinit var izborInterpunkcije: com.google.android.material.button.MaterialButtonToggleGroup
         lateinit var swKvacice: com.google.android.material.materialswitch.MaterialSwitch
         lateinit var swSkracenice: com.google.android.material.materialswitch.MaterialSwitch
 
-        // Kvacica na „Pravilno" se IZVODI iz ta cetiri, ne pamti se zasebno:
+        // Kvacica na „Pravilno" se IZVODI iz prekidaca ispod, ne pamti se zasebno:
         // inace bi rucno gasenje jednog od njih ostavilo nad-prekidac da laze.
         fun osvezi() {
             sinhronizujem = true
             swPravilno.isChecked = cfg.pravilno
             swMala.isChecked = cfg.lowercase
-            swInterpunkcija.isChecked = cfg.stripPunctuation
+            val izabrano = INTERPUNKCIJA.indexOfFirst { it.first == interpunkcija() }
+            izborInterpunkcije.check(izborInterpunkcije.getChildAt(izabrano).id)
             swKvacice.isChecked = cfg.asciiDiacritics
             swSkracenice.isChecked = cfg.abbreviations
             sinhronizujem = false
@@ -735,7 +762,7 @@ class MainActivity : AppCompatActivity() {
         // Nad-prekidac iznad cetiri. Nije peto podesavanje nego precica: cetiri
         // klika za prelazak izmedju „kako sam izgovorio" i „pravopisno" su
         // cetiri prilike da se jedan zaboravi, pa tekst izadje na pola puta.
-        swPravilno = switch(this, "Pravilno (gasi sva četiri ispod)", cfg.pravilno) {
+        swPravilno = switch(this, "Pravilno (gasi sve ispod)", cfg.pravilno) {
             if (!sinhronizujem) {
                 cfg.pravilno = it
                 osvezi()
@@ -754,10 +781,22 @@ class MainActivity : AppCompatActivity() {
             if (!sinhronizujem) { cfg.lowercase = it; osvezi() }
         }
         box.addView(swMala)
-        swInterpunkcija = switch(this, "Ukloni interpunkciju (brojevi ostaju)", cfg.stripPunctuation) {
-            if (!sinhronizujem) { cfg.stripPunctuation = it; osvezi() }
+        box.addView(body(this, "Interpunkcija"))
+        izborInterpunkcije = choice(this, INTERPUNKCIJA, interpunkcija()) { izbor ->
+            if (!sinhronizujem) {
+                cfg.stripPunctuation = izbor == "bez"
+                cfg.samoZarezi = izbor == "zarezi"
+                osvezi()
+            }
         }
-        box.addView(swInterpunkcija)
+        box.addView(izborInterpunkcije)
+        box.addView(
+            body(
+                this,
+                "Zarezi i ?: tačke postaju zarezi, ostaju samo zarezi i upitnici. " +
+                    "Bez: brojevi kao 3,5 i 10:30 ostaju celi.",
+            )
+        )
         swKvacice = switch(this, "Bez kvačica (č ć ž š đ → c c z s dj)", cfg.asciiDiacritics) {
             if (!sinhronizujem) { cfg.asciiDiacritics = it; osvezi() }
         }

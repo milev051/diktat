@@ -115,6 +115,24 @@ class Config(context: Context) {
         }
         set(v) = prefs.edit().putBoolean("strip_punctuation", v).apply()
 
+    /**
+     * Tacke postaju zarezi, ostaju samo zarezi i upitnici. Vazi samo dok je
+     * `stripPunctuation` ugasen; u podesavanjima su oba jedan izbor.
+     */
+    var samoZarezi: Boolean
+        get() = prefs.getBoolean("samo_zarezi", false)
+        set(v) = prefs.edit().putBoolean("samo_zarezi", v).apply()
+
+    /** Utisaj zvuk medija dok se snima (Tisina.kt). */
+    var utisajZvuk: Boolean
+        get() = prefs.getBoolean("utisaj_zvuk", false)
+        set(v) = prefs.edit().putBoolean("utisaj_zvuk", v).apply()
+
+    /** Pauziraj muziku ili video dok se snima, pa nastavi (Tisina.kt). */
+    var pauzirajPlejer: Boolean
+        get() = prefs.getBoolean("pauziraj_plejer", false)
+        set(v) = prefs.edit().putBoolean("pauziraj_plejer", v).apply()
+
     /** Uvek iskljuceno: `pFilter=0`. Maskiranje psovki niko nije koristio. */
     val profanityFilter = false
 
@@ -170,7 +188,7 @@ class Config(context: Context) {
         set(v) = prefs.edit().putBoolean("abbreviations", v).apply()
 
     /**
-     * „Pravilno": sva cetiri prekidaca za izgled teksta odjednom.
+     * „Pravilno": svi prekidaci za izgled teksta odjednom.
      *
      * Nije peto podesavanje nego precica. Svaki od ta cetiri UDALJAVA tekst od
      * pravopisa (mala slova, bez interpunkcije, bez kvacica, skracenice), pa
@@ -186,14 +204,17 @@ class Config(context: Context) {
      * Stanje je TRAJNO. Dugme na piluli menja bas ovo, pa izbor ostaje i za
      * sledeci diktat, dok se ne vrati rukom.
      */
-    /** Cetiri prekidaca kao jedno stanje; odluke su u `Pravilno`. */
+    /** Prekidaci kao jedno stanje; odluke su u `Pravilno`. */
     private var stanjeTeksta: Pravilno.Stanje
-        get() = Pravilno.Stanje(lowercase, stripPunctuation, asciiDiacritics, abbreviations)
+        get() = Pravilno.Stanje(
+            lowercase, stripPunctuation, asciiDiacritics, abbreviations, samoZarezi,
+        )
         set(v) {
             lowercase = v.malaSlova
             stripPunctuation = v.bezInterpunkcije
             asciiDiacritics = v.bezKvacica
             abbreviations = v.skracenice
+            samoZarezi = v.samoZarezi
         }
 
     var pravilno: Boolean
@@ -206,6 +227,7 @@ class Config(context: Context) {
                         .putBoolean("pravilno_pre_strip", zapamti.bezInterpunkcije)
                         .putBoolean("pravilno_pre_ascii", zapamti.bezKvacica)
                         .putBoolean("pravilno_pre_abbrev", zapamti.skracenice)
+                        .putBoolean("pravilno_pre_zarezi", zapamti.samoZarezi)
                         .putBoolean("pravilno_pamceno", true)
                         .apply()
                 }
@@ -218,6 +240,7 @@ class Config(context: Context) {
                     prefs.getBoolean("pravilno_pre_strip", true),
                     prefs.getBoolean("pravilno_pre_ascii", false),
                     prefs.getBoolean("pravilno_pre_abbrev", true),
+                    prefs.getBoolean("pravilno_pre_zarezi", false),
                 )
             } else {
                 null

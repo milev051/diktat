@@ -174,7 +174,7 @@ class ShareActivity : AppCompatActivity() {
     private fun statusOnWorker(text: String) = runOnUiThread { status.text = text }
 
     private fun showResult(text: String) {
-        resultText = text.trimEnd()
+        resultText = TextPolish.glasovneKomande(text).trimEnd()
         cfg.addHistory(resultText)
         copyToClipboard(resultText)
         status.text = "Transkripcija je završena i automatski kopirana u clipboard."

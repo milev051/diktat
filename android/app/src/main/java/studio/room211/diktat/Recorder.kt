@@ -16,7 +16,7 @@ import kotlin.concurrent.thread
  * rezimu snimanje traje koliko treba, a sat vremena bi u baferu bilo preko
  * 100 MB. Potrosac skuplja samo tekuci segment i pusta ga cim ga posalje.
  */
-class Recorder(private val sampleRate: Int) {
+class Recorder(private val sampleRate: Int, private val tisina: Tisina? = null) {
 
     private val queue = LinkedBlockingQueue<ByteArray>()
     private var record: AudioRecord? = null
@@ -46,6 +46,7 @@ class Recorder(private val sampleRate: Int) {
         record = rec
         running = true
         rec.startRecording()
+        runCatching { tisina?.pocni() }
 
         worker = thread(name = "diktat-rec") {
             val size = minOf(4096, maxOf(minBuf, 2048))
@@ -79,11 +80,14 @@ class Recorder(private val sampleRate: Int) {
      */
     fun requestStop() {
         running = false
+        // Zvuk se vraca cim korisnik zaustavi, ne tek kad rep ode na mrezu.
+        runCatching { tisina?.vrati() }
     }
 
     /** Zaustavi snimanje i vrati sve sto jos stoji u redu. */
     fun stop(): ByteArray {
         running = false
+        runCatching { tisina?.vrati() }
         worker?.join(1000)
         worker = null
         record?.runCatching { stop(); release() }

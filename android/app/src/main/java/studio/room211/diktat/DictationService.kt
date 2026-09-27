@@ -118,7 +118,7 @@ class DictationService : Service() {
             return
         }
         try {
-            recorder = Recorder(cfg.sampleRate).also { it.start() }
+            recorder = Recorder(cfg.sampleRate, Tisina.za(this, cfg)).also { it.start() }
         } catch (exc: Exception) {
             toast("Mikrofon: ${exc.message}")
             stopSelf()
@@ -537,7 +537,8 @@ class DictationService : Service() {
         }
     }
 
-    private fun insertNow(text: String) {
+    private fun insertNow(sirov: String) {
+        val text = TextPolish.glasovneKomande(sirov)
         cfg.addHistory(text)
         // Tekst i dalje zavrsava u clipboard-u kad upis ne prodje — izgubiti ga
         // je gore. Poruka preko ekrana se ne prikazuje: pojavljivala se posle

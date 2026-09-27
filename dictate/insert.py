@@ -7,6 +7,8 @@ import time
 import AppKit
 import Quartz
 
+from . import webstt
+
 KVK_ANSI_V = 0x09
 KVK_DOWN_ARROW = 0x7D
 PASTE_SETTLE = 0.12    # da OS stigne da registruje da je Cmd pusten
@@ -65,6 +67,7 @@ def kuca_se(text: str, method: str) -> bool:
 
 
 def insert(text: str, method="auto", restore_clipboard=True) -> None:
+    text = webstt.glasovne_komande(text)
     if not text:
         return
     if method == "clipboard_only":
@@ -76,14 +79,28 @@ def insert(text: str, method="auto", restore_clipboard=True) -> None:
     _paste(text, restore_clipboard=restore_clipboard)
 
 
+def nalepi_clipboard() -> None:
+    """Nalepi ono sto je vec u clipboard-u u polje koje je u fokusu."""
+    time.sleep(PASTE_SETTLE)
+    _send_cmd_v()
+
+
 def insert_live(text: str) -> None:
     """Dodaj potvrđenu celinu na kraj aktivnog polja dok korisnik diktira.
 
     Korisnik može da klikne raniju reč i ispravi je. Pre sledeće celine kursor
     vraćamo na kraj, da nova rečenica ne upadne usred te ispravke.
     """
-    if text:
-        _type_unicode(text, move_to_end=True)
+    text = webstt.glasovne_komande(text)
+    if not text:
+        return
+    if "\n" in text:
+        # Kucan prelom stize kao Enter i u caskanju salje poruku, pa ide
+        # lepljenjem, na kraj polja kao i ostatak.
+        _type_unicode("", move_to_end=True)
+        _paste(text)
+        return
+    _type_unicode(text, move_to_end=True)
 
 
 # ----------------------------------------------------------------------

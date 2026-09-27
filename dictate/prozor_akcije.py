@@ -18,6 +18,7 @@ class ProzorAkcije:
 
     def _open_settings(self, _):
         """Otvori desktop prozor sa istim grupama kao Android aplikacija."""
+        self._zapamti_prethodnu()
         if self._settings_window_ui is None:
             self._settings_window_ui = settings_window.SettingsWindow(self)
         self._settings_window_ui.show()
@@ -26,6 +27,41 @@ class ProzorAkcije:
         if (self.cfg.get("update_check", True) and not self._azur_radi
                 and time.time() - self._azur_proveren_u > 60):
             self._azur_proveri(rucno=False)
+
+    def _zapamti_prethodnu(self):
+        """Zapamti aplikaciju u kojoj je korisnik bio pre prozora.
+
+        Prozor je jos zatvoren kad se ovo zove, pa je ispred i dalje ta
+        aplikacija. Ako je prozor vec ispred, pamti se ranija.
+        """
+        prednja = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        moja = AppKit.NSRunningApplication.currentApplication()
+        if (prednja is not None
+                and prednja.processIdentifier() != moja.processIdentifier()):
+            self._pre_prozora = prednja
+
+    def _nalepi_u_prethodnu(self):
+        """Vrati fokus aplikaciji od pre prozora i nalepi clipboard.
+
+        Lepi se tek kad ta aplikacija stvarno bude ispred, inace bi Cmd+V
+        otisao u prazno. Gde nema polja za unos, Cmd+V ne radi nista.
+        """
+        cilj = self._pre_prozora
+        if cilj is None or cilj.isTerminated():
+            return
+        cilj.activateWithOptions_(0)
+        pid = cilj.processIdentifier()
+
+        def radnik():
+            rok = time.time() + 1.5
+            while time.time() < rok:
+                prednja = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+                if prednja is not None and prednja.processIdentifier() == pid:
+                    insert.nalepi_clipboard()
+                    return
+                time.sleep(0.05)
+
+        threading.Thread(target=radnik, daemon=True).start()
 
     def _toggle_settings(self):
         """Ikonica je prekidač: drugi klik sklanja prozor."""
@@ -48,7 +84,7 @@ class ProzorAkcije:
             self._restart_hotkey()
         elif key == "lokalna_pravila":
             # Prekidač grupe je izvedeno stanje: ugašena grupa znači „pravilno",
-            # tj. sva četiri pravila ugašena, uz pamćenje zatečenog izbora.
+            # tj. sva pravila ugašena, uz pamćenje zatečenog izbora.
             config.postavi_pravilno(self.cfg, not value)
         elif key == "ai_obrada":
             # Nije peto podesavanje nego precica nad alatima: gasenje pamti
@@ -78,6 +114,10 @@ class ProzorAkcije:
             self.cfg["input_device"] = (
                 None if title == "Sistemski podrazumevani" else title
             )
+        elif key == "interpunkcija" and title in settings_window.INTERPUNKCIJA:
+            strip, zarezi = settings_window.INTERPUNKCIJA[title]
+            self.cfg["strip_punctuation"] = strip
+            self.cfg["samo_zarezi"] = zarezi
         elif key == "mode":
             self.cfg["mode"] = "hold" if title == "Drži taster" else "toggle"
             if hasattr(self, "listener"):
@@ -98,10 +138,17 @@ class ProzorAkcije:
         if action.startswith("copy_history_"):
             try:
                 index = int(action.removeprefix("copy_history_"))
-                value = self.upis.istorija()[index]
+                # Razmak na kraju, kao posle diktata: sledeca rec se inace
+                # zalepi za nalepljen tekst.
+                value = self.upis.istorija()[index].rstrip() + " "
                 insert.set_clipboard(value)
             except (ValueError, IndexError):
-                pass
+                return
+            # Posle kopiranja prozor vise ne treba: sklanja se sam, a tekst se
+            # nalepi u polje gde je bio fokus pre otvaranja.
+            if self._settings_window_ui is not None:
+                self._settings_window_ui.hide()
+            self._nalepi_u_prethodnu()
         elif action == "update":
             self._azur_klik()
         elif action.startswith("prepisi_"):
