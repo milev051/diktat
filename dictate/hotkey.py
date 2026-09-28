@@ -21,6 +21,7 @@ stranicu nazad. Zato i mis ide kroz aktivan tap, ali samo za ta dugmad i samo
 kad je dugme izabrano ili se snima.
 """
 
+import contextlib
 import threading
 import time
 
@@ -79,6 +80,35 @@ MODIFIER_KEYS = {
     keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
     keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r,
 }
+
+
+def _zakucaj_raspored():
+    """Procitaj raspored tastature jednom, na glavnoj niti.
+
+    pynput ga cita (TIS/TSM iz HIToolbox-a) u svojoj niti pri svakom pokretanju
+    osluskivaca. Dok aplikacija vec radi, macOS to obara (SIGTRAP u
+    `dispatch_assert_queue`, izmereno 28.09.2026 na „Isključi" za dugme misa).
+    Raspored sluzi samo za prevod koda tastera u znak, a prekidace poredimo po
+    `vk` i po `Key`, pa zapamcena vrednost ne smeta ni kad se raspored promeni.
+    """
+    try:
+        from pynput._util import darwin as util_darwin
+        from pynput.keyboard import _darwin as keyboard_darwin
+    except Exception:  # noqa: BLE001 — nije macOS
+        return
+    if getattr(keyboard_darwin, "_diktat_raspored", False):
+        return
+    if threading.current_thread() is not threading.main_thread():
+        return
+    with util_darwin.keycode_context() as raspored:
+        pass
+
+    @contextlib.contextmanager
+    def zapamcen():
+        yield raspored
+
+    keyboard_darwin.keycode_context = zapamcen
+    keyboard_darwin._diktat_raspored = True
 
 
 def naziv_dugmeta(broj) -> str:
@@ -157,6 +187,7 @@ class HotkeyListener:
             {"darwin_intercept": self._intercept}
             if self.znak_tasteri() and CGEventGetFlags is not None else {}
         )
+        _zakucaj_raspored()
         self._listener = keyboard.Listener(
             on_press=self._on_press,
             on_release=self._on_release,
@@ -205,6 +236,11 @@ class HotkeyListener:
 
     def otkazi_snimanje(self):
         self._ucenje = None
+
+    def iskljuci_dugme(self):
+        """Tap ostaje, ali vise nista ne guta; pynput se ne pokrece iznova."""
+        self._ucenje = None
+        self.mouse_button = None
 
     def _pokreni_mis(self):
         if self._mis_nit is not None or CGEventTapCreate is None:

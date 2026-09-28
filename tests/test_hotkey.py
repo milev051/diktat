@@ -183,3 +183,22 @@ class DugmeMisa(unittest.TestCase):
         sluzba = self._listener(mouse_button=3)
         self.assertEqual(self._pritisni(sluzba, 2, hotkey.kCGEventOtherMouseDown), "dogadjaj")
         self.assertFalse(sluzba._active)
+
+
+class Raspored(unittest.TestCase):
+    """pynput posle prvog pokretanja ne sme sam da čita raspored tastature."""
+
+    def test_raspored_je_zapamcen(self):
+        from pynput.keyboard import _darwin as keyboard_darwin
+        hotkey._zakucaj_raspored()
+        self.assertTrue(getattr(keyboard_darwin, "_diktat_raspored", False))
+        with keyboard_darwin.keycode_context() as raspored:
+            self.assertEqual(len(raspored), 2)
+
+    def test_iskljuci_dugme_ne_guta_vise(self):
+        sluzba = hotkey.HotkeyListener(
+            {"hotkey": "alt_r", "mouse_button": 3},
+            on_start=lambda: True, on_stop=lambda: None, on_cancel=lambda *a: None,
+        )
+        sluzba.iskljuci_dugme()
+        self.assertIsNone(sluzba.mouse_button)

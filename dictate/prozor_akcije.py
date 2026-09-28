@@ -176,7 +176,7 @@ class ProzorAkcije:
             self.cfg["mouse_button"] = None
             config.save(self.cfg)
             self.mis_status = ""
-            self._restart_hotkey()
+            self.listener.iskljuci_dugme()
             self._mis_dirty = True
         elif action == "check_api":
             self._check_api_keys(sender)

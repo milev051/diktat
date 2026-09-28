@@ -132,6 +132,13 @@ zaseban **aktivan** Quartz tap samo za `OtherMouseDown/Up`, koji postoji samo
 dok je dugme izabrano ili se snima. Tap nit ne sme da dira prozor: javlja preko
 `_mis_dirty`, a `_tick` osvežava. Isti pristup kao u touchpad-switcher-u.
 
+**pynput ne sme sam da čita raspored tastature dok aplikacija radi.** Njegov
+osluškivač pri svakom pokretanju zove TIS/TSM iz svoje niti, a macOS to obara
+(SIGTRAP u `dispatch_assert_queue`, pad od 28.09.2026 na „Isključi" za dugme
+miša, koje je tada zvalo `_restart_hotkey`). Zato `_zakucaj_raspored` pročita
+raspored jednom na glavnoj niti i podmetne ga pynput-u, a „Isključi" samo
+postavi `mouse_button = None` bez ponovnog pokretanja osluškivača.
+
 Uz modifikator se ne guta ništa: Shift+§ je „±", a Cmd+§ je tuđa prečica.
 Modifikatori se prate u `_mods` (pynput ne šalje stanje uz sam znak), pa se
 skidaju **pre** poređenja pri puštanju tastera. Sam taster se prepoznaje po
