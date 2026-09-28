@@ -131,6 +131,11 @@ se gutaju i ne pokreću diktat. Izabrano dugme se guta uvek, pa ide kroz
 zaseban **aktivan** Quartz tap samo za `OtherMouseDown/Up`, koji postoji samo
 dok je dugme izabrano ili se snima. Tap nit ne sme da dira prozor: javlja preko
 `_mis_dirty`, a `_tick` osvežava. Isti pristup kao u touchpad-switcher-u.
+MX Master uz Logi Options+ bočno dugme šalje kao **taster F18**, ne kao dugme
+(prvo snimanje „ništa se ne dešava", 28.09.2026), pa snimanje prihvata i prvi
+obični taster iz pynput osluškivača (`mouse_key_vk`); modifikatori i naši
+sintetički tasteri se ne snimaju, Esc otkazuje. Auto-repeat snimljenog tastera
+se ignoriše (`_taster_dole`), inače bi držanje paljenje i gasilo u krug.
 
 **pynput ne sme sam da čita raspored tastature dok aplikacija radi.** Njegov
 osluškivač pri svakom pokretanju zove TIS/TSM iz svoje niti, a macOS to obara

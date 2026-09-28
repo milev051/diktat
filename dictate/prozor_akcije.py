@@ -133,11 +133,15 @@ class ProzorAkcije:
             self.cfg[key] = field.stringValue().strip()
             config.save(self.cfg)
 
-    def _dugme_misa_snimljeno(self, broj):
-        """Zove se iz tap niti kad korisnik pritisne dugme koje se snima."""
-        self.cfg["mouse_button"] = broj
-        config.save(self.cfg)
-        self.mis_status = f"Snimljeno: {hotkey.naziv_dugmeta(broj)}."
+    def _dugme_misa_snimljeno(self, vrsta, broj):
+        """Zove se van tap niti kad korisnik pritisne dugme koje se snima."""
+        if vrsta is None:
+            self.mis_status = "Snimanje otkazano."
+        else:
+            self.cfg["mouse_button"] = broj if vrsta == "mis" else None
+            self.cfg["mouse_key_vk"] = broj if vrsta == "taster" else None
+            config.save(self.cfg)
+            self.mis_status = f"Snimljeno: {hotkey.naziv_prekidaca(self.cfg)}."
         self._mis_dirty = True
 
     def settingsButton_(self, sender):
@@ -168,12 +172,13 @@ class ProzorAkcije:
             self._sacuvani_dirty = True
         elif action == "mouse_learn":
             if self.listener.snimi_dugme(self._dugme_misa_snimljeno):
-                self.mis_status = "Pritisni željeno dugme miša…"
+                self.mis_status = "Pritisni željeno dugme miša… (Esc otkazuje)"
             else:
                 self.mis_status = "Nema Accessibility dozvole."
             self._mis_dirty = True
         elif action == "mouse_off":
             self.cfg["mouse_button"] = None
+            self.cfg["mouse_key_vk"] = None
             config.save(self.cfg)
             self.mis_status = ""
             self.listener.iskljuci_dugme()

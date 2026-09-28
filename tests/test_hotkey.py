@@ -157,7 +157,7 @@ class DugmeMisa(unittest.TestCase):
         sluzba = self._listener()
         sluzba._pokreni_mis = lambda: None
         snimljeno = []
-        sluzba.snimi_dugme(snimljeno.append)
+        sluzba.snimi_dugme(lambda *a: snimljeno.append(a))
         self.assertIsNone(self._pritisni(sluzba, 3, hotkey.kCGEventOtherMouseDown))
         self.assertIsNone(self._pritisni(sluzba, 3, hotkey.kCGEventOtherMouseUp))
         self.assertEqual(sluzba.mouse_button, 3)
@@ -202,3 +202,54 @@ class Raspored(unittest.TestCase):
         )
         sluzba.iskljuci_dugme()
         self.assertIsNone(sluzba.mouse_button)
+
+
+class SnimljenTaster(unittest.TestCase):
+    """Logi Options+ bočno dugme šalje kao taster (F18); snima se i on."""
+
+    F18 = keyboard.KeyCode.from_vk(79)
+
+    def _listener(self, **kw):
+        cfg = {"hotkey": "alt_r", "mode": "toggle", "min_seconds": 0.0}
+        cfg.update(kw)
+        return hotkey.HotkeyListener(
+            cfg, on_start=lambda: True, on_stop=lambda: None, on_cancel=lambda *a: None
+        )
+
+    def test_snimanje_pamti_f18(self):
+        sluzba = self._listener(mouse_button=2)
+        sluzba._pokreni_mis = lambda: None
+        sluzba.snimi_dugme(lambda *a: None)
+        sluzba._on_press(self.F18)
+        sluzba._on_release(self.F18)
+        self.assertEqual(sluzba.taster_vk, 79)
+        self.assertIsNone(sluzba.mouse_button)
+        self.assertFalse(sluzba._active)   # snimanje ne pokreće diktat
+
+    def test_esc_otkazuje(self):
+        sluzba = self._listener()
+        sluzba._pokreni_mis = lambda: None
+        sluzba.snimi_dugme(lambda *a: None)
+        sluzba._on_press(keyboard.KeyCode.from_vk(hotkey.ESCAPE_VK))
+        self.assertIsNone(sluzba.taster_vk)
+        self.assertIsNone(sluzba._ucenje)
+
+    def test_modifikator_se_ne_snima(self):
+        sluzba = self._listener()
+        sluzba._pokreni_mis = lambda: None
+        sluzba.snimi_dugme(lambda *a: None)
+        sluzba._on_press(keyboard.Key.shift)
+        self.assertIsNotNone(sluzba._ucenje)
+
+    def test_snimljen_taster_je_prekidac_bez_auto_repeat(self):
+        sluzba = self._listener(mouse_key_vk=79)
+        sluzba._on_press(self.F18)
+        sluzba._on_press(self.F18)         # auto-repeat ne gasi
+        self.assertTrue(sluzba._active)
+        sluzba._on_release(self.F18)
+        sluzba._on_press(self.F18)
+        self.assertFalse(sluzba._active)
+
+    def test_naziv(self):
+        self.assertEqual(hotkey.naziv_prekidaca({"mouse_key_vk": 79}), "taster F18")
+        self.assertEqual(hotkey.naziv_prekidaca({"mouse_button": 2}), "srednje dugme miša")

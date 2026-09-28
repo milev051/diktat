@@ -463,8 +463,8 @@ class SettingsWindow:
         red.addSubview_(snimi)
         red.addSubview_(iskljuci)
         page.place(red, 28, gap=2.0)
-        self._hint(page, "Klikni „Snimi“, pa pritisni srednje ili bočno dugme miša. "
-                         "Ako Logi Options+ presreće dugme, tamo mu dodeli Middle button.")
+        self._hint(page, "Klikni „Snimi“, pa pritisni dugme miša. Pamti se i taster "
+                         "koji Logi Options+ šalje umesto dugmeta (npr. F18).")
         self._checkbox(page, "Utišaj zvuk računara dok snimam", "utisaj_zvuk", False)
         self._checkbox(page, "Pauziraj muziku i video dok snimam", "pauziraj_plejer",
                        False)
@@ -753,7 +753,7 @@ class SettingsWindow:
             # Tok snimanja (ceka se dugme, snimljeno) ima prednost nad stanjem.
             self.mis_label.setStringValue_(
                 self.app.mis_status
-                or f"Dugme miša: {hotkey.naziv_dugmeta(self.app.cfg.get('mouse_button'))}"
+                or f"Dugme miša: {hotkey.naziv_prekidaca(self.app.cfg)}"
             )
 
         self._refresh_update()

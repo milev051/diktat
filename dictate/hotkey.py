@@ -14,8 +14,10 @@ bar jedna od tih opcija upaljena. Uz modifikator (Shift+§ = „±", Shift+` = �
 Cmd+§) ne guta se nista i taster radi kao i pre.
 
 Dugme misa (srednje ili bocno) moze da bude jos jedan prekidac. Ne bira se sa
-spiska nego se snima: `snimi_dugme` ceka sledeci pritisak dugmeta i pamti broj
-koji macOS zaista salje (Logi Options+ ume bocno dugme da posalje kao srednje).
+spiska nego se snima: `snimi_dugme` ceka sledeci pritisak dugmeta i pamti ono
+sto macOS zaista posalje. Logi Options+ bocno dugme cesto salje kao srednje ili
+kao taster (F18), pa se pamti ili broj dugmeta (`mouse_button`) ili `vk` tastera
+(`mouse_key_vk`). Esc otkazuje snimanje.
 Izabrano dugme se guta, inace bi srednji klik otvarao linkove, a bocno vracalo
 stranicu nazad. Zato i mis ide kroz aktivan tap, ali samo za ta dugmad i samo
 kad je dugme izabrano ili se snima.
@@ -73,6 +75,12 @@ SECTION_VK = 10
 # kVK_ANSI_Grave: taster „`"; na ISO rasporedu stoji levo od Z.
 GRAVE_VK = 50
 
+# kVK_Escape: otkazuje snimanje dugmeta.
+ESCAPE_VK = 53
+# Tasteri koje softver misa obicno salje; ostali se prikazuju po kodu.
+NAZIVI_TASTERA = {105: "F13", 107: "F14", 113: "F15", 106: "F16",
+                  64: "F17", 79: "F18", 80: "F19", 90: "F20"}
+
 # Modifikatori koji, kad se drze, znace da „§" nije prekidac nego deo precice.
 MODIFIER_KEYS = {
     keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r,
@@ -120,6 +128,26 @@ def naziv_dugmeta(broj) -> str:
     return f"dugme miša {broj + 1}"
 
 
+def naziv_tastera(vk) -> str:
+    return f"taster {NAZIVI_TASTERA.get(vk, f'(kod {vk})')}"
+
+
+def naziv_prekidaca(cfg) -> str:
+    """Sta je snimljeno u Podesavanjima: taster iz softvera misa ili dugme."""
+    vk = cfg.get("mouse_key_vk")
+    if isinstance(vk, int):
+        return naziv_tastera(vk)
+    return naziv_dugmeta(cfg.get("mouse_button"))
+
+
+def vk_od(key):
+    """`vk` i za obican taster (KeyCode) i za imenovan (Key.f18)."""
+    vk = getattr(key, "vk", None)
+    if vk is None:
+        vk = getattr(getattr(key, "value", None), "vk", None)
+    return vk
+
+
 def is_section_key(key) -> bool:
     """Da li je pritisnut `§`; `vk` je pouzdaniji od znaka, koji zavisi od rasporeda."""
     return getattr(key, "vk", None) == SECTION_VK
@@ -164,8 +192,13 @@ class HotkeyListener:
 
         broj = cfg.get("mouse_button")
         self.mouse_button = broj if isinstance(broj, int) and 2 <= broj <= 31 else None
-        self._ucenje = None           # callback dok se ceka dugme za snimanje
+        vk = cfg.get("mouse_key_vk")
+        self.taster_vk = vk if isinstance(vk, int) and 0 <= vk <= 127 else None
+        self._taster_dole = False     # auto-repeat snimljenog tastera se ignorise
+        # Dok se snima: gotovo(vrsta, broj), vrsta je "mis", "taster" ili None.
+        self._ucenje = None
         self._progutaj_pustanje = None
+        self._progutaj_taster = None
         self._mis_tap = None
         self._mis_petlja = None
         self._mis_nit = None
@@ -226,21 +259,32 @@ class HotkeyListener:
     # ------------------------------------------------------------ mis
 
     def snimi_dugme(self, gotovo):
-        """Sledeci pritisak srednjeg ili bocnog dugmeta postaje prekidac.
+        """Sledeci pritisak dugmeta misa ili tastera postaje prekidac.
 
-        `gotovo(broj)` se zove van tap niti; cuvanje u config je na pozivaocu.
+        `gotovo(vrsta, broj)` se zove van tap niti: ("mis", broj dugmeta),
+        ("taster", vk) ili (None, None) kad je otkazano Esc-om. Cuvanje u
+        config je na pozivaocu.
         """
-        self._ucenje = gotovo
+        with self._lock:
+            self._ucenje = gotovo
         self._pokreni_mis()
-        return self._mis_nit is not None
+        return self._listener is not None or self._mis_nit is not None
 
     def otkazi_snimanje(self):
-        self._ucenje = None
+        with self._lock:
+            self._ucenje = None
 
     def iskljuci_dugme(self):
         """Tap ostaje, ali vise nista ne guta; pynput se ne pokrece iznova."""
-        self._ucenje = None
-        self.mouse_button = None
+        with self._lock:
+            self._ucenje = None
+            self.mouse_button = None
+            self.taster_vk = None
+
+    def _uzmi_ucenje(self):
+        with self._lock:
+            gotovo, self._ucenje = self._ucenje, None
+        return gotovo
 
     def _pokreni_mis(self):
         if self._mis_nit is not None or CGEventTapCreate is None:
@@ -274,11 +318,12 @@ class HotkeyListener:
         except Exception:  # noqa: BLE001 — mis ne sme da stane zbog nas
             return event
         if tip == kCGEventOtherMouseDown:
-            gotovo, self._ucenje = self._ucenje, None
+            gotovo = self._uzmi_ucenje()
             if gotovo is not None:
                 self.mouse_button = broj
+                self.taster_vk = None
                 self._progutaj_pustanje = broj
-                self._fire(gotovo, broj)
+                self._fire(gotovo, "mis", broj)
                 return None
             if broj == self.mouse_button:
                 with self._lock:
@@ -305,10 +350,37 @@ class HotkeyListener:
             and not self._mods
         )
 
+    def _snimi_taster(self, key) -> bool:
+        """Dok se snima, prvi obican taster (npr. F18 iz Logi Options+) postaje
+        prekidac; Esc otkazuje. Modifikatori i nasi sinteticki tasteri ne."""
+        if (self._ucenje is None or key in MODIFIER_KEYS or self.is_synthetic()
+                or vk_od(key) is None):
+            return False
+        gotovo = self._uzmi_ucenje()
+        if gotovo is None:
+            return False
+        vk = vk_od(key)
+        self._progutaj_taster = vk
+        if vk == ESCAPE_VK:
+            self._fire(gotovo, None, None)
+            return True
+        with self._lock:
+            self.taster_vk = vk
+            self.mouse_button = None
+        self._fire(gotovo, "taster", vk)
+        return True
+
     def _on_press(self, key):
+        if self._snimi_taster(key):
+            return
         with self._lock:
             if key in MODIFIER_KEYS:
                 self._mods.add(key)
+            if self.taster_vk is not None and vk_od(key) == self.taster_vk:
+                if not self._taster_dole:
+                    self._taster_dole = True
+                    self._pritisak()
+                return
             if self._matches(key):
                 self._pritisak()
                 return
@@ -325,6 +397,14 @@ class HotkeyListener:
             # sme da ostane zapamcen kao precica.
             if key in MODIFIER_KEYS:
                 self._mods.discard(key)
+            vk = vk_od(key)
+            if vk is not None and vk == self._progutaj_taster:
+                self._progutaj_taster = None
+                return
+            if self.taster_vk is not None and vk == self.taster_vk:
+                self._taster_dole = False
+                self._pustanje()
+                return
             if self._matches(key):
                 self._pustanje()
 
