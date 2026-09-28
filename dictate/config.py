@@ -71,6 +71,9 @@ DEFAULTS = {
     "hotkey_section": True,
     # „`" (levo od Z na ISO rasporedu) kao treci prekidac; guta se isto kao „§".
     "hotkey_grave": False,
+    # Dugme misa kao prekidac (Quartz broj: 2 srednje, 3 i 4 bocna). Ne bira se
+    # nego snima u Podesavanjima; None = iskljuceno.
+    "mouse_button": None,
     "mode": "toggle",             # nacin aktivacije: "hold" | "toggle"
     "continuous": True,           # bez granice; sece na svakoj pauzi
     "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni

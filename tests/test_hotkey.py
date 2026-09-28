@@ -125,3 +125,61 @@ class NoviPritisakUTokuRepa(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DugmeMisa(unittest.TestCase):
+    """Snimljeno dugme miša radi kao prekidač i guta se; ostala dugmad prolaze."""
+
+    def _listener(self, **kw):
+        cfg = {"hotkey": "alt_r", "mode": "toggle", "min_seconds": 0.0}
+        cfg.update(kw)
+        self.dogadjaji = []
+        return hotkey.HotkeyListener(
+            cfg, on_start=lambda: self.dogadjaji.append("start"),
+            on_stop=lambda: self.dogadjaji.append("stop"),
+            on_cancel=lambda *a: self.dogadjaji.append("cancel"),
+        )
+
+    def _pritisni(self, sluzba, broj, tip):
+        stari = hotkey.CGEventGetIntegerValueField
+        hotkey.CGEventGetIntegerValueField = lambda _e, _f: broj
+        try:
+            return sluzba._mis_dogadjaj(None, tip, "dogadjaj", None)
+        finally:
+            hotkey.CGEventGetIntegerValueField = stari
+
+    def test_nevazeci_broj_je_iskljuceno(self):
+        self.assertIsNone(self._listener(mouse_button=0).mouse_button)
+        self.assertIsNone(self._listener(mouse_button="3").mouse_button)
+        self.assertEqual(self._listener(mouse_button=3).mouse_button, 3)
+
+    def test_snimanje_pamti_i_guta_dugme(self):
+        sluzba = self._listener()
+        sluzba._pokreni_mis = lambda: None
+        snimljeno = []
+        sluzba.snimi_dugme(snimljeno.append)
+        self.assertIsNone(self._pritisni(sluzba, 3, hotkey.kCGEventOtherMouseDown))
+        self.assertIsNone(self._pritisni(sluzba, 3, hotkey.kCGEventOtherMouseUp))
+        self.assertEqual(sluzba.mouse_button, 3)
+        self.assertFalse(sluzba._active)   # snimanje ne pokreće diktat
+
+    def test_izabrano_dugme_je_prekidac(self):
+        sluzba = self._listener(mouse_button=2)
+        self.assertIsNone(self._pritisni(sluzba, 2, hotkey.kCGEventOtherMouseDown))
+        self.assertTrue(sluzba._active)
+        self._pritisni(sluzba, 2, hotkey.kCGEventOtherMouseUp)
+        self.assertTrue(sluzba._active)    # prekidač: puštanje ne zaustavlja
+        self._pritisni(sluzba, 2, hotkey.kCGEventOtherMouseDown)
+        self.assertFalse(sluzba._active)
+
+    def test_drzi_taster_zaustavlja_na_pustanje(self):
+        sluzba = self._listener(mouse_button=3, mode="hold")
+        self._pritisni(sluzba, 3, hotkey.kCGEventOtherMouseDown)
+        self.assertTrue(sluzba._active)
+        self._pritisni(sluzba, 3, hotkey.kCGEventOtherMouseUp)
+        self.assertFalse(sluzba._active)
+
+    def test_drugo_dugme_prolazi(self):
+        sluzba = self._listener(mouse_button=3)
+        self.assertEqual(self._pritisni(sluzba, 2, hotkey.kCGEventOtherMouseDown), "dogadjaj")
+        self.assertFalse(sluzba._active)

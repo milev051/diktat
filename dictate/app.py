@@ -187,6 +187,10 @@ class DictateApp(
         # Zato se AVFoundation ucita u pozadini, a prozor napravi unapred.
         self._prozor_moze = False
         self._sacuvani_dirty = True
+        # Snimanje dugmeta misa: natpis u prozoru i znak da ga treba osveziti
+        # (dugme stize iz tap niti, a prozor sme da se dira samo iz `_tick`).
+        self.mis_status = ""
+        self._mis_dirty = False
         self._prepis_radi = False
         self.prepis_status = ""
         # Ostatak neuspelog diktata od pre pokretanja: prozor se otvori sam,
@@ -282,6 +286,10 @@ class DictateApp(
         if self._najavi_sacuvane and self._settings_window_ui is not None:
             self._najavi_sacuvane = False
             self._open_settings(None)
+        if self._mis_dirty:
+            self._mis_dirty = False
+            if self._settings_window_ui is not None:
+                self._settings_window_ui.refresh()
         if self._sacuvani_dirty:
             self._sacuvani_dirty = False
             if self._settings_window_ui is not None:

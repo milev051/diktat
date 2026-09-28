@@ -10,7 +10,7 @@ import time
 
 import AppKit
 
-from . import apitest, config, insert, rezerva, settings_window
+from . import apitest, config, hotkey, insert, rezerva, settings_window
 
 
 class ProzorAkcije:
@@ -133,6 +133,13 @@ class ProzorAkcije:
             self.cfg[key] = field.stringValue().strip()
             config.save(self.cfg)
 
+    def _dugme_misa_snimljeno(self, broj):
+        """Zove se iz tap niti kad korisnik pritisne dugme koje se snima."""
+        self.cfg["mouse_button"] = broj
+        config.save(self.cfg)
+        self.mis_status = f"Snimljeno: {hotkey.naziv_dugmeta(broj)}."
+        self._mis_dirty = True
+
     def settingsButton_(self, sender):
         action = str(sender.identifier() or "")
         if action.startswith("copy_history_"):
@@ -159,6 +166,18 @@ class ProzorAkcije:
             if index < len(sacuvani):
                 sacuvani[index].obrisi()
             self._sacuvani_dirty = True
+        elif action == "mouse_learn":
+            if self.listener.snimi_dugme(self._dugme_misa_snimljeno):
+                self.mis_status = "Pritisni željeno dugme miša…"
+            else:
+                self.mis_status = "Nema Accessibility dozvole."
+            self._mis_dirty = True
+        elif action == "mouse_off":
+            self.cfg["mouse_button"] = None
+            config.save(self.cfg)
+            self.mis_status = ""
+            self._restart_hotkey()
+            self._mis_dirty = True
         elif action == "check_api":
             self._check_api_keys(sender)
         elif action == "quit":

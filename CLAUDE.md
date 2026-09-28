@@ -123,6 +123,15 @@ opcija upaljena, a promena prekidača traži ponovno otvaranje osluškivanja
 letu. Ako macOS ikad ugasi tap zato što je odgovor kasnio, hotkey prestaje da
 radi do sledećeg pokretanja; zato u intercept-u ne sme da uđe ništa sporo.
 
+**Dugme miša se snima, ne bira sa spiska** (`mouse_button`, od 28.09.2026).
+Logi Options+ i slični softver šalju bočno dugme pod drugim brojem (često kao
+srednje), pa ponuđeni spisak „dugme 4/5" nije radio. `snimi_dugme` čeka sledeći
+`OtherMouseDown` i pamti broj koji zaista stiže; taj pritisak i njegovo puštanje
+se gutaju i ne pokreću diktat. Izabrano dugme se guta uvek, pa ide kroz
+zaseban **aktivan** Quartz tap samo za `OtherMouseDown/Up`, koji postoji samo
+dok je dugme izabrano ili se snima. Tap nit ne sme da dira prozor: javlja preko
+`_mis_dirty`, a `_tick` osvežava. Isti pristup kao u touchpad-switcher-u.
+
 Uz modifikator se ne guta ništa: Shift+§ je „±", a Cmd+§ je tuđa prečica.
 Modifikatori se prate u `_mods` (pynput ne šalje stanje uz sam znak), pa se
 skidaju **pre** poređenja pri puštanju tastera. Sam taster se prepoznaje po

@@ -12,6 +12,13 @@ prekidac, gutaju preko `darwin_intercept`. Gutanje trazi AKTIVAN event tap:
 dogadjaji tastature tada prolaze kroz nas proces, pa se ukljucuje samo kad je
 bar jedna od tih opcija upaljena. Uz modifikator (Shift+§ = „±", Shift+` = „~",
 Cmd+§) ne guta se nista i taster radi kao i pre.
+
+Dugme misa (srednje ili bocno) moze da bude jos jedan prekidac. Ne bira se sa
+spiska nego se snima: `snimi_dugme` ceka sledeci pritisak dugmeta i pamti broj
+koji macOS zaista salje (Logi Options+ ume bocno dugme da posalje kao srednje).
+Izabrano dugme se guta, inace bi srednji klik otvarao linkove, a bocno vracalo
+stranicu nazad. Zato i mis ide kroz aktivan tap, ali samo za ta dugmad i samo
+kad je dugme izabrano ili se snima.
 """
 
 import threading
@@ -37,6 +44,29 @@ except Exception:          # noqa: BLE001
     CGEventGetFlags = None
     MOD_MASK = 0
 
+try:                       # tap za dugmad misa; bez njega mis otpada
+    from Quartz import (
+        CFMachPortCreateRunLoopSource,
+        CFRunLoopAddSource,
+        CFRunLoopGetCurrent,
+        CFRunLoopRun,
+        CFRunLoopStop,
+        CGEventMaskBit,
+        CGEventTapCreate,
+        CGEventTapEnable,
+        kCFRunLoopCommonModes,
+        kCGEventOtherMouseDown,
+        kCGEventOtherMouseUp,
+        kCGEventTapDisabledByTimeout,
+        kCGEventTapDisabledByUserInput,
+        kCGEventTapOptionDefault,
+        kCGHeadInsertEventTap,
+        kCGMouseEventButtonNumber,
+        kCGSessionEventTap,
+    )
+except Exception:          # noqa: BLE001
+    CGEventTapCreate = None
+
 # kVK_ISO_Section: taster levo od „1" na ISO rasporedu.
 SECTION_VK = 10
 # kVK_ANSI_Grave: taster „`"; na ISO rasporedu stoji levo od Z.
@@ -49,6 +79,15 @@ MODIFIER_KEYS = {
     keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
     keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r,
 }
+
+
+def naziv_dugmeta(broj) -> str:
+    """Quartz broji od nule: 2 je srednje dugme, 3 i 4 su uobicajena bocna."""
+    if broj is None:
+        return "isključeno"
+    if broj == 2:
+        return "srednje dugme miša"
+    return f"dugme miša {broj + 1}"
 
 
 def is_section_key(key) -> bool:
@@ -93,6 +132,15 @@ class HotkeyListener:
         self._listener = None
         self._mods = set()
 
+        broj = cfg.get("mouse_button")
+        self.mouse_button = broj if isinstance(broj, int) and 2 <= broj <= 31 else None
+        self._ucenje = None           # callback dok se ceka dugme za snimanje
+        self._progutaj_pustanje = None
+        self._mis_tap = None
+        self._mis_petlja = None
+        self._mis_nit = None
+        self._mis_zaustavljen = False
+
     def znak_tasteri(self) -> set:
         """`vk` tastera-znakova koji su trenutno prekidac; jedino njih gutamo."""
         vks = set()
@@ -117,6 +165,8 @@ class HotkeyListener:
         )
         self._listener.daemon = True
         self._listener.start()
+        if self.mouse_button is not None:
+            self._pokreni_mis()
 
     def _intercept(self, _event_type, event):
         """Vrati None da dogadjaj nestane; sve ostalo prosledi netaknuto."""
@@ -135,6 +185,78 @@ class HotkeyListener:
         if self._listener is not None:
             self._listener.stop()
             self._listener = None
+        self._mis_zaustavljen = True
+        self._ucenje = None
+        if self._mis_tap is not None:
+            CGEventTapEnable(self._mis_tap, False)
+        if self._mis_petlja is not None:
+            CFRunLoopStop(self._mis_petlja)
+
+    # ------------------------------------------------------------ mis
+
+    def snimi_dugme(self, gotovo):
+        """Sledeci pritisak srednjeg ili bocnog dugmeta postaje prekidac.
+
+        `gotovo(broj)` se zove van tap niti; cuvanje u config je na pozivaocu.
+        """
+        self._ucenje = gotovo
+        self._pokreni_mis()
+        return self._mis_nit is not None
+
+    def otkazi_snimanje(self):
+        self._ucenje = None
+
+    def _pokreni_mis(self):
+        if self._mis_nit is not None or CGEventTapCreate is None:
+            return
+
+        def rad():
+            maska = CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp)
+            tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
+                                   kCGEventTapOptionDefault, maska, self._mis_dogadjaj, None)
+            if tap is None:        # nema Accessibility dozvole
+                return
+            self._mis_tap = tap
+            izvor = CFMachPortCreateRunLoopSource(None, tap, 0)
+            self._mis_petlja = CFRunLoopGetCurrent()
+            CFRunLoopAddSource(self._mis_petlja, izvor, kCFRunLoopCommonModes)
+            CGEventTapEnable(tap, True)
+            if not self._mis_zaustavljen:
+                CFRunLoopRun()
+
+        self._mis_nit = threading.Thread(target=rad, daemon=True)
+        self._mis_nit.start()
+
+    def _mis_dogadjaj(self, _proxy, tip, event, _refcon):
+        """Vrati None da dugme nestane; sve ostalo prosledi netaknuto."""
+        if tip in (kCGEventTapDisabledByTimeout, kCGEventTapDisabledByUserInput):
+            if self._mis_tap is not None and not self._mis_zaustavljen:
+                CGEventTapEnable(self._mis_tap, True)
+            return event
+        try:
+            broj = int(CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber))
+        except Exception:  # noqa: BLE001 — mis ne sme da stane zbog nas
+            return event
+        if tip == kCGEventOtherMouseDown:
+            gotovo, self._ucenje = self._ucenje, None
+            if gotovo is not None:
+                self.mouse_button = broj
+                self._progutaj_pustanje = broj
+                self._fire(gotovo, broj)
+                return None
+            if broj == self.mouse_button:
+                with self._lock:
+                    self._pritisak()
+                return None
+        elif tip == kCGEventOtherMouseUp:
+            if broj == self._progutaj_pustanje:
+                self._progutaj_pustanje = None
+                return None
+            if broj == self.mouse_button:
+                with self._lock:
+                    self._pustanje()
+                return None
+        return event
 
     # ------------------------------------------------------------------
 
@@ -152,22 +274,7 @@ class HotkeyListener:
             if key in MODIFIER_KEYS:
                 self._mods.add(key)
             if self._matches(key):
-                if self.mode == "toggle":
-                    if self._active:
-                        self._active = False
-                        self._fire(self.on_stop)
-                    else:
-                        self._active = True
-                        self._contaminated = False
-                        self._pressed_at = time.monotonic()
-                        self._start()
-                    return
-                # hold: ignorisi auto-repeat dok je vec aktivno
-                if not self._active:
-                    self._active = True
-                    self._contaminated = False
-                    self._pressed_at = time.monotonic()
-                    self._start()
+                self._pritisak()
                 return
 
             # Neki drugi taster dok drzimo hotkey => ovo je precica, ne diktat.
@@ -182,18 +289,40 @@ class HotkeyListener:
             # sme da ostane zapamcen kao precica.
             if key in MODIFIER_KEYS:
                 self._mods.discard(key)
-            if not self._matches(key) or self.mode == "toggle":
-                return
-            if not self._active:
-                return
-            self._active = False
-            held = time.monotonic() - self._pressed_at
-            if self._contaminated:
-                self._fire(self.on_cancel, "precica")
-            elif held < self.min_seconds:
-                self._fire(self.on_cancel, "prekratko")
-            else:
+            if self._matches(key):
+                self._pustanje()
+
+    def _pritisak(self):
+        """Prekidac pritisnut (taster ili dugme misa); zove se pod `_lock`."""
+        if self.mode == "toggle":
+            if self._active:
+                self._active = False
                 self._fire(self.on_stop)
+            else:
+                self._active = True
+                self._contaminated = False
+                self._pressed_at = time.monotonic()
+                self._start()
+            return
+        # hold: ignorisi auto-repeat dok je vec aktivno
+        if not self._active:
+            self._active = True
+            self._contaminated = False
+            self._pressed_at = time.monotonic()
+            self._start()
+
+    def _pustanje(self):
+        """Prekidac pusten; znacajno samo u rezimu „drzi taster"."""
+        if self.mode == "toggle" or not self._active:
+            return
+        self._active = False
+        held = time.monotonic() - self._pressed_at
+        if self._contaminated:
+            self._fire(self.on_cancel, "precica")
+        elif held < self.min_seconds:
+            self._fire(self.on_cancel, "prekratko")
+        else:
+            self._fire(self.on_stop)
 
     def reset(self, pokrenuto=None):
         """Vrati prekidac u mirovanje.

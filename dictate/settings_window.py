@@ -261,6 +261,7 @@ class SettingsWindow:
         self.saved_rows = []
         self._sacuvani = []
         self.prepis_label = None
+        self.mis_label = None
         self.dividers = []
         self._history_len = 0
         self._accessibility_ok = True
@@ -452,6 +453,18 @@ class SettingsWindow:
                        "hotkey_section", True)
         self._checkbox(page, "Aktiviraj i tasterom ` (znak se ne upisuje)",
                        "hotkey_grave", False)
+        self.mis_label = self._plain_label("", 12, alpha=0.6)
+        page.place(self.mis_label, 17, gap=4.0)
+        red = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, COLUMN, 28))
+        snimi = self._plain_button("Snimi dugme miša", "mouse_learn")
+        snimi.setFrame_(NSMakeRect(0, 0, 170, 28))
+        iskljuci = self._plain_button("Isključi", "mouse_off")
+        iskljuci.setFrame_(NSMakeRect(174, 0, 96, 28))
+        red.addSubview_(snimi)
+        red.addSubview_(iskljuci)
+        page.place(red, 28, gap=2.0)
+        self._hint(page, "Klikni „Snimi“, pa pritisni srednje ili bočno dugme miša. "
+                         "Ako Logi Options+ presreće dugme, tamo mu dodeli Middle button.")
         self._checkbox(page, "Utišaj zvuk računara dok snimam", "utisaj_zvuk", False)
         self._checkbox(page, "Pauziraj muziku i video dok snimam", "pauziraj_plejer",
                        False)
@@ -736,6 +749,12 @@ class SettingsWindow:
             red.prepisi.setEnabled_(not self.app._prepis_radi)
         if self.prepis_label is not None:
             self.prepis_label.setStringValue_(self.app.prepis_status)
+        if self.mis_label is not None:
+            # Tok snimanja (ceka se dugme, snimljeno) ima prednost nad stanjem.
+            self.mis_label.setStringValue_(
+                self.app.mis_status
+                or f"Dugme miša: {hotkey.naziv_dugmeta(self.app.cfg.get('mouse_button'))}"
+            )
 
         self._refresh_update()
 
