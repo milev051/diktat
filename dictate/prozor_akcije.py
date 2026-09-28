@@ -140,6 +140,7 @@ class ProzorAkcije:
         else:
             self.cfg["mouse_button"] = broj if vrsta == "mis" else None
             self.cfg["mouse_key_vk"] = broj if vrsta == "taster" else None
+            self.cfg["mouse_swipe"] = broj if vrsta == "swipe" else None
             config.save(self.cfg)
             self.mis_status = f"Snimljeno: {hotkey.naziv_prekidaca(self.cfg)}."
         self._mis_dirty = True
@@ -179,6 +180,7 @@ class ProzorAkcije:
         elif action == "mouse_off":
             self.cfg["mouse_button"] = None
             self.cfg["mouse_key_vk"] = None
+            self.cfg["mouse_swipe"] = None
             config.save(self.cfg)
             self.mis_status = ""
             self.listener.iskljuci_dugme()

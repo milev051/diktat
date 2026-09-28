@@ -76,6 +76,8 @@ DEFAULTS = {
     "mouse_button": None,
     # Ili taster koji softver misa salje umesto dugmeta (vk; 79 = F18).
     "mouse_key_vk": None,
+    # Ili Logi Back/Forward, koje stizu kao swipe: "back" | "forward".
+    "mouse_swipe": None,
     "mode": "toggle",             # nacin aktivacije: "hold" | "toggle"
     "continuous": True,           # bez granice; sece na svakoj pauzi
     "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni

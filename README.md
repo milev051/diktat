@@ -237,8 +237,9 @@ Autostart: System Settings → General → Login Items → `+` → `Diktat.app`
 - **Dugme miša** (srednje ili bočno): u Podešavanjima klikni **Snimi dugme
   miša** i pritisni željeno dugme; **Isključi** ga gasi. Snimljeno dugme se
   guta, pa srednji klik više ne otvara linkove, a bočno ne vraća stranicu.
-  Ako Logi Options+ bočno dugme šalje kao taster (npr. F18), snima se taj
-  taster. Esc otkazuje snimanje.
+  Bočna dugmad sa podrazumevanim Logi podešavanjem **Back/Forward** rade
+  direktno (klik pali, sledeći gasi), a Back/Forward se tada ne izvršava.
+  Snima se i taster koji softver miša šalje umesto dugmeta. Esc otkazuje.
 
 Dva nezavisna podešavanja:
 
@@ -334,6 +335,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `hotkey_grave` | `false` | i taster `` ` `` pokreće diktat; znak se tada guta |
 | `mouse_button` | `null` | snimljeno dugme miša (Quartz broj, 2 = srednje); snima se u Podešavanjima |
 | `mouse_key_vk` | `null` | ili snimljen taster koji softver miša šalje (79 = F18) |
+| `mouse_swipe` | `null` | ili Logi bočno dugme: `back` ili `forward` |
 | `mode` | `toggle` | način aktivacije: `hold` (drži) ili `toggle` (pritisni) |
 | `continuous` | `true` | bez granice; seče na svakoj pauzi |
 | `continuous_max_seconds` | `3600` | sigurnosna granica i za neprekidni režim |

@@ -253,3 +253,66 @@ class SnimljenTaster(unittest.TestCase):
     def test_naziv(self):
         self.assertEqual(hotkey.naziv_prekidaca({"mouse_key_vk": 79}), "taster F18")
         self.assertEqual(hotkey.naziv_prekidaca({"mouse_button": 2}), "srednje dugme miša")
+
+
+class LogiSwipe(unittest.TestCase):
+    """Logi Back/Forward stižu kao swipe; snimaju se i rade kao prekidač."""
+
+    def setUp(self):
+        self.dogadjaji = []
+        self.poslato = []
+        self._stari = (hotkey.HotkeyListener.logi_swipe, hotkey.CGEventCreateCopy,
+                       hotkey.CGEventTapPostEvent)
+        hotkey.HotkeyListener.logi_swipe = staticmethod(lambda e: e)
+        hotkey.CGEventCreateCopy = lambda e: ("kopija", e)
+        hotkey.CGEventTapPostEvent = lambda _p, e: self.poslato.append(e)
+
+    def tearDown(self):
+        (logi, hotkey.CGEventCreateCopy, hotkey.CGEventTapPostEvent) = self._stari
+        hotkey.HotkeyListener.logi_swipe = logi
+
+    def _listener(self, **kw):
+        cfg = {"hotkey": "alt_r", "mode": "hold", "min_seconds": 0.0}
+        cfg.update(kw)
+        sluzba = hotkey.HotkeyListener(
+            cfg, on_start=lambda: True, on_stop=lambda: self.dogadjaji.append("stop"),
+            on_cancel=lambda *a: None,
+        )
+        sluzba._start = lambda: self.dogadjaji.append("start")
+        sluzba._pokreni_mis = lambda: None
+        return sluzba
+
+    def _swipe(self, sluzba, smer):
+        pocetak = sluzba._swipe_dogadjaj(None, (hotkey.NSEventPhaseBegan, None))
+        kraj = sluzba._swipe_dogadjaj(None, (8, smer))
+        return pocetak, kraj
+
+    def test_snimanje_pamti_smer(self):
+        sluzba = self._listener()
+        sluzba.snimi_dugme(lambda *a: None)
+        self.assertEqual(self._swipe(sluzba, "back"), (None, None))
+        self.assertEqual(sluzba.swipe, "back")
+        self.assertEqual(self.poslato, [])
+
+    def test_snimljen_smer_je_prekidac_i_u_rezimu_drzi(self):
+        sluzba = self._listener(mouse_swipe="forward")
+        self._swipe(sluzba, "forward")
+        self.assertTrue(sluzba._active)
+        self._swipe(sluzba, "forward")
+        self.assertFalse(sluzba._active)
+
+    def test_drugi_smer_prolazi_sa_pocetkom(self):
+        sluzba = self._listener(mouse_swipe="forward")
+        pocetak, kraj = self._swipe(sluzba, "back")
+        self.assertIsNone(pocetak)                 # zadržan dok se ne zna smer
+        self.assertEqual(kraj, (8, "back"))
+        self.assertEqual(len(self.poslato), 1)     # pa poslat dalje
+        self.assertFalse(sluzba._active)
+
+    def test_bez_podesavanja_ne_dira_nista(self):
+        sluzba = self._listener()
+        pocetak = (hotkey.NSEventPhaseBegan, None)
+        self.assertEqual(sluzba._swipe_dogadjaj(None, pocetak), pocetak)
+
+    def test_naziv(self):
+        self.assertEqual(hotkey.naziv_prekidaca({"mouse_swipe": "back"}), "bočno dugme Back")

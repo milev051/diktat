@@ -136,6 +136,14 @@ MX Master uz Logi Options+ bočno dugme šalje kao **taster F18**, ne kao dugme
 obični taster iz pynput osluškivača (`mouse_key_vk`); modifikatori i naši
 sintetički tasteri se ne snimaju, Esc otkazuje. Auto-repeat snimljenog tastera
 se ignoriše (`_taster_dole`), inače bi držanje paljenje i gasilo u krug.
+Ni to nije bilo tačno za ovaj miš: izmereno (28.09.2026) je da Logi Options+
+Back/Forward šalje kao **swipe** (CG tip 29, NSEvent `Swipe`) iz procesa
+`logioptionsplus_agent`, sa fazom Began pa Ended i deltaX +1 (Back) ili −1
+(Forward) tek na kraju. Touchpad geste dolaze iz pid 0, pa se Logi swipe
+prepoznaje po `kCGEventSourceUnixProcessID != 0`. Pošto se pravac zna tek na
+kraju, početak se zadrži (`_zadrzan_pocetak`) i pošalje dalje ako swipe nije
+naš. Swipe nema trajanje pritiska, pa je uvek prekidač (`_prekidac`). Kopiju
+događaja ne oslobađaj ručno (`CFRelease`): pyobjc to radi sam.
 
 **pynput ne sme sam da čita raspored tastature dok aplikacija radi.** Njegov
 osluškivač pri svakom pokretanju zove TIS/TSM iz svoje niti, a macOS to obara

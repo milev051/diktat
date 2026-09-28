@@ -463,8 +463,8 @@ class SettingsWindow:
         red.addSubview_(snimi)
         red.addSubview_(iskljuci)
         page.place(red, 28, gap=2.0)
-        self._hint(page, "Klikni „Snimi“, pa pritisni dugme miša. Pamti se i taster "
-                         "koji Logi Options+ šalje umesto dugmeta (npr. F18).")
+        self._hint(page, "Klikni „Snimi“, pa pritisni dugme miša. Bočna dugmad sa Logi "
+                         "podešavanjem Back/Forward rade direktno: klik pali, sledeći gasi.")
         self._checkbox(page, "Utišaj zvuk računara dok snimam", "utisaj_zvuk", False)
         self._checkbox(page, "Pauziraj muziku i video dok snimam", "pauziraj_plejer",
                        False)

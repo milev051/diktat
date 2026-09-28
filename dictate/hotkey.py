@@ -18,6 +18,11 @@ spiska nego se snima: `snimi_dugme` ceka sledeci pritisak dugmeta i pamti ono
 sto macOS zaista posalje. Logi Options+ bocno dugme cesto salje kao srednje ili
 kao taster (F18), pa se pamti ili broj dugmeta (`mouse_button`) ili `vk` tastera
 (`mouse_key_vk`). Esc otkazuje snimanje.
+
+Uz podrazumevano Logi podesavanje bocna dugmad su Back i Forward, koje Logi
+salje kao swipe iz svog agenta (touchpad salje iz Window Server-a, pid 0). I
+to se snima (`mouse_swipe`: "back" ili "forward"). Swipe nema trajanje
+pritiska, pa je uvek prekidac: pritisak pali, sledeci gasi.
 Izabrano dugme se guta, inace bi srednji klik otvarao linkove, a bocno vracalo
 stranicu nazad. Zato i mis ide kroz aktivan tap, ali samo za ta dugmad i samo
 kad je dugme izabrano ili se snima.
@@ -50,6 +55,9 @@ except Exception:          # noqa: BLE001
 try:                       # tap za dugmad misa; bez njega mis otpada
     from Quartz import (
         CFMachPortCreateRunLoopSource,
+        CGEventCreateCopy,
+        CGEventTapPostEvent,
+        kCGEventSourceUnixProcessID,
         CFRunLoopAddSource,
         CFRunLoopGetCurrent,
         CFRunLoopRun,
@@ -70,6 +78,14 @@ try:                       # tap za dugmad misa; bez njega mis otpada
 except Exception:          # noqa: BLE001
     CGEventTapCreate = None
 
+try:
+    from AppKit import NSEvent, NSEventPhaseBegan, NSEventTypeSwipe
+except Exception:          # noqa: BLE001
+    NSEvent = None
+
+# NSEventTypeGesture: Quartz ga nema pod imenom.
+GESTURE_TIP = 29
+SWIPE_SMEROVI = ("back", "forward")
 # kVK_ISO_Section: taster levo od „1" na ISO rasporedu.
 SECTION_VK = 10
 # kVK_ANSI_Grave: taster „`"; na ISO rasporedu stoji levo od Z.
@@ -134,6 +150,9 @@ def naziv_tastera(vk) -> str:
 
 def naziv_prekidaca(cfg) -> str:
     """Sta je snimljeno u Podesavanjima: taster iz softvera misa ili dugme."""
+    swipe = cfg.get("mouse_swipe")
+    if swipe in SWIPE_SMEROVI:
+        return f"bočno dugme {swipe.capitalize()}"
     vk = cfg.get("mouse_key_vk")
     if isinstance(vk, int):
         return naziv_tastera(vk)
@@ -195,6 +214,11 @@ class HotkeyListener:
         vk = cfg.get("mouse_key_vk")
         self.taster_vk = vk if isinstance(vk, int) and 0 <= vk <= 127 else None
         self._taster_dole = False     # auto-repeat snimljenog tastera se ignorise
+        swipe = cfg.get("mouse_swipe")
+        self.swipe = swipe if swipe in SWIPE_SMEROVI else None
+        # Pravac swipe-a se zna tek na kraju, pa se pocetak zadrzi i posalje
+        # dalje ako swipe nije nas.
+        self._zadrzan_pocetak = None
         # Dok se snima: gotovo(vrsta, broj), vrsta je "mis", "taster" ili None.
         self._ucenje = None
         self._progutaj_pustanje = None
@@ -229,7 +253,7 @@ class HotkeyListener:
         )
         self._listener.daemon = True
         self._listener.start()
-        if self.mouse_button is not None:
+        if self.mouse_button is not None or self.swipe is not None:
             self._pokreni_mis()
 
     def _intercept(self, _event_type, event):
@@ -280,6 +304,7 @@ class HotkeyListener:
             self._ucenje = None
             self.mouse_button = None
             self.taster_vk = None
+            self.swipe = None
 
     def _uzmi_ucenje(self):
         with self._lock:
@@ -291,7 +316,8 @@ class HotkeyListener:
             return
 
         def rad():
-            maska = CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp)
+            maska = (CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp)
+                     | CGEventMaskBit(GESTURE_TIP))
             tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                    kCGEventTapOptionDefault, maska, self._mis_dogadjaj, None)
             if tap is None:        # nema Accessibility dozvole
@@ -313,6 +339,11 @@ class HotkeyListener:
             if self._mis_tap is not None and not self._mis_zaustavljen:
                 CGEventTapEnable(self._mis_tap, True)
             return event
+        if tip == GESTURE_TIP:
+            try:
+                return self._swipe_dogadjaj(_proxy, event)
+            except Exception:  # noqa: BLE001 — geste ne smeju da stanu zbog nas
+                return event
         try:
             broj = int(CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber))
         except Exception:  # noqa: BLE001 — mis ne sme da stane zbog nas
@@ -322,6 +353,7 @@ class HotkeyListener:
             if gotovo is not None:
                 self.mouse_button = broj
                 self.taster_vk = None
+                self.swipe = None
                 self._progutaj_pustanje = broj
                 self._fire(gotovo, "mis", broj)
                 return None
@@ -350,6 +382,67 @@ class HotkeyListener:
             and not self._mods
         )
 
+    @staticmethod
+    def logi_swipe(event):
+        """(faza, smer) za Back/Forward iz Logi agenta, inace None.
+
+        Smer je poznat tek na kraju swipe-a; pozitivan deltaX je Back.
+        """
+        if NSEvent is None or CGEventGetIntegerValueField(event, kCGEventSourceUnixProcessID) == 0:
+            return None
+        ns = NSEvent.eventWithCGEvent_(event)
+        if ns is None or ns.type() != NSEventTypeSwipe:
+            return None
+        dx = ns.deltaX()
+        smer = "back" if dx > 0 else "forward" if dx < 0 else None
+        return ns.phase(), smer
+
+    def _pusti_zadrzan(self, proxy, posalji):
+        zadrzan, self._zadrzan_pocetak = self._zadrzan_pocetak, None
+        # pyobjc sam oslobadja kopiju; rucni CFRelease bi je oslobodio dvaput.
+        if zadrzan is not None and posalji:
+            CGEventTapPostEvent(proxy, zadrzan)
+
+    def _swipe_dogadjaj(self, proxy, event):
+        swipe = self.logi_swipe(event)
+        if swipe is None or (self._ucenje is None and self.swipe is None):
+            return event
+        faza, smer = swipe
+        if faza == NSEventPhaseBegan:
+            self._pusti_zadrzan(proxy, True)
+            self._zadrzan_pocetak = CGEventCreateCopy(event)
+            return None
+        if smer is None:
+            self._pusti_zadrzan(proxy, True)
+            return event
+        gotovo = self._uzmi_ucenje()
+        if gotovo is not None:
+            self._pusti_zadrzan(proxy, False)
+            with self._lock:
+                self.swipe = smer
+                self.mouse_button = None
+                self.taster_vk = None
+            self._fire(gotovo, "swipe", smer)
+            return None
+        if smer != self.swipe:
+            self._pusti_zadrzan(proxy, True)
+            return event
+        self._pusti_zadrzan(proxy, False)
+        with self._lock:
+            self._prekidac()
+        return None
+
+    def _prekidac(self):
+        """Pritisak bez pustanja (swipe): pali, pa sledeci gasi, u oba rezima."""
+        if self._active:
+            self._active = False
+            self._fire(self.on_stop)
+        else:
+            self._active = True
+            self._contaminated = False
+            self._pressed_at = time.monotonic()
+            self._start()
+
     def _snimi_taster(self, key) -> bool:
         """Dok se snima, prvi obican taster (npr. F18 iz Logi Options+) postaje
         prekidac; Esc otkazuje. Modifikatori i nasi sinteticki tasteri ne."""
@@ -367,6 +460,7 @@ class HotkeyListener:
         with self._lock:
             self.taster_vk = vk
             self.mouse_button = None
+            self.swipe = None
         self._fire(gotovo, "taster", vk)
         return True
 
