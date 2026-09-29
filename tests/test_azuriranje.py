@@ -125,10 +125,79 @@ class Instalacija(unittest.TestCase):
             self._instaliraj({"README.md": "bez koda\n"})
         self.assertEqual((self.app / "run.py").read_text(), "stari\n")
 
+    def test_instalacija_bez_zapisanog_foldera_ne_dira_nijedan_klon(self):
+        # DOM je privremen i nema fajl `izvor`, pa se pravi projekat ne dira.
+        self._instaliraj({"run.py": "novi\n", "dictate/a.py": ""})
+        self.assertIn("nepoznat", azuriranje.azuriraj_izvor())
+
     def test_razvojna_kopija_se_ne_azurira(self):
         with mock.patch.object(azuriranje, "KOREN", self.dom / "projekat"):
             with self.assertRaises(RuntimeError):
                 self._instaliraj({"run.py": "novi\n", "dictate/a.py": ""})
+
+
+class OsvezavanjeFolderaProjekta(unittest.TestCase):
+    """Posle azuriranja aplikacije i klon dobija novu verziju, ali bezbedno."""
+
+    def setUp(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        self.koren = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, self.koren, True)
+
+        def git(folder, *args):
+            subprocess.run(["git", "-C", str(folder), *args], check=True,
+                           capture_output=True)
+        self.git = git
+        # Ime puta nosi „milev051/diktat", kao prava adresa repozitorijuma.
+        self.origin = self.koren / "milev051" / "diktat.git"
+        self.origin.mkdir(parents=True)
+        git(self.origin, "init", "-q", "--bare", "-b", "main")
+        self.autor = self.koren / "autor"
+        git(self.koren, "clone", "-q", str(self.origin), str(self.autor))
+        for folder in (self.autor,):
+            git(folder, "config", "user.email", "t@t")
+            git(folder, "config", "user.name", "t")
+        (self.autor / "requirements.txt").write_text("a\n")
+        git(self.autor, "add", "-A")
+        git(self.autor, "commit", "-q", "-m", "prvi")
+        git(self.autor, "push", "-q", "origin", "main")
+        self.klon = self.koren / "klon"
+        git(self.koren, "clone", "-q", str(self.origin), str(self.klon))
+
+    def nova_verzija(self):
+        (self.autor / "novo.txt").write_text("x\n")
+        self.git(self.autor, "add", "-A")
+        self.git(self.autor, "commit", "-q", "-m", "drugi")
+        self.git(self.autor, "push", "-q", "origin", "main")
+
+    def test_cist_klon_se_osvezi(self):
+        self.nova_verzija()
+        ishod = azuriranje.azuriraj_izvor(folder=self.klon)
+        self.assertIn("osvezen", ishod)
+        self.assertTrue((self.klon / "novo.txt").exists())
+
+    def test_neuvedene_izmene_ostaju_netaknute(self):
+        self.nova_verzija()
+        (self.klon / "requirements.txt").write_text("moje\n")
+        ishod = azuriranje.azuriraj_izvor(folder=self.klon)
+        self.assertIn("neuvedene izmene", ishod)
+        self.assertFalse((self.klon / "novo.txt").exists())
+        self.assertEqual((self.klon / "requirements.txt").read_text(), "moje\n")
+
+    def test_druga_grana_se_ne_dira(self):
+        self.nova_verzija()
+        self.git(self.klon, "checkout", "-q", "-b", "proba")
+        self.assertIn("grani proba", azuriranje.azuriraj_izvor(folder=self.klon))
+        self.assertFalse((self.klon / "novo.txt").exists())
+
+    def test_tudj_repozitorijum_se_ne_dira(self):
+        self.git(self.klon, "remote", "set-url", "origin", "https://example.com/drugo.git")
+        self.assertIn("nije klon", azuriranje.azuriraj_izvor(folder=self.klon))
+
+    def test_folder_bez_gita(self):
+        self.assertIn("nije git klon", azuriranje.azuriraj_izvor(folder=self.koren))
 
 
 if __name__ == "__main__":

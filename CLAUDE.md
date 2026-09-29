@@ -590,6 +590,15 @@ pravila sačuvana; pokupi nova tek dugmetom u aplikaciji.
 **Regex pravila (`~`) primenjuju se pre prostih.** Inače `dolara=$` pojede reč
 pre nego što `~(\d+)\s*dolara={1}` stigne da premesti simbol ispred cifre.
 
+**STOP važi za snimanje koje taj pritisak zaustavlja** (27.09.2026). Brzi
+STOP, START, STOP: drugi START čeka da rep prvog oslobodi mikrofon, a STOP tokom
+tog čekanja je išao na staro snimanje koje se već gasi. Novo je krenulo posle
+toga i niko ga nije zaustavljao, prekidač je mislio da miruje, pa je svaki
+sledeći pritisak bio START bez mikrofona. Sada snimanje posle STOP-a nosi
+`zaustavljen`, STOP nad takvim važi za start koji čeka (`_stop_requested`), a
+start koji ga zatekne odustaje (`None`: prekidač se ne dira). Od više startova
+koji čekaju kreće samo poslednji (`_start_seq`).
+
 **Tišina dok se snima su dve opcije, ne jedna** (`dictate/zvuk.py` i
 `Tisina.kt`, od 27.09.2026, na izričit zahtev). Na telefonu je lako: utišava se
 `STREAM_MUSIC`, a pauza je audio fokus (`AUDIOFOCUS_GAIN_TRANSIENT`), pa plejer
@@ -598,12 +607,22 @@ njegov `stop()`. Na Mac-u: `utisaj_zvuk` utiša ceo računar
 (`osascript`, ~0,4 s) i jedino radi za poziv, koji ne može da se pauzira.
 `pauziraj_plejer` šalje taster ⏯. Taj taster je **prekidač**: kad ništa ne
 svira, pokrenuo bi poslednju aplikaciju (najčešće Muziku). Zato se šalje samo
-kad CoreAudio (`kAudioHardwarePropertyProcessObjectList`, macOS 14.2+) kaže
-da aplikacija sa spiska `PLEJERI` upravo pušta zvuk. Now Playing iz
-MediaRemote je probano: iz našeg procesa vraća „ne svira" i `nil`, pa na
-njega ne može da se osloni. Poznata rupa: Chrome drži izlaz otvoren i za
-stranicu koja ćuti (WhatsApp Web, Meet), pa taster tada može da pokrene
-pauziran YouTube. Vraća se samo ono što je Diktat promenio: već utišan
+kad je sigurno da nešto svira. Samostalni plejeri (Spotify, Muzika, VLC):
+CoreAudio (`kAudioHardwarePropertyProcessObjectList`, macOS 14.2+) kaže da
+upravo puštaju zvuk. **Google Chrome: JavaScript, ne taster.** Taster je
+**pokretao pauziran video** (prijavljeno 27.09.2026): Chrome drži izlaz otvoren
+i posle pauze, a Accessibility oznaku kartice „Audio playing"
+(`IDS_TAB_AX_LABEL_AUDIO_PLAYING_FORMAT`) još ~2 s, pa je video pauziran pred
+diktat izgledao kao da svira; utišavanje ga je sakrilo, a čuo se po trenutak na
+startu i stopu. Sada oznaka kartice služi samo kao brz filter (~170 ms), a
+`PAUZA_JS` u tim karticama pauzira samo medij koji zaista svira i obeleži ga
+(`dataset.diktatPauza`); `NASTAVI_JS` nastavlja samo obeleženo. Traži „Allow
+JavaScript from Apple Events" u Chrome-u (Touchpad Switcher ga već koristi) i
+dozvolu da Diktat upravlja Chrome-om; bez toga se ne pauzira ništa, razlog ide
+u log. Ostali pregledači nemaju pouzdan znak, pa se ne pauziraju. Now Playing
+iz MediaRemote je probano: iz našeg procesa vraća „ne svira" i `nil`.
+**Vraćanje kasni 2 s** (`ODLOZENO_VRACANJE`): kod brzog niza diktata video i
+zvuk su se puštali između svaka dva snimka. Vraća se samo ono što je Diktat promenio: već utišan
 računar ostaje utišan. Sve ide kroz jednu radnu nit, redom, a vraćanje ide
 pre oslobađanja mikrofona, da ga sledeće snimanje ne pretekne.
 

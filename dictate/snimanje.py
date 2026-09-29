@@ -52,16 +52,30 @@ class Snimanje:
         with self._session_lock:
             self._starting += 1
             self._stop_requested = False
+            # Vazi samo poslednji pritisak: START, STOP, START dok se mikrofon
+            # jos oslobadja ostavi dva starta da cekaju, a krenuti sme samo novi.
+            self._start_seq = getattr(self, "_start_seq", 0) + 1
+            moj = self._start_seq
         try:
-            return self._start_recording()
+            return self._start_recording(moj)
         finally:
             with self._session_lock:
                 self._starting -= 1
 
-    def _start_recording(self):
+    def _start_recording(self, moj=None):
+        """True = snima; False = mikrofon zauzet (prekidac se vraca);
+        None = pritisak je u medjuvremenu prestao da vazi (prekidac se ne dira).
+        """
         if not self._await_slot():
             return False
         with self._session_lock:
+            if moj is not None and moj != getattr(self, "_start_seq", moj):
+                return None
+            if self._stop_requested:
+                # STOP je stigao dok se cekao mikrofon: ovaj start se odustaje,
+                # umesto da krene snimanje koje niko vise ne zaustavlja.
+                self._stop_requested = False
+                return None
             if self._recorder is not None:
                 return False
             # Lista uredjaja se osvezava pred svaki diktat (~2ms) — bez toga
@@ -94,28 +108,26 @@ class Snimanje:
             # Faza se upisuje pod katancem, da je _settle_phase prethodne
             # sesije ne prepise natrag na "obradjuje".
             self.state.set(phase="recording", message="")
-            # STOP koji je stigao dok se mikrofon jos otvarao ne sme da propadne.
-            propusteni_stop = self._stop_requested
-            self._stop_requested = False
 
         if recorder.live_insert:
             # Živi delovi moraju da zauzmu mesto u istom redu kao ostali
             # diktati pre nego što prvi od njih stigne sa servera.
             recorder.ticket = self.upis.novi_tiket(recorder.session)
         threading.Thread(target=self._run_session, args=(recorder,), daemon=True).start()
-        if propusteni_stop:
-            self._on_stop()
         return True
 
     def _on_stop(self):
         with self._session_lock:
             recorder = self._recorder
-            if recorder is None and self._starting:
-                # Snimanje se jos otvara; zapamti STOP da ga pokretanje pokupi.
-                self._stop_requested = True
+            if recorder is None or getattr(recorder, "zaustavljen", False):
+                # Nema snimanja koje ovaj STOP zaustavlja: novo jos ceka
+                # mikrofon, a staro se vec gasi (rep). STOP tada vazi za novo,
+                # pa se pamti. Ranije je isao na staro, novo je krenulo posle
+                # njega i niko ga nije zaustavljao (brzi START/STOP, 27.09.2026).
+                if self._starting:
+                    self._stop_requested = True
                 return
-        if recorder is None:
-            return
+            recorder.zaustavljen = True
         self.state.set(phase="thinking")
         # Okvir sa prepisom nestaje odmah, ne kad rep istekne: snimanje je za
         # korisnika gotovo u trenutku kad pusti taster.
@@ -157,6 +169,7 @@ class Snimanje:
             if recorder is None:
                 return
             recorder.cancelled = True
+            recorder.zaustavljen = True
         self._live_off = True
         recorder.stop()
         self._settle_phase(reason)

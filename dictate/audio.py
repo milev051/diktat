@@ -48,6 +48,7 @@ class Recorder:
         self._level = 0.0
         # Postavlja ih app.py; drze se po snimku jer vise sesija moze da tece paralelno.
         self.cancelled = False
+        self.zaustavljen = False  # STOP je vec dat; rep jos traje (snimanje.py)
         self.released = False
         self.ticket = 0
         self._tail_timer = None

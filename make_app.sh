@@ -49,6 +49,8 @@ OTISAK="$(sed -n '/^# -* pokretac$/,/^# -* instalacija$/p' "$IZVOR/make_app.sh" 
 # $1 = "uvek" prepisuje okruzenje i kad se requirements.txt nije menjao.
 prepisi_kod() {
   mkdir -p "$DOM"
+  # Odavde dugme za azuriranje zna koji folder da osvezi posle aplikacije.
+  echo "$IZVOR" > "$DOM/izvor"
   local cuvani=""
   if [ -f "$DOM/app/config.json" ]; then
     cuvani="$(mktemp)"

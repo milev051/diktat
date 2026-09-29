@@ -8,6 +8,10 @@ ostaju, a aplikacija se ponovo pokrene u istom procesu.
 Bundle u /Applications se namerno ne dira: svaki novi potpis ponistava
 dozvole za Accessibility i Mikrofon, pa bi posle svakog azuriranja hotkey
 prestao da radi dok se dozvola ne da iznova.
+
+Posle toga se osvezi i folder iz koga je Diktat instaliran (klon
+repozitorijuma), da i on bude na novoj verziji: `git pull --ff-only`, ali samo
+kad je to bezbedno (`azuriraj_izvor`).
 """
 
 import io
@@ -26,6 +30,8 @@ DOM = Path.home() / "Library" / "Application Support" / "Diktat"
 INSTALIRANO = DOM / "app"
 KOREN = Path(__file__).resolve().parent.parent
 FAJL_VERZIJE = "VERZIJA"
+# Putanju foldera projekta upisuje make_app.sh pri instalaciji, u DOM/izvor.
+REPOZITORIJUM = "milev051/diktat"
 # Isti spisak koji `make_app.sh install` kopira.
 SADRZAJ = ("dictate", "run.py", "doctor.py", "selftest.py",
            "requirements.txt", "config.example.json")
@@ -166,6 +172,7 @@ def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
                 shutil.copy2(putanja, novo / ime)
 
         stari_zahtevi = (INSTALIRANO / "requirements.txt")
+        nove_biblioteke = False
         novi_zahtevi = (novo / "requirements.txt")
         if novi_zahtevi.exists() and (
             not stari_zahtevi.exists()
@@ -181,6 +188,10 @@ def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
                 raise RuntimeError(
                     "pip nije uspeo: " + (poslednja[-1] if poslednja else "nepoznata greska")
                 )
+            nove_biblioteke = True
+            # Oznaka za make_app.sh: okruzenje odgovara ovom requirements.txt,
+            # pa ga sledeca lokalna instalacija ne prepisuje starijim.
+            shutil.copy2(novi_zahtevi, DOM / "venv" / "requirements.txt")
 
         # Podesavanja i kljucevi prezivljavaju azuriranje.
         podesavanja = INSTALIRANO / "config.json"
@@ -206,6 +217,64 @@ def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
         os.chdir(INSTALIRANO)
     except OSError:
         pass
+
+    ishod = azuriraj_izvor(javi, nove_biblioteke)
+    print(f"[diktat] folder projekta: {ishod}", flush=True)
+
+
+def _git(folder: Path, *args, timeout=60) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(folder), *args],
+                          capture_output=True, text=True, timeout=timeout)
+
+
+def azuriraj_izvor(javi=lambda _poruka: None, nove_biblioteke=False,
+                   folder: Path | None = None) -> str:
+    """Povuci novu verziju i u folder iz koga je Diktat instaliran.
+
+    Samo kad je to bezbedno: klon ovog repozitorijuma, na grani main, bez
+    neuvedenih izmena, i samo ako se istorija nastavlja pravo (`--ff-only`).
+    Inace se folder ne dira, a razlog ide u log. Nikad ne obara azuriranje
+    same aplikacije: ona je vec zamenjena.
+
+    macOS aplikaciji pokrenutoj iz Launchpad-a ume da zabrani pristup
+    Desktop, Documents i Downloads; klon tamo se zato ne osvezava sam
+    (INSTALACIJA.md preporucuje ~/Diktat).
+    """
+    try:
+        if folder is None:
+            folder = Path((DOM / "izvor").read_text(encoding="utf-8").strip())
+    except OSError:
+        return "nepoznat (instalirano pre ove verzije), ne diram ga"
+    try:
+        if not (folder / ".git").exists():
+            return f"{folder} nije git klon, ne diram ga"
+        adresa = _git(folder, "remote", "get-url", "origin").stdout.strip()
+        if REPOZITORIJUM not in adresa:
+            return f"{folder} nije klon {REPOZITORIJUM}, ne diram ga"
+        grana = _git(folder, "branch", "--show-current").stdout.strip()
+        if grana != "main":
+            return f"{folder} je na grani {grana or '(bez grane)'}, ne diram ga"
+        izmene = _git(folder, "status", "--porcelain", "--untracked-files=no").stdout
+        if izmene.strip():
+            return f"{folder} ima neuvedene izmene, ne diram ga"
+        javi("Osvežavam i folder projekta…")
+        stari_zahtevi = (folder / "requirements.txt").read_bytes()
+        povuceno = _git(folder, "pull", "--ff-only", "--quiet", "origin", "main")
+        if povuceno.returncode != 0:
+            poslednja = (povuceno.stderr or povuceno.stdout).strip().splitlines()
+            return "git pull nije uspeo: " + (poslednja[-1] if poslednja else "?")
+        _git(folder, "fetch", "--tags", "--quiet")
+        # Okruzenje klona prati svoj requirements.txt, inace bi sledeca
+        # lokalna instalacija prepisala instaliranu kopiju starim bibliotekama.
+        pip = folder / ".venv" / "bin" / "pip"
+        if pip.exists() and (nove_biblioteke or stari_zahtevi
+                             != (folder / "requirements.txt").read_bytes()):
+            subprocess.run([str(pip), "install", "-q", "-r",
+                            str(folder / "requirements.txt")],
+                           capture_output=True, text=True, timeout=600)
+        return f"{folder} osvezen"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"{folder} nije osvezen: {exc}"
 
 
 def _bundle() -> str:

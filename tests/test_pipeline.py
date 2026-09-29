@@ -304,11 +304,31 @@ class StopDokSePokrece(unittest.TestCase):
 
     def napravi(self):
         app = app_mod.DictateApp.__new__(app_mod.DictateApp)
+        app.cfg = {"tail_seconds": 0.3, "sample_rate": 16000}
         app._session_lock = threading.Lock()
         app._recorder = None
         app._starting = 0
         app._stop_requested = False
         return app
+
+    class _Staro:
+        """Snimanje kome je STOP vec dat, a rep jos traje."""
+        zaustavljen = True
+        zaustavljanja = 0
+
+        def stop(self, tail=0.0):
+            self.zaustavljanja += 1
+
+    def pokreni_u_pozadini(self, app):
+        ishod = []
+        nit = threading.Thread(target=lambda: ishod.append(app._on_start()))
+        nit.start()
+        # Start sada ceka da se mikrofon oslobodi.
+        for _ in range(100):
+            if app._starting:
+                break
+            time.sleep(0.005)
+        return nit, ishod
 
     def test_stop_bez_pokretanja_ne_dize_zastavicu(self):
         app = self.napravi()
@@ -321,29 +341,65 @@ class StopDokSePokrece(unittest.TestCase):
         app._on_stop()
         self.assertTrue(app._stop_requested)
 
-    def test_pokretanje_pokupi_zapamcen_stop(self):
+    def test_stop_dok_rep_traje_vazi_za_novi_start(self):
+        # Brzi STOP, START, STOP: drugi STOP ne sme da ode na staro snimanje
+        # koje se vec gasi, nego da otkaze start koji ceka mikrofon. Ranije
+        # je novo snimanje krenulo posle njega i niko ga nije zaustavljao.
         app = self.napravi()
-        zaustavljeno = []
-
-        def lazni_start():
-            # Ovde `_on_start` stoji dok ceka mikrofon; STOP stigne bas tada.
-            app._on_stop()
-            self.assertTrue(app._stop_requested)
-            with app._session_lock:
-                propusteni = app._stop_requested
-                app._stop_requested = False
-            if propusteni:
-                zaustavljeno.append(True)
-            return True
-
-        app._start_recording = lazni_start
-        self.assertTrue(app._on_start())
-        self.assertEqual(zaustavljeno, [True])
+        staro = self._Staro()
+        app._recorder = staro
+        nit, ishod = self.pokreni_u_pozadini(app)
+        app._on_stop()
+        self.assertEqual(staro.zaustavljanja, 0)
+        self.assertTrue(app._stop_requested)
+        app._recorder = None            # rep je istekao, mikrofon slobodan
+        nit.join(2)
+        self.assertEqual(ishod, [None])  # odustao, prekidac se ne dira
+        self.assertIsNone(app._recorder)
+        self.assertFalse(app._stop_requested)
         self.assertEqual(app._starting, 0)
+
+    def test_start_stop_start_krece_samo_poslednji(self):
+        from unittest import mock
+        from dictate import snimanje
+        app = self.napravi()
+        app._recorder = self._Staro()
+        prvi, ishod_prvog = self.pokreni_u_pozadini(app)
+        app._on_stop()
+        drugi, ishod_drugog = self.pokreni_u_pozadini(app)
+        while app._starting < 2:
+            time.sleep(0.005)
+
+        class Stanje:
+            def set(self, **kw):
+                pass
+        app.state = Stanje()
+
+        class Mikrofon:
+            def __init__(self, **kw):
+                pass
+
+            def start(self):
+                raise RuntimeError("lazni mikrofon")
+        lazni_audio = mock.Mock(Recorder=Mikrofon)
+        with mock.patch.object(snimanje, "audio", lazni_audio):
+            app._recorder = None
+            prvi.join(2)
+            drugi.join(2)
+        self.assertEqual(ishod_prvog, [None])    # stariji start odustaje
+        # Noviji je stigao do mikrofona (ovde lazni, pa pukne): nije odustao.
+        self.assertEqual(ishod_drugog, [False])
+
+    def test_stop_nad_zaustavljenim_bez_starta_ne_radi_nista(self):
+        app = self.napravi()
+        staro = self._Staro()
+        app._recorder = staro
+        app._on_stop()
+        self.assertEqual(staro.zaustavljanja, 0)
         self.assertFalse(app._stop_requested)
 
     def test_brojac_se_vrati_i_kad_pokretanje_pukne(self):
-        def puca():
+        def puca(moj=None):
             raise RuntimeError("mikrofon")
 
         app = self.napravi()
