@@ -33,7 +33,7 @@ import rumps
 from Foundation import NSAttributedString
 
 from . import (
-    audio, config, debugdump, geministt, hotkey, insert, obrada, overlay,
+    audio, autostart, config, debugdump, geministt, hotkey, insert, obrada, overlay,
     rezerva, settings_window, zvuk,
 )
 from .snimanje import Snimanje
@@ -116,6 +116,10 @@ class DictateApp(
         super().__init__("Diktat", title=ICON["idle"], quit_button=None)
         self.cfg = config.load()
         self.state = State()
+        try:
+            autostart.sync(self.cfg.get("start_at_login", True))
+        except OSError as exc:
+            self.state.set(phase="error", message=f"Automatsko pokretanje: {exc}")
         self.hud = overlay.Overlay(self.cfg.get("overlay_position", "bottom"))
         # Okvir sa prepisom uzivo stoji iznad pilule kad su oboje na dnu.
         self.live_panel = overlay.LivePanel(

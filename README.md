@@ -220,7 +220,8 @@ pa ti hotkey pukne čim promeniš terminal ili ga apdejtuješ. `Diktat.app` je
 potpisan i ima svoj identitet, pa dozvole drže. Pošto se bundle pri ponovnoj
 instalaciji ne menja (kod stoji izvan njega), jednom date dozvole ostaju.
 
-Autostart: System Settings → General → Login Items → `+` → `Diktat.app`
+Automatsko pokretanje pri prijavi na Mac je podrazumevano uključeno. U
+**Podešavanja → Pokretanje** možeš ga isključiti ili ponovo uključiti.
 (uzmi onaj iz foldera Applications).
 
 ---

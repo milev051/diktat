@@ -549,6 +549,10 @@ class SettingsWindow:
 
     def _kolona_kljucevi(self) -> _Page:
         page = _Page()
+        self._section(page, "Pokretanje")
+        self._checkbox(page, "Pokreni Diktat pri uključivanju računara",
+                       "start_at_login", True)
+
         self._section(page, "API ključevi", "Ostaju lokalno u config.json.")
         self._field(page, "Gemini (transkripcija Live i obrada teksta)", "polish_api_key",
                     secure=True)

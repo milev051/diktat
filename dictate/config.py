@@ -91,6 +91,7 @@ DEFAULTS = {
     "history_size": 5,            # koliko poslednjih tekstova cuvati za kopiranje
     "rezervni_snimak": True,      # zvuk diktata na disku dok prepis ne uspe (dictate/rezerva.py)
     "update_check": True,         # pitaj GitHub za novu verziju pri otvaranju i jednom dnevno
+    "start_at_login": True,       # pokreni instalirani Diktat pri prijavi na Mac
     "show_overlay": False,        # pilula sa vremenom preko ekrana
     "overlay_position": "top-right",
 

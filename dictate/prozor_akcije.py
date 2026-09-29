@@ -10,7 +10,7 @@ import time
 
 import AppKit
 
-from . import apitest, config, hotkey, insert, rezerva, settings_window
+from . import apitest, autostart, config, hotkey, insert, rezerva, settings_window
 
 
 class ProzorAkcije:
@@ -93,6 +93,15 @@ class ProzorAkcije:
         elif key == "debug":
             self.cfg["debug"] = value
             self._apply_debug(value)
+        elif key == "start_at_login":
+            try:
+                autostart.sync(value)
+            except OSError as exc:
+                self.state.set(phase="error", message=f"Automatsko pokretanje: {exc}")
+                sender.setState_(AppKit.NSControlStateValueOn if self.cfg.get(key, True)
+                                 else AppKit.NSControlStateValueOff)
+                return
+            self.cfg[key] = value
         elif key:
             self.cfg[key] = value
         config.save(self.cfg)

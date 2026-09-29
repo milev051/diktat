@@ -322,6 +322,9 @@ if [ "${1:-}" = "install" ]; then
     "$LSREG" -f "$CILJ" >/dev/null 2>&1 || true
   fi
   echo "Instalirano: $CILJ"
+  # Početni izbor važi odmah posle instalacije, čak i pre prvog otvaranja.
+  (cd "$DOM/app" && "$DOM/venv/bin/python" -c \
+    'from dictate import autostart, config; autostart.sync(config.load().get("start_at_login", True))')
   [ -z "${OTVORI:-}" ] || open "$CILJ"
   echo "Kod i okruzenje: $DOM"
   echo
@@ -342,4 +345,4 @@ echo "Prvi put odobri:"
 echo "  System Settings > Privacy & Security > Microphone     -> Diktat"
 echo "  System Settings > Privacy & Security > Accessibility  -> Diktat"
 echo
-echo "Za autostart: System Settings > General > Login Items > '+' > Diktat.app"
+echo "Automatsko pokretanje se podešava u prozoru Podešavanja Diktata."
