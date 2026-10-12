@@ -1,5 +1,11 @@
 # Diktat
 
+> **English:** Push-to-talk speech-to-text dictation for macOS and Android: hold
+> a key, speak, release, and the text is typed into whatever app is in focus.
+> The macOS app is written in Python (rumps, PyObjC, sounddevice) and the
+> Android app in Kotlin (accessibility service, floating timer); transcription
+> uses the Google Web Speech endpoint or Gemini. The rest of this README is in Serbian.
+
 Diktiranje govora u tekst, bez naloga i bez ključeva. Dva dela:
 
 | | stanje |
