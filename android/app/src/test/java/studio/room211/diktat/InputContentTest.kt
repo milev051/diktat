@@ -1,5 +1,7 @@
 package studio.room211.diktat
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,5 +31,23 @@ class InputContentTest {
     @Test fun `obicno polje sa stvarnim sadrzajem ostaje podrzano`() {
         assertTrue(InputContent.canAppend("postojeći tekst ", null, 15, 15))
         assertFalse(InputContent.canAppend("", null, 0, 0))
+    }
+
+    @Test fun `natpis prijavljen kao tekst nikad se ne nadovezuje`() {
+        for (label in listOf("Poruka", "Message", "Napiši poruku", "Pretraga")) {
+            assertNull(InputContent.setTextFallback(label, false, "moj diktat"))
+        }
+    }
+    @Test fun `stvarni sadrzaj se ne prepisuje kada paste nije podrzan`() {
+        assertNull(InputContent.setTextFallback("stara poruka", false, "novi diktat"))
+    }
+    @Test fun `prazno polje dobija iskljucivo diktat`() {
+        assertEquals("moj diktat", InputContent.setTextFallback("", false, "moj diktat"))
+    }
+    @Test fun `prijavljen hint se ne ubacuje u tekst`() {
+        assertEquals("moj diktat", InputContent.setTextFallback("Poruka", true, "moj diktat"))
+    }
+    @Test fun `izgovorena rec poruka ostaje deo diktata`() {
+        assertEquals("poruka za tebe", InputContent.setTextFallback("", false, "poruka za tebe"))
     }
 }

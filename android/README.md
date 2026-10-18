@@ -502,3 +502,11 @@ Android prijavi kursor na nuli bez pouzdanih hint metapodataka. Tada se koristi
 sistemski PASTE, koji čuva stvarni sadržaj i položaj kursora. Kod ne uklanja
 izgovorenu reč „poruka”. Testovi: `./gradlew test`; proba na telefonu: prazno
 polje, postojeći tekst i diktat koji zaista počinje rečju „poruka”.
+
+## Ispravka upisa 1.76
+
+Završni upis koristi sistemski PASTE, koji obrađuje stvarni sadržaj i selekciju
+u ciljnoj aplikaciji. Natpis polja se više ne koristi za sastavljanje poruke,
+čak ni kada Android prijavi kursor na njegovom kraju. SET_TEXT je rezerva samo
+za eksplicitno prazno polje. Ako polje ne podržava upis, diktat ostaje u clipboard-u.
+Android može prikazati sistemsko obaveštenje o kopiranju.

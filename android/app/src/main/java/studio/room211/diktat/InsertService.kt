@@ -64,39 +64,47 @@ class InsertService : AccessibilityService() {
     // ------------------------------------------------------------------
 
     /**
-     * SET_TEXT ide PRVI, PASTE tek ako on ne prodje.
+     * PASTE je prvi: ciljna aplikacija sama obradjuje natpis i selekciju.
      *
-     * Android od 13 prikaze sistemsko obavestenje „kopirano" cim neka aplikacija
-     * upise u clipboard, a PASTE bez toga ne radi — pa se posle svakog diktata
-     * javljala poruka koja se ne moze ugasiti. SET_TEXT ne dira clipboard.
-     * Polje se ne prepisuje: postojeci tekst se cita i novi se nadovezuje.
+     * Accessibility tekst moze biti natpis i kada postoji selekcija.
+     * Zato ne rekonstruisemo sadrzaj polja. SET_TEXT je rezerva samo za
+     * eksplicitno prazno polje; ostalo ostaje u clipboard-u ako PASTE ne radi.
      */
     private fun insertNow(text: String, restoreClipboard: Boolean): Boolean {
         repeat(TRIES) {
             val node = findEditable()
             if (node != null) {
-                // Kad se ne zna da li je ono u polju sadrzaj ili natpis, SET_TEXT
-                // se ne koristi: pogresna procena ili upisuje natpis ispred, ili
-                // brise korisnikov tekst. PASTE u tom slucaju ne moze da promasi.
-                val (vrsta, postojece) = sadrzaj(node)
-                if (vrsta != Sadrzaj.NEJASNO && setText(node, postojece, text)) {
-                    runCatching { @Suppress("DEPRECATION") node.recycle() }
-                    return true
-                }
-                // Neke aplikacije (WebView, deo Compose polja) odbijaju SET_TEXT;
-                // tu ostaje clipboard, uz sistemsku poruku koju ne kontrolisemo.
+                // Native PASTE sam razlikuje natpis i tekst i postuje kursor.
+                // node.text se nikad ne nadovezuje: WebView ume da prijavi
+                // natpis kao tekst cak i sa selekcijom na njegovom kraju.
                 val previous = if (restoreClipboard) currentClip() else null
                 putOnClipboard(text)
                 val done = paste(node)
                 runCatching { @Suppress("DEPRECATION") node.recycle() }
                 if (done) {
                     if (restoreClipboard) {
-                        // Ciljna aplikacija jos cita iz clipboard-a kad PASTE
-                        // prodje, pa se ne sme vratiti odmah.
                         Thread.sleep(CLIP_RESTORE_MS)
                         putOnClipboard(previous ?: "")
                     }
                     return true
+                }
+                // SET_TEXT je dozvoljen samo kad nema sadrzaja za cuvanje.
+                // Ne ponavljaj PASTE posle uspesnog upisa.
+                val fallbackNode = findEditable()
+                if (fallbackNode != null) {
+                    try {
+                        val replacement = InputContent.setTextFallback(
+                            fallbackNode.text?.toString().orEmpty(),
+                            fallbackNode.isShowingHintText,
+                            text,
+                        )
+                        if (replacement != null && setText(fallbackNode, "", replacement)) {
+                            if (restoreClipboard) putOnClipboard(previous ?: "")
+                            return true
+                        }
+                    } finally {
+                        @Suppress("DEPRECATION") fallbackNode.recycle()
+                    }
                 }
             }
             Thread.sleep(WAIT_MS)
