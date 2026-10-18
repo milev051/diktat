@@ -127,18 +127,15 @@ class InsertService : AccessibilityService() {
      * „Ovde probaj diktat" u nasoj probi — pa bi nadovezivanje upisalo taj
      * natpis ispred izdiktiranog teksta.
      *
-     * Nijedan pojedinacni signal nije dovoljan: `isShowingHintText` mnoge
-     * aplikacije ne postavljaju, `hintText` ume da bude prazan. Zato:
-     *   - prazan tekst ili prijavljen hint  -> PRAZNO
-     *   - postoji kursor (selekcija >= 0)   -> TEKST, sadrzaj je stvaran
-     *   - inace                             -> NEJASNO, i tu se NE nagadja
+     * Kursor na nuli postoji i kada WebView prikazuje samo natpis. Takvo
+     * polje je NEJASNO i ide kroz PASTE, bez nadovezivanja na node.text.
+     * Isti put cuva stvaran tekst kada korisnik postavi kursor na pocetak.
      */
     private fun sadrzaj(node: AccessibilityNodeInfo): Pair<Sadrzaj, String> {
         val tekst = node.text?.toString().orEmpty()
         if (tekst.isEmpty() || node.isShowingHintText) return Sadrzaj.PRAZNO to ""
         val hint = runCatching { node.hintText?.toString() }.getOrNull()
-        if (!hint.isNullOrEmpty() && hint == tekst) return Sadrzaj.PRAZNO to ""
-        if (node.textSelectionStart >= 0 || node.textSelectionEnd >= 0) {
+        if (InputContent.canAppend(tekst, hint, node.textSelectionStart, node.textSelectionEnd)) {
             return Sadrzaj.TEKST to tekst
         }
         return Sadrzaj.NEJASNO to tekst

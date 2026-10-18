@@ -494,3 +494,11 @@ app/src/main/java/studio/room211/diktat/
   Config.kt              podešavanja
 build.sh                 napravi i instaliraj
 ```
+
+## Ispravka upisa 1.75
+
+Natpis praznog polja (npr. „Poruka”) više se ne nadovezuje na diktat kada
+Android prijavi kursor na nuli bez pouzdanih hint metapodataka. Tada se koristi
+sistemski PASTE, koji čuva stvarni sadržaj i položaj kursora. Kod ne uklanja
+izgovorenu reč „poruka”. Testovi: `./gradlew test`; proba na telefonu: prazno
+polje, postojeći tekst i diktat koji zaista počinje rečju „poruka”.
