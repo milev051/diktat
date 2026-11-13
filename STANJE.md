@@ -1,6 +1,6 @@
 # Stanje
 _2026-11-13_
-- Android 1.87: titl dole, bez Stop dugmeta (APK Diktat-1.87.apk).
+- 1.87 objavljena na GitHub-u (commit 429912e, izdanje v1.87 sa APK). Telefon i Mac odsad nalaze nove verzije sami. Android 1.87: titl dole, bez Stop dugmeta.
 - Android 1.86: dugme sa verzijom i proverom ažuriranja na vrhu ekrana. APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.86.apk. Ažuriranje ne radi dok se na GitHub ne objavi novije izdanje od v1.76.
 - Android 1.85 i Mac: ista podešavanja (Lowercase, Remove diacritics, Abbreviations, servis, ključ). Mac više nema „Remove punctuation”, interpunkcija se uvek uklanja. Telefon: servis i ključ uokvireni, istorija do 100 od ivice do ivice. APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.85.apk. GitHub izdanje i dalje v1.76.
 - Android 1.84: bez probe diktata i prekidača interpunkcije (uvek bez). APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.84.apk. GitHub izdanje je i dalje v1.76, zato provera ažuriranja na telefonu ne nalazi ništa; otvoreno: objava izdanja.

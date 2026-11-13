@@ -43,3 +43,4 @@ Format: `- **Šta:** … · **Modeli/alati:** … · **Zašto / pouka:** …` po
 - **Provera:** Python 386/386, Android 114/114. Mac instaliran `kod`, APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.85.apk.
 - **Šta:** Android 1.86: veliko dugme na vrhu „Version X / Check for updates”. Klik proverava GitHub izdanje, a ako ga ima, preuzima APK i otvara instalaciju (traži dozvolu ako fali). Android 114/114. APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.86.apk.
 - **Šta:** Android 1.87: titl uživo dole na ekranu (24 dp od dna), bez Stop dugmeta; prozor ne prima dodire, pa tastatura ispod radi. Testovi 114/114. APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.87.apk.
+- **Šta:** Commit 429912e i GitHub izdanje v1.87 sa APK; ažuriranje iz aplikacije sada nalazi novu verziju.
