@@ -203,12 +203,12 @@ class Obrada:
         debug_session = self._debug_sessions.pop(sesija, None)
         if debug_session is not None:
             debug_session.final(doteran)
-        self.upis.zapamti(doteran)
+        self.upis.zapamti(doteran, sesija=sesija)
         try:
             insert.insert(
                 doteran,
                 method=self.cfg.get("insert_method", "auto"),
-                restore_clipboard=self.cfg.get("restore_clipboard", True),
+                restore_clipboard=not self.cfg.get("save_clipboard", False),
             )
         except Exception:  # noqa: BLE001
             traceback.print_exc()

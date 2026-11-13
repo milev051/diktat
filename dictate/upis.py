@@ -12,10 +12,14 @@ trenutku kad se njegov ZVUK zavrsi, a upis ceka na red po tiketu.
 
 import queue
 import threading
+import time
 import traceback
+import uuid
 from collections import deque
 
-VELICINA_ISTORIJE = 5
+from .istorija import NAJVISE_PREPISKA
+
+VELICINA_ISTORIJE = NAJVISE_PREPISKA
 
 
 class RedUpisa:
@@ -28,9 +32,13 @@ class RedUpisa:
     posle()                 zove se posle svake obrade reda (glavni tok)
     """
 
-    def __init__(self, upisi, upisi_deo, ceka_celinu, za_obradu, posle):
+    def __init__(self, upisi, upisi_deo, ceka_celinu, za_obradu, posle,
+                 upisi_preview=None, kraj_live=None, on_wait=None, arhiva=None, clipboard=None, cuvaj_clipboard=None):
         self._upisi = upisi
         self._upisi_deo = upisi_deo
+        self._upisi_preview = upisi_preview
+        self._kraj_live = kraj_live
+        self._on_wait = on_wait
         self._ceka_celinu = ceka_celinu
         self._za_obradu = za_obradu
         self._posle = posle
@@ -39,7 +47,12 @@ class RedUpisa:
         self._tiket = 0
         self._na_cekanju = 0
         self._po_sesiji: dict[int, int] = {}
-        self._istorija: list[str] = []
+        self._arhiva = arhiva
+        self._cuvaj_clipboard = cuvaj_clipboard or (lambda: False)
+        self._clipboard = clipboard
+        self._run_id = uuid.uuid4().hex
+        self._sacuvani_tekst = {}
+        self._istorija: list[str] = arhiva.istorija() if arhiva is not None else []
         self._istorija_promenjena = True
 
     # ------------------------------------------------------------ tiketi
@@ -59,12 +72,17 @@ class RedUpisa:
 
     def predaj(self, tiket: int, tekst: str, sesija: int):
         """Gotov tekst za tiket; prazan tekst samo pomera red."""
-        self._red.put((tiket, tekst, sesija, False))
+        self._red.put((tiket, tekst, sesija, "end", time.monotonic()))
 
     def predaj_deo(self, tiket: int, tekst: str, sesija: int):
         """Potvrdjena celina dok diktat traje; tiket ostaje otvoren."""
         if tekst.strip():
-            self._red.put((tiket, tekst, sesija, True))
+            self._red.put((tiket, tekst, sesija, "part", time.monotonic()))
+
+    def predaj_preview(self, tiket: int, tekst: str, sesija: int):
+        """Zameni samo privremeni rep istog tiketa; ne pomera red."""
+        if self._upisi_preview is not None:
+            self._red.put((tiket, tekst, sesija, "preview", time.monotonic()))
 
     def na_cekanju(self) -> int:
         """Koliko delova se jos prepoznaje."""
@@ -77,18 +95,44 @@ class RedUpisa:
 
     # ------------------------------------------------------------ istorija
 
-    def zapamti(self, tekst: str):
-        """Poslednjih pet diktata, najnoviji prvi, bez ponavljanja."""
+    def zapamti(self, tekst: str, sesija=None):
+        """Do sto diktata, najnoviji prvi, bez ponavljanja."""
         from .webstt import glasovne_komande
         cist = glasovne_komande(tekst).strip()
         if not cist:
             return
         with self._lock:
+            if sesija is not None:
+                previous = self._sacuvani_tekst.get(sesija)
+                if previous in self._istorija:
+                    self._istorija.remove(previous)
+                self._sacuvani_tekst[sesija] = cist
             if cist in self._istorija:
                 self._istorija.remove(cist)
             self._istorija.insert(0, cist)
             del self._istorija[VELICINA_ISTORIJE:]
             self._istorija_promenjena = True
+            if self._arhiva is not None:
+                key = f"{self._run_id}-{sesija}" if sesija is not None else None
+                return self._arhiva.sacuvaj(cist, key)
+            return True
+
+    def _upisi_sa_rezervom(self, posao, tekst):
+        try:
+            if posao(tekst) is not False:
+                self._kopiraj_izabrani_prepis(tekst)
+                return
+        except Exception:
+            traceback.print_exc()
+        if self._clipboard is not None:
+            self._bezbedno(self._clipboard, tekst)
+
+    def _kopiraj_izabrani_prepis(self, tekst):
+        if self._clipboard is not None and self._cuvaj_clipboard():
+            # Sačuvan je ceo diktat, čak i kad je upis upravo dopunio samo rep.
+            with self._lock:
+                ceo = self._istorija[0] if self._istorija else tekst
+            self._bezbedno(self._clipboard, ceo)
 
     def istorija(self) -> list[str]:
         with self._lock:
@@ -110,16 +154,25 @@ class RedUpisa:
         zadrzano: dict[int, deque] = {}
         sledeci = 1
         while True:
-            tiket, tekst, sesija, deo = self._red.get()
-            zadrzano.setdefault(tiket, deque()).append((tekst, sesija, deo))
+            tiket, tekst, sesija, vrsta, queued_at = self._red.get()
+            zadrzano.setdefault(tiket, deque()).append((tekst, sesija, vrsta, queued_at))
             while sledeci in zadrzano:
                 dogadjaji = zadrzano[sledeci]
                 if not dogadjaji:
                     break
-                gotov, cija, je_deo = dogadjaji.popleft()
-                if je_deo:
-                    self._bezbedno(self._upisi_deo, gotov)
+                gotov, cija, vrsta, queued_at = dogadjaji.popleft()
+                if self._on_wait is not None and vrsta in ("preview", "part"):
+                    wait = time.monotonic() - queued_at
+                    if wait >= 0.15:
+                        self._bezbedno(self._on_wait, cija, wait)
+                if vrsta == "preview":
+                    self._bezbedno(self._upisi_preview, gotov)
                     continue
+                if vrsta == "part":
+                    self._upisi_sa_rezervom(self._upisi_deo, gotov)
+                    continue
+                if self._kraj_live is not None:
+                    self._bezbedno(self._kraj_live)
                 del zadrzano[sledeci]
                 sledeci += 1
                 with self._lock:
@@ -131,8 +184,11 @@ class RedUpisa:
                     # AI obrada treba da vidi ceo diktat.
                     self._za_obradu(cija, gotov.strip())
                 elif gotov:
-                    self.zapamti(gotov)
-                    self._bezbedno(self._upisi, gotov)
+                    with self._lock:
+                        sacuvan = cija in self._sacuvani_tekst
+                    if not sacuvan:
+                        self.zapamti(gotov)
+                    self._upisi_sa_rezervom(self._upisi, gotov)
             self._bezbedno(self._posle)
 
     @staticmethod

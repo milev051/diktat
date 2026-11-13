@@ -1,29 +1,12 @@
-"""macOS prozor sa podesavanjima, podeljen na kartice.
-
-Ranije je sve stajalo u jednoj koloni od preko dve hiljade piksela, pa se do
-API kljuceva skrolovalo pola ekrana. Sada je isti sadrzaj podeljen na kartice
-po pitanju na koje odgovara (Snimanje i tekst, Istorija, Kljucevi), a visina
-svake se racuna iz sadrzaja. Zaglavlje nosi ono sto ne pripada nijednoj
-kartici: snimljeno vreme, zaustavljanje snimanja i izlaz iz aplikacije.
-
-Sadrzaj stoji u koloni fiksne sirine koja ostaje na SREDINI: preko celog ekrana
-bi redovi inace bili dugacki po metar, a polja za kljuceve rastegnuta preko
-cele sirine.
-
-Dokument je „flipped" (nula je gore): AppKit inace racuna od dna, pa je kraci
-sadrzaj padao na dno prozora i ostavljao praznu polovinu iznad sebe.
-
-Podesavanje koje trenutni izbor ne koristi se SKLANJA, ne sivi — sivo
-podesavanje je gore od nepostojeceg, jer izgleda kao greska. Zato raspored nije
-fiksan: kartica pamti svoje redove i pri svakoj izmeni ih ponovo slaze, pa
-sklonjen red ne ostavlja rupu.
-"""
+"""Compact English settings for the macOS dictation app."""
 
 import objc
+import time
 import AppKit
 from Foundation import NSAttributedString, NSMakeRect, NSMakeSize
 
-from . import audio, azuriranje, config, hotkey, rezerva
+from . import audio, config, hotkey
+from .upis import VELICINA_ISTORIJE
 
 
 # Naziv izvora transkripcije stoji na JEDNOM mestu: iz njega se pravi spisak u
@@ -31,22 +14,70 @@ from . import audio, azuriranje, config, hotkey, rezerva
 # se doda treci izvor — bas to se i desilo kad su dosli Gemini modeli.
 PROVIDER_TITLES = {
     "google": "Google Speech-to-Text",
-    "openai": "OpenAI GPT Transcribe",
     "gemini_live": "Gemini 3.5 Transcribe Live",
 }
 
-MIKROFON_PODRAZUMEVANI = "Sistemski podrazumevani"
+MIKROFON_PODRAZUMEVANI = "System default"
 
-COLUMN = 330.0        # sirina jedne od tri kolone
+COLUMN = 248.0        # uska kolona: natpis miša i Quit stanu u jedan red
 KOLONA_RAZMAK = 44.0  # razmak izmedju kolona
-IVICA = 32.0          # margina prozora levo, desno i dole
-ZAGLAVLJE = 104.0     # visina reda sa dugmadima i ukupnim vremenom
-GAP = 8.0             # razmak izmedju dve kontrole
-SECTION_GAP = 26.0    # razmak PRE naslova grupe
+IVICA = 12.0          # margina prozora levo, desno i dole
+DNO_RAZMAK = 6.0      # razmak izmedju dugmeta miša i Quit
+QUIT_SIRINA = 68.0    # Quit je kratak; ostatak reda ostaje dugmetu miša
+ZAGLAVLJE = 12.0     # visina reda sa dugmadima i ukupnim vremenom
+GAP = 4.0             # razmak izmedju dve kontrole
+SECTION_GAP = 14.0    # razmak PRE naslova grupe
 SACUVANI_REDOVA = 3   # koliko sacuvanih snimaka se nudi za prepis
+ISTORIJA_VIDLJIVIH = 5
+ISTORIJA_VISINA_REDA = 32.0
+HISTORY_PADDING = 10.0
 NASLOV_MENIJA = "Diktat"  # po njemu se prepoznaje nas glavni meni
-TITLE_GAP = 12.0      # razmak izmedju naslova grupe i prve kontrole
-KVK_ESCAPE = 0x35     # Esc zatvara prozor kao i ⌘W
+TITLE_GAP = 6.0      # razmak izmedju naslova grupe i prve kontrole
+KVK_ESCAPE = 0x35     # Esc zatvara prozor; tokom snimanja prečice je briše
+
+
+def mouse_button_title(cfg):
+    if cfg.get("mouse_swipe"):
+        return f"Mouse: {str(cfg['mouse_swipe']).capitalize()}"
+    vk = cfg.get("mouse_key_vk")
+    if isinstance(vk, int):
+        return "Mouse: " + hotkey.NAZIVI_TASTERA.get(vk, f"Key {vk}")
+    button = cfg.get("mouse_button")
+    if button is not None:
+        return "Mouse: Middle" if button == 2 else f"Mouse: Button {button + 1}"
+    return "Record mouse button"
+
+
+def left_button_title(button, title, inset=0.0):
+    """Leva ivica natpisa ostaje ista i za kratak i za dugačak tekst.
+
+    `setTitle_` na NSButton-u crta natpis po sredini čim se širina dugmeta
+    razlikuje od širine teksta. Atributivni stil to fiksira posle svake izmene.
+    `inset` uvlači natpis da ostane unutar okvira dugmeta.
+    """
+    style = AppKit.NSMutableParagraphStyle.alloc().init()
+    style.setAlignment_(AppKit.NSTextAlignmentLeft)
+    style.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
+    if inset:
+        style.setFirstLineHeadIndent_(inset)
+        style.setHeadIndent_(inset)
+        style.setTailIndent_(-inset)
+    button.setTitle_(title)
+    button.setAlignment_(AppKit.NSTextAlignmentLeft)
+    button.setImagePosition_(AppKit.NSNoImage)
+    try:
+        cell = button.cell()
+        cell.setAlignment_(AppKit.NSTextAlignmentLeft)
+        cell.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
+    except Exception:  # noqa: BLE001 — starija ćelija i dalje ima atributivni natpis
+        pass
+    button.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(
+        title, {
+            AppKit.NSFontAttributeName: button.font() or AppKit.NSFont.systemFontOfSize_(13),
+            AppKit.NSForegroundColorAttributeName: AppKit.NSColor.labelColor(),
+            AppKit.NSParagraphStyleAttributeName: style,
+        },
+    ))
 
 
 def provider_from_title(title: str) -> str:
@@ -55,38 +86,6 @@ def provider_from_title(title: str) -> str:
         if naslov == title:
             return ime
     return "google"
-
-
-# Izbor „Interpunkcija": naslov u prozoru -> (strip_punctuation, samo_zarezi).
-INTERPUNKCIJA = {
-    "Sva": (False, False),
-    "Samo zarezi i upitnici": (False, True),
-    "Bez interpunkcije": (True, False),
-}
-
-
-def interpunkcija_naslov(cfg) -> str:
-    """Koji naslov izbora odgovara podesavanjima."""
-    if cfg.get("strip_punctuation", True):
-        return "Bez interpunkcije"
-    if cfg.get("samo_zarezi", False):
-        return "Samo zarezi i upitnici"
-    return "Sva"
-
-
-def trajanje(seconds: float) -> str:
-    """Sekunde u „2 h 15 min 30 s"; nule se ne ispisuju."""
-    ukupno = max(0, int(seconds))
-    sati, ostatak = divmod(ukupno, 3600)
-    minuti, sekunde = divmod(ostatak, 60)
-    delovi = []
-    if sati:
-        delovi.append(f"{sati} h")
-    if minuti:
-        delovi.append(f"{minuti} min")
-    if sekunde or not delovi:
-        delovi.append(f"{sekunde} s")
-    return " ".join(delovi)
 
 
 class _FlippedView(AppKit.NSView):
@@ -101,25 +100,22 @@ class _FlippedView(AppKit.NSView):
 
 
 class _Prozor(AppKit.NSWindow):
-    """Prozor koji sam zna za ⌘W, Esc i za ⌘C/⌘V/⌘X/⌘A/⌘Z u poljima.
+    """Prozor koji sam zna za Esc i za ⌘C/⌘V/⌘X/⌘A/⌘Z u poljima.
 
-    Glavni meni (`_glavni_meni`) je bio dovoljan kad se prozor pokrene sam, ali
-    ne i u aplikaciji: tamo ⌘W nije zatvarao prozor (22.09.2026). Prozor zato
-    precice hvata i sam, pre menija, pa ne zavisi od toga ciji je meni u
-    traci ni da li je stigao da se postavi.
+    Glavni meni (`_glavni_meni`) vezuje prečice za polja. Zatvaranje je Esc ili
+    dugme X, ne ⌘W i ne gubitak fokusa.
     """
 
-    PRECICE = {"w": "performClose:", "c": "copy:", "v": "paste:", "x": "cut:",
+    PRECICE = {"c": "copy:", "v": "paste:", "x": "cut:",
                "a": "selectAll:", "z": "undo:"}
 
     def performKeyEquivalent_(self, event):  # noqa: N802 - ime trazi AppKit
         maska = event.modifierFlags() & AppKit.NSEventModifierFlagDeviceIndependentFlagsMask
         taster = (event.charactersIgnoringModifiers() or "").lower()
+        if maska == AppKit.NSEventModifierFlagCommand and taster == "w":
+            return True
         if maska == AppKit.NSEventModifierFlagCommand and taster in self.PRECICE:
             akcija = self.PRECICE[taster]
-            if akcija == "performClose:":
-                self.performClose_(None)
-                return True
             if AppKit.NSApplication.sharedApplication().sendAction_to_from_(akcija, None, self):
                 return True
         return objc.super(_Prozor, self).performKeyEquivalent_(event)
@@ -130,6 +126,12 @@ class _Prozor(AppKit.NSWindow):
         if (event.type() == AppKit.NSEventTypeKeyDown and event.keyCode() == KVK_ESCAPE
                 and not event.modifierFlags()
                 & AppKit.NSEventModifierFlagDeviceIndependentFlagsMask):
+            owner = getattr(self, "settings_owner", None)
+            if owner is not None and (getattr(owner.app, "_mouse_learning", False)
+                    or time.monotonic() - getattr(owner.app, "_mouse_escape_at", 0) < 0.5):
+                owner.app.listener.otkazi_snimanje()
+                owner.app._dugme_misa_snimljeno(None, None)
+                return
             self.performClose_(None)
             return
         objc.super(_Prozor, self).sendEvent_(event)
@@ -155,15 +157,6 @@ class _WindowDelegate(AppKit.NSObject):
         AppKit.NSApplication.sharedApplication().setActivationPolicy_(
             AppKit.NSApplicationActivationPolicyAccessory
         )
-
-    def aplikacijaNijeAktivna_(self, _notification):  # noqa: N802 - ime trazi AppKit
-        """Klik u drugu aplikaciju zatvara prozor, isto kao Esc.
-
-        Prati se aplikacija, ne prozor: klik na nasu ikonicu u traci menija ne
-        gasi aplikaciju, pa ikonica i dalje radi kao prekidac.
-        """
-        if self._owner.visible():
-            self._owner.hide()
 
 
 class _Row:
@@ -236,14 +229,9 @@ class _Page:
 
 
 class SettingsWindow:
-    """Sva podesavanja na jednom ekranu, u tri kolone, bez kartica.
+    """One column that resizes to the visible controls."""
 
-    Prozor nema promenu velicine: sirina je zbir kolona, visina najvisa
-    kolona. Kad se grupa skloni ili pojavi, prozor se sam skrati ili produzi
-    (`_rasporedi`), a gornja ivica ostaje na mestu.
-    """
-
-    WIDTH = 3 * COLUMN + 2 * KOLONA_RAZMAK + 2 * IVICA
+    WIDTH = COLUMN + 2 * IVICA
 
     def __init__(self, app):
         self.app = app
@@ -253,10 +241,13 @@ class SettingsWindow:
         self.delegate = None
         self.controls = {}
         self.history_buttons = []
+        self.history_scroll = None
+        self.history_document = None
+        self._history_row = None
+        self._history_prvi = None
         self.microphone_popup = None
         self.stop_button = None
         self.quit_button = None
-        self.recorded_label = None
         self.update_header = None
         self.saved_rows = []
         self._sacuvani = []
@@ -307,7 +298,7 @@ class SettingsWindow:
 
     def _activate(self):
         nsapp = AppKit.NSApplication.sharedApplication()
-        _glavni_meni(nsapp)
+        _glavni_meni(nsapp, self.app)
         nsapp.setActivationPolicy_(AppKit.NSApplicationActivationPolicyRegular)
         self.window.makeKeyAndOrderFront_(None)
         nsapp.activateIgnoringOtherApps_(True)
@@ -324,17 +315,15 @@ class SettingsWindow:
             AppKit.NSBackingStoreBuffered,
             False,
         )
-        self.window.setTitle_("Diktat — Podešavanja")
+        self.window.setTitle_("Speech to Text")
+        self.window.settings_owner = self
         self.window.setReleasedWhenClosed_(False)
         # Svoje mesto u Mission Control-u: bez ovoga se prozor menu-bar
         # aplikacije ponasa kao pomocni panel iznad tudjeg prozora.
         self.window.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorManaged)
         self.delegate = _WindowDelegate.alloc().initWithOwner_(self)
         self.window.setDelegate_(self.delegate)
-        AppKit.NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
-            self.delegate, "aplikacijaNijeAktivna:",
-            AppKit.NSApplicationDidResignActiveNotification, None,
-        )
+        # Prozor ostaje i kad aplikacija izgubi fokus. Zatvara ga Esc ili X.
 
         # Skrol postoji samo za ekran nizi od sadrzaja; inace se ne vidi.
         scroll = AppKit.NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, self.WIDTH, 600))
@@ -346,46 +335,10 @@ class SettingsWindow:
         scroll.setDocumentView_(self.document)
         self.window.setContentView_(scroll)
 
-        # Zaglavlje: tri dugmeta na sredini, ispod njih ukupno snimljeno.
-        # „Zaustavi snimanje" stoji sivo dok nema sta da zaustavi, da dugmad
-        # ne poskakuju. Trenutna verzija je u natpisu dugmeta za azuriranje.
-        self.stop_button = self._plain_button("Zaustavi snimanje", "stop_recording")
-        self.stop_button.setEnabled_(False)
-        self.update_header = self._plain_button("Proveri ažuriranje", "update")
-        self.quit_button = self._plain_button("Zatvori Diktat", "quit")
-        sirine = (190.0, 250.0, 190.0)
-        razmak = 12.0
-        x = (self.WIDTH - sum(sirine) - 2 * razmak) / 2
-        for dugme, sirina in zip(
-            (self.stop_button, self.update_header, self.quit_button), sirine
-        ):
-            dugme.setFrame_(NSMakeRect(x, 24, sirina, 30))
-            self.document.addSubview_(dugme)
-            x += sirina + razmak
-
-        self.recorded_label = self._plain_label("", 12, alpha=0.6)
-        self.recorded_label.setAlignment_(AppKit.NSTextAlignmentCenter)
-        self.recorded_label.setFrame_(NSMakeRect(0, 64, self.WIDTH, 18))
-        self.document.addSubview_(self.recorded_label)
-
-        self.pages = [
-            self._kolona_snimanje(),
-            self._kolona_tekst(),
-            self._kolona_kljucevi(),
-        ]
-        for broj, page in enumerate(self.pages):
-            page.column.setFrameOrigin_(
-                AppKit.NSMakePoint(IVICA + broj * (COLUMN + KOLONA_RAZMAK), ZAGLAVLJE)
-            )
-            self.document.addSubview_(page.column)
-        # Tanka uspravna linija izmedju kolona.
-        for broj in (1, 2):
-            linija = AppKit.NSBox.alloc().initWithFrame_(NSMakeRect(0, 0, 1, 10))
-            linija.setBoxType_(AppKit.NSBoxSeparator)
-            x = IVICA + broj * (COLUMN + KOLONA_RAZMAK) - KOLONA_RAZMAK / 2
-            linija.setFrame_(NSMakeRect(x, ZAGLAVLJE, 1, 10))
-            self.document.addSubview_(linija)
-            self.dividers.append(linija)
+        self.pages = [self._kolona_podesavanja()]
+        page = self.pages[0]
+        page.column.setFrameOrigin_(AppKit.NSMakePoint(IVICA, ZAGLAVLJE))
+        self.document.addSubview_(page.column)
 
         self.refresh()
         self.refresh_recording()
@@ -422,172 +375,48 @@ class SettingsWindow:
         """Uslov: red se vidi samo uz navedene izvore transkripcije."""
         return lambda: self._provider() in imena
 
-    def _ai_ukljucen(self) -> bool:
-        return config.ai_obrada(self.app.cfg)
-
-    def _lokalna_ukljucena(self) -> bool:
-        """Svi ugaseni znaci „pravilno", tj. grupa je iskljucena."""
-        return not config.pravilno(self.app.cfg)
-
     def _dozvole_ok(self) -> bool:
         return self._accessibility_ok and self._mikrofon_ok
 
     # ----------------------------------------------------------- kartice
 
-    def _kolona_snimanje(self) -> _Page:
-        """Od glasa do prepisa: mikrofon, servis, provera, dozvole."""
+    def _kolona_podesavanja(self) -> _Page:
         page = _Page()
-
-        self._section(page, "Mikrofon i aktivacija")
-        self._popup(
-            page, "Mikrofon", "input_device",
-            [MIKROFON_PODRAZUMEVANI, *audio.input_devices()],
-            self.app.cfg.get("input_device") or MIKROFON_PODRAZUMEVANI,
-        )
+        self._checkbox(page, "Lowercase", "lowercase", True)
+        self._checkbox(page, "Remove diacritics", "ascii_diacritics", False)
+        self._checkbox(page, "Abbreviations", "abbreviations", True)
+        self._checkbox(page, "Start at login", "start_at_login", True)
+        self._popup(page, "Microphone", "input_device",
+                    [MIKROFON_PODRAZUMEVANI, *audio.input_devices()],
+                    self.app.cfg.get("input_device") or MIKROFON_PODRAZUMEVANI)
         self.microphone_popup = self.controls["input_device"]
-        self._popup(
-            page, "Aktivacija", "mode", ["Prekidač", "Drži taster"],
-            "Prekidač" if self.app.cfg.get("mode") == "toggle" else "Drži taster",
-        )
-        self._checkbox(page, "Aktiviraj i tasterom § (znak se ne upisuje)",
-                       "hotkey_section", True)
-        self._checkbox(page, "Aktiviraj i tasterom ` (znak se ne upisuje)",
-                       "hotkey_grave", False)
-        self.mis_label = self._plain_label("", 12, alpha=0.6)
-        page.place(self.mis_label, 17, gap=4.0)
-        red = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, COLUMN, 28))
-        snimi = self._plain_button("Snimi dugme miša", "mouse_learn")
-        snimi.setFrame_(NSMakeRect(0, 0, 170, 28))
-        iskljuci = self._plain_button("Isključi", "mouse_off")
-        iskljuci.setFrame_(NSMakeRect(174, 0, 96, 28))
-        red.addSubview_(snimi)
-        red.addSubview_(iskljuci)
-        page.place(red, 28, gap=2.0)
-        self._hint(page, "Klikni „Snimi“, pa pritisni dugme miša. Bočna dugmad sa Logi "
-                         "podešavanjem Back/Forward rade direktno: klik pali, sledeći gasi.")
-        self._checkbox(page, "Utišaj zvuk računara dok snimam", "utisaj_zvuk", False)
-        self._checkbox(page, "Pauziraj muziku i video dok snimam", "pauziraj_plejer",
-                       False)
+        self._popup(page, "Service", "transcription_provider", list(PROVIDER_TITLES.values()),
+                    PROVIDER_TITLES.get(self._provider(), PROVIDER_TITLES["gemini_live"]))
+        live = self._samo_za("gemini_live")
+        self._gemini_key_field(page, live)
 
-        self._section(page, "Prepoznavanje govora")
-        self._popup(
-            page, "Servis", "transcription_provider",
-            list(PROVIDER_TITLES.values()),
-            PROVIDER_TITLES.get(self._provider(), PROVIDER_TITLES["google"]),
-        )
-        # Stoji uz servis, ne uz taster: da li se sece na pauzama zavisi od
-        # toga ko prepoznaje, a uz OpenAI ne postoji.
-        self._checkbox(
-            page, "Neprekidno snimanje (seče na pauzama)", "continuous", True,
-            vidljivo=self._samo_za("google", "gemini_live"),
-        )
-        self._checkbox(
-            page, "Prikaži prepis uživo u okviru na ekranu", "live_preview", True,
-            vidljivo=self._samo_za("gemini_live"),
-        )
-        self._checkbox(
-            page, "Upisuj tekst tokom snimanja u aktivno polje", "gemini_live_insert",
-            False, vidljivo=self._samo_za("gemini_live"),
-        )
-        self._checkbox(
-            page, "OpenAI dugi diktat (do 60 min)", "openai_long_recording", True,
-            vidljivo=self._samo_za("openai"),
-        )
-
-        # Dozvola koja postoji nema šta da se traži; grupa se vidi samo kad
-        # nešto zaista fali.
-        self._section(page, "Dozvole", vidljivo=lambda: not self._dozvole_ok(),
-                      sakrij=True)
-        self._hint(page, "Bez Accessibility dozvole tekst završava u clipboard-u "
-                         "umesto u aktivnom polju.",
-                   vidljivo=lambda: not self._accessibility_ok, sakrij=True)
-        self._button(page, "Otvori Accessibility", "accessibility",
+        self._button(page, "Open Accessibility settings", "accessibility",
                      vidljivo=lambda: not self._accessibility_ok, sakrij=True)
-        self._hint(page, "Snimanje je zabranjeno u sistemskim podešavanjima.",
-                   vidljivo=lambda: not self._mikrofon_ok, sakrij=True)
-        self._button(page, "Otvori podešavanja mikrofona", "microphone",
+        self._button(page, "Open Microphone settings", "microphone",
                      vidljivo=lambda: not self._mikrofon_ok, sakrij=True)
+        self._history_list(page)
+        self._dno(page)
         return page
 
-    def _kolona_tekst(self) -> _Page:
-        """Sta se radi sa prepisom: AI obrada pa lokalna pravila."""
-        page = _Page()
-        self._section(page, "AI obrada teksta")
-        self._checkbox(page, "Uključi AI obradu", "ai_obrada", True)
-        ukljucen = self._ai_ukljucen
-        self._popup(
-            page, "Model", "text_model",
-            ["Gemini", "Groq GPT-OSS 120B"],
-            "Groq GPT-OSS 120B" if self.app.cfg.get("text_model") == "groq" else "Gemini",
-            vidljivo=ukljucen,
-        )
-        self._checkbox(page, "Sredi tekst (tačke i velika slova)", "text_style_written",
-                       False, vidljivo=ukljucen)
-        self._checkbox(page, "Podeli na pasuse", "polish_paragraphs", True,
-                       vidljivo=ukljucen)
-        self._checkbox(page, "Sažmi u tačke", "polish_bullets", False, vidljivo=ukljucen)
-        self._checkbox(page, "Izbaci ponavljanja", "polish_dedupe", False,
-                       vidljivo=ukljucen)
-
-        # Ista logika kao iznad: prekidac grupe, pa se pravila sklone kad su
-        # ugasena. „Ukljuceno" je izvedeno iz samih pravila, ne pamti se
-        # zasebno — inace bi rucno gasenje jednog ostavilo prekidac da laze.
-        self._section(page, "Lokalna pravila", "Rade i bez AI modela, odmah po prepisu.")
-        self._checkbox(page, "Uključi lokalna pravila", "lokalna_pravila", True)
-        pravila = self._lokalna_ukljucena
-        self._checkbox(page, "Sva slova mala", "lowercase", True, vidljivo=pravila)
-        self._popup(page, "Interpunkcija", "interpunkcija", list(INTERPUNKCIJA),
-                    interpunkcija_naslov(self.app.cfg), vidljivo=pravila)
-        self._checkbox(page, "Bez kvačica (č ć ž š → c c z s)", "ascii_diacritics",
-                       False, vidljivo=pravila)
-        self._checkbox(page, "Skraćenice (ne znam → nzm)", "abbreviations", True,
-                       vidljivo=pravila)
-        self._hint(page, "Isključeno: tekst izlazi pravopisno uređen.",
-                   vidljivo=lambda: not self._lokalna_ukljucena(), sakrij=True)
-
-        return page
-
-    def _kolona_kljucevi(self) -> _Page:
-        page = _Page()
-        self._section(page, "Pokretanje")
-        self._checkbox(page, "Pokreni Diktat pri uključivanju računara",
-                       "start_at_login", True)
-
-        self._section(page, "API ključevi", "Ostaju lokalno u config.json.")
-        self._field(page, "Gemini (transkripcija Live i obrada teksta)", "polish_api_key",
-                    secure=True)
-        self._field(page, "Groq (obrada teksta)", "groq_api_key",
-                    secure=True)
-        self._field(page, "OpenAI (GPT transkripcija)", "openai_api_key", secure=True)
-        self._button(page, "Proveri sve ključeve", "check_api")
-
-        self._section(page, "Poslednjih pet diktata", "Klikni na red da kopiraš tekst.")
-        for index in range(5):
-            self.history_buttons.append(
-                self._button(
-                    page, "", f"copy_history_{index}", full_width=True,
-                    vidljivo=lambda i=index: i < self._history_len, sakrij=True,
-                )
-            )
-        self._hint(page, "Još ništa nije izdiktirano.",
-                   vidljivo=lambda: self._history_len == 0, sakrij=True)
-
-        self._section(page, "Sačuvani snimci",
-                      f"Diktat koji nije prepisan čuva se {rezerva.ROK_SATI} h.")
-        self._checkbox(page, "Čuvaj snimak dok se ne prepiše", "rezervni_snimak", True)
-        for index in range(SACUVANI_REDOVA):
-            red = _RedSnimka.napravi(self, index)
-            self.saved_rows.append(red)
-            page.place(red.view, 28, gap=4.0,
-                       vidljivo=lambda i=index: i < len(self._sacuvani), sakrij=True)
-        self._hint(page, "Nema sačuvanih snimaka.",
-                   vidljivo=lambda: not self._sacuvani, sakrij=True)
-        # Dva reda: ishod prepisa ume da bude duzi od kolone.
-        self.prepis_label = self._plain_label("", 12, alpha=0.6)
-        self._text_height(self.prepis_label, COLUMN, 17.0)
-        page.place(self.prepis_label, 34, vidljivo=lambda: bool(self.app.prepis_status),
-                   sakrij=True)
-        return page
+    def _dno(self, page):
+        """Miš i Quit u jednom redu: miš uzima preostalu širinu, Quit desno."""
+        self.mouse_button = self._plain_button("Record mouse button", "mouse_learn")
+        self.mouse_button.setBordered_(True)
+        self.mouse_button.setBezelStyle_(AppKit.NSBezelStyleRounded)
+        left_button_title(self.mouse_button, "Record mouse button", inset=2)
+        self.quit_button = self._plain_button("Quit", "quit")
+        row = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, COLUMN, 30))
+        mouse_w = COLUMN - QUIT_SIRINA - DNO_RAZMAK
+        self.mouse_button.setFrame_(NSMakeRect(0, 0, mouse_w, 30))
+        self.quit_button.setFrame_(NSMakeRect(mouse_w + DNO_RAZMAK, 0, QUIT_SIRINA, 30))
+        row.addSubview_(self.mouse_button)
+        row.addSubview_(self.quit_button)
+        page.place(row, 30)
 
     # --------------------------------------------------------- kontrole
 
@@ -650,10 +479,10 @@ class SettingsWindow:
                 item.cell().setAlignment_(AppKit.NSTextAlignmentLeft)
             except Exception:      # noqa: BLE001
                 pass
-            return page.place(item, 26, gap=6.0, vidljivo=vidljivo, sakrij=sakrij)
+            return page.place(item, 26, gap=4.0, vidljivo=vidljivo, sakrij=sakrij)
         item.sizeToFit()
         sirina = min(COLUMN, max(item.frame().size.width + 28, 150.0))
-        return page.place_left(item, 30, sirina, gap=6.0, vidljivo=vidljivo,
+        return page.place_left(item, 30, sirina, gap=4.0, vidljivo=vidljivo,
                                sakrij=sakrij)
 
     def _checkbox(self, page, title, key, default=None, inset=0.0, vidljivo=None):
@@ -667,14 +496,13 @@ class SettingsWindow:
             AppKit.NSControlStateValueOn if bool(self.app.cfg.get(key, default))
             else AppKit.NSControlStateValueOff
         )
-        control = page.place(item, 20, gap=6.0, inset=inset, vidljivo=vidljivo)
+        control = page.place(item, 20, gap=4.0, inset=inset, vidljivo=vidljivo)
         self.controls[key] = control
         return control
 
     def _popup(self, page, title, key, values, selected, vidljivo=None):
-        page.place(self._plain_label(title, 12, alpha=0.6), 16, gap=2.0,
-                   vidljivo=vidljivo)
         item = AppKit.NSPopUpButton.alloc().initWithFrame_(NSMakeRect(0, 0, 100, 26))
+        item.setAccessibilityLabel_(title)
         item.addItemsWithTitles_(values)
         if selected in values:
             item.selectItemWithTitle_(selected)
@@ -685,17 +513,103 @@ class SettingsWindow:
         self.controls[key] = control
         return control
 
-    def _field(self, page, title, key, secure=False, vidljivo=None):
+    def _field(self, page, title, key, secure=False, vidljivo=None, sakrij=False):
         page.place(self._plain_label(title, 12, alpha=0.6), 16, gap=2.0,
-                   vidljivo=vidljivo)
+                   vidljivo=vidljivo, sakrij=sakrij)
         cls = AppKit.NSSecureTextField if secure else AppKit.NSTextField
         item = cls.alloc().initWithFrame_(NSMakeRect(0, 0, 100, 24))
         item.setStringValue_(str(self.app.cfg.get(key, "")))
         item.setIdentifier_(key)
         item.setDelegate_(self.app)
-        control = page.place(item, 24, gap=10.0, vidljivo=vidljivo)
+        control = page.place(item, 24, gap=10.0, vidljivo=vidljivo, sakrij=sakrij)
         self.controls[key] = control
         return control
+
+    def _gemini_key_field(self, page, visible):
+        row = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, COLUMN, 26))
+        field = AppKit.NSSecureTextField.alloc().initWithFrame_(
+            NSMakeRect(0, 1, COLUMN - 36, 24))
+        field.setStringValue_(str(self.app.cfg.get("polish_api_key", "")))
+        field.setAccessibilityLabel_("Gemini API key")
+        field.setIdentifier_("polish_api_key")
+        field.setDelegate_(self.app)
+        row.addSubview_(field)
+        self.controls["polish_api_key"] = field
+        self.api_check_button = self._plain_button("✓", "check_api")
+        self.api_check_button.setFrame_(NSMakeRect(COLUMN - 30, 0, 30, 26))
+        self.api_check_button.setToolTip_("Check Gemini key")
+        row.addSubview_(self.api_check_button)
+        page.place(row, 26, vidljivo=visible, sakrij=True)
+        self.api_key_row = row
+
+    def refresh_api_check(self):
+        button = getattr(self, "api_check_button", None)
+        if button is None:
+            return
+        checking = getattr(self.app, "_api_check_running", False)
+        status = getattr(self.app, "_api_check_status", "")
+        valid = status == "Gemini: API key works"
+        title = "…" if checking else ("✓" if valid or not status else "×")
+        color = (AppKit.NSColor.secondaryLabelColor() if checking or not status
+                 else AppKit.NSColor.systemGreenColor() if valid
+                 else AppKit.NSColor.systemRedColor())
+        button.setTitle_(title)
+        button.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(
+            title, {AppKit.NSForegroundColorAttributeName: color}))
+        button.setToolTip_("Checking Gemini key…" if checking else status or "Check Gemini key")
+
+    def _history_list(self, page):
+        """Pet vidljivih redova; do sto prepiski skroluje se unutar liste."""
+        scroll = AppKit.NSScrollView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, COLUMN, ISTORIJA_VIDLJIVIH * ISTORIJA_VISINA_REDA)
+        )
+        scroll.setHasVerticalScroller_(False)
+        scroll.setAutohidesScrollers_(True)
+        scroll.setBorderType_(AppKit.NSBezelBorder)
+        scroll.setDrawsBackground_(False)
+        document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, COLUMN, 10))
+        scroll.setDocumentView_(document)
+        for index in range(VELICINA_ISTORIJE):
+            item = self._plain_button("", f"copy_history_{index}")
+            item.setBordered_(False)
+            left_button_title(item, "")
+            item.setHidden_(True)
+            document.addSubview_(item)
+            self.history_buttons.append(item)
+        self.history_scroll = scroll
+        self.history_document = document
+        page.place(
+            scroll, ISTORIJA_VIDLJIVIH * ISTORIJA_VISINA_REDA, gap=4.0,
+            vidljivo=lambda: self._history_len > 0, sakrij=True,
+        )
+        self._history_row = page.rows[-1]
+
+    def _osvezi_istoriju(self, history):
+        if self.history_scroll is None:
+            return
+        document_width = COLUMN - 2.0
+        sirina = max(80.0, document_width - 2 * HISTORY_PADDING)
+        for index, view in enumerate(self.history_buttons):
+            if index < len(history):
+                short = " ".join(history[index].split())
+                left_button_title(view, f"{index + 1}. {short}")
+                view.setHidden_(False)
+                view.setFrame_(NSMakeRect(HISTORY_PADDING, HISTORY_PADDING + index * ISTORIJA_VISINA_REDA, sirina, 26))
+            else:
+                view.setHidden_(True)
+        self.history_document.setFrameSize_(NSMakeSize(
+            document_width, 2 * HISTORY_PADDING + max(ISTORIJA_VISINA_REDA, len(history) * ISTORIJA_VISINA_REDA),
+        ))
+        if self._history_row is not None:
+            vidljivih = min(ISTORIJA_VIDLJIVIH, len(history))
+            self._history_row.height = vidljivih * ISTORIJA_VISINA_REDA + 2 * HISTORY_PADDING
+        prvi = history[0] if history else ""
+        if prvi != self._history_prvi:
+            self._history_prvi = prvi
+            clip = self.history_scroll.contentView()
+            if clip is not None:
+                clip.scrollToPoint_(AppKit.NSMakePoint(0, 0))
+                self.history_scroll.reflectScrolledClipView_(clip)
 
     # --------------------------------------------------------- osvezavanje
 
@@ -716,23 +630,15 @@ class SettingsWindow:
 
         history = self.app.upis.istorija()
         self._history_len = len(history)
-        for index, view in enumerate(self.history_buttons):
-            if index < len(history):
-                short = " ".join(history[index].split())
-                view.setTitle_(f"  {index + 1}. {short[:46]}")
+        self._osvezi_istoriju(history)
 
         for key, view in self.controls.items():
             if key in ("transcription_provider", "text_model", "input_device", "mode"):
                 continue
-            if key == "interpunkcija":
-                view.selectItemWithTitle_(interpunkcija_naslov(self.app.cfg))
-                continue
-            if key == "text_style_written":
-                value = self.app.cfg.get("text_style") == "written"
-            elif key == "lokalna_pravila":
-                value = self._lokalna_ukljucena()
-            elif key == "ai_obrada":
-                value = config.ai_obrada(self.app.cfg)
+            if key == "strip_punctuation":
+                value = self.app.cfg.get("strip_punctuation", True)
+            elif key == "punctuation":
+                value = not self.app.cfg.get("strip_punctuation", True)
             else:
                 value = self.app.cfg.get(key, False)
             if hasattr(view, "setState_"):
@@ -741,43 +647,39 @@ class SettingsWindow:
                     else AppKit.NSControlStateValueOff
                 )
 
-        if self.recorded_label is not None:
-            self.recorded_label.setStringValue_(
-                f"Ukupno snimljeno: {trajanje(self.app._recorded_seconds())}"
+        if getattr(self, "mouse_button", None) is not None:
+            left_button_title(
+                self.mouse_button,
+                self.app.mis_status or mouse_button_title(self.app.cfg),
+                inset=2,
             )
+        self.refresh_transcription_status()
 
-        self._sacuvani = self.app.sacuvani_snimci()[:SACUVANI_REDOVA]
-        for index, red in enumerate(self.saved_rows):
-            if index < len(self._sacuvani):
-                red.oznaka.setStringValue_(self._sacuvani[index].naslov())
-            red.prepisi.setEnabled_(not self.app._prepis_radi)
-        if self.prepis_label is not None:
-            self.prepis_label.setStringValue_(self.app.prepis_status)
-        if self.mis_label is not None:
-            # Tok snimanja (ceka se dugme, snimljeno) ima prednost nad stanjem.
-            self.mis_label.setStringValue_(
-                self.app.mis_status
-                or f"Dugme miša: {hotkey.naziv_prekidaca(self.app.cfg)}"
-            )
-
-        self._refresh_update()
+        self.refresh_api_check()
 
         self._rasporedi()
 
-    def _refresh_update(self):
-        if self.update_header is None:
-            return
-        dostupno = self.app.azur_dugme_stanje()[1]
-        # Obican `setTitle_` brise zelen natpis, pa se boja nanosi posle njega.
-        self.update_header.setTitle_(self.app.azur_dugme_stanje()[0])
-        _zeleno(self.update_header, dostupno)
-        self.update_header.setToolTip_(self.app._azur_status or None)
-
     def refresh_recording(self):
+        self.refresh_transcription_status()
         if self.stop_button is not None:
             active = self.app._recorder is not None or bool(self.app._starting)
             if bool(self.stop_button.isEnabled()) != active:
                 self.stop_button.setEnabled_(active)
+
+    def refresh_transcription_status(self):
+        label = getattr(self, "transcription_status_label", None)
+        if label is not None:
+            status = self.app.last_transcription_status
+            if self.app._recorder is not None and getattr(self.app, "_live_waiting", False):
+                status = "Prepis uživo kasni; mikrofon nastavlja da snima."
+            label.setStringValue_(status)
+            detail = self.app.last_transcription_detail or "Nema zabeleženih grešaka."
+            if self.transcription_detail_label.stringValue() != detail:
+                self.transcription_detail_label.setStringValue_(detail)
+                self.transcription_detail_row.height = self._text_height(
+                    self.transcription_detail_label, COLUMN, 17,
+                )
+                self._rasporedi()
 
 
 def _zeleno(dugme, ukljuceno=True):
@@ -800,13 +702,26 @@ def _zeleno(dugme, ukljuceno=True):
             }))
 
 
-def _glavni_meni(nsapp):
-    """Prečice koje svaki prozor ima: ⌘W zatvara, ⌘C/⌘V/⌘X/⌘A/⌘Z u poljima.
+class _MeniAplikacije(AppKit.NSObject):
+    """Stavka menija mora da ima AppKit cilj, rumps objekat to nije."""
+
+    def initWithApp_(self, app):
+        self = objc.super(_MeniAplikacije, self).init()
+        if self is not None:
+            self._app = app
+        return self
+
+    def ponovoPokreni_(self, _sender):  # noqa: N802 - ime trazi AppKit
+        self._app.ponovo_pokreni()
+
+
+def _glavni_meni(nsapp, app=None):
+    """Prečice koje svaki prozor ima: ⌘C/⌘V/⌘X/⌘A/⌘Z u poljima.
 
     Menu-bar aplikacija nema glavni meni, a macOS prečice ne vezuje za prozor
-    nego za stavke tog menija. Bez njega ⌘W ne zatvara prozor, a ⌘V ne lepi
-    ključ u polje. Stavke nemaju cilj (`target`), pa idu prvom koji ume da ih
-    izvrši: polju u fokusu ili samom prozoru.
+    nego za stavke tog menija. Bez njega ⌘V ne lepi ključ u polje. Stavke nemaju
+    cilj (`target`), pa idu prvom koji ume da ih izvrši: polju u fokusu.
+    Prozor se ne zatvara sa ⌘W.
     """
     # macOS sam napravi podrazumevani meni („Python", jedna stavka) cim
     # aplikacija postane obicna, pa „meni vec postoji" ne znaci da je nas.
@@ -824,13 +739,22 @@ def _glavni_meni(nsapp):
         nosac.setSubmenu_(meni)
         glavni.addItem_(nosac)
 
-    podmeni("Diktat", [("Zatvori prozor", "performClose:", "w")])
-    podmeni("Izmeni", [
-        ("Poništi", "undo:", "z"),
-        ("Iseci", "cut:", "x"),
-        ("Kopiraj", "copy:", "c"),
-        ("Nalepi", "paste:", "v"),
-        ("Izaberi sve", "selectAll:", "a"),
+    podmeni("Diktat", [("Close window", "performClose:", "")])
+    if app is not None:
+        meni_diktat = glavni.itemAtIndex_(0).submenu()
+        meni_diktat.addItem_(AppKit.NSMenuItem.separatorItem())
+        stavka = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Restart", "ponovoPokreni:", "")
+        if getattr(app, "_meni_delegate", None) is None:
+            app._meni_delegate = _MeniAplikacije.alloc().initWithApp_(app)
+        stavka.setTarget_(app._meni_delegate)
+        meni_diktat.addItem_(stavka)
+    podmeni("Edit", [
+        ("Undo", "undo:", "z"),
+        ("Cut", "cut:", "x"),
+        ("Copy", "copy:", "c"),
+        ("Paste", "paste:", "v"),
+        ("Select all", "selectAll:", "a"),
     ])
     nsapp.setMainMenu_(glavni)
 
@@ -842,26 +766,3 @@ def _omoguci(view, ukljuceno: bool, alpha: float):
     if isinstance(view, AppKit.NSControl) and not natpis:
         view.setEnabled_(ukljuceno)
     view.setAlphaValue_(alpha if ukljuceno else alpha * 0.4)
-
-
-class _RedSnimka:
-    """Red u listi sacuvanih snimaka: vreme i trajanje, Prepiši, Obriši."""
-
-    def __init__(self, view, oznaka, prepisi, obrisi):
-        self.view = view
-        self.oznaka = oznaka
-        self.prepisi = prepisi
-        self.obrisi = obrisi
-
-    @classmethod
-    def napravi(cls, prozor, index):
-        view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, COLUMN, 28))
-        oznaka = prozor._plain_label("", 13)
-        oznaka.setFrame_(NSMakeRect(0, 5, COLUMN - 190, 18))
-        prepisi = prozor._plain_button("Prepiši", f"prepisi_{index}")
-        prepisi.setFrame_(NSMakeRect(COLUMN - 186, 0, 96, 28))
-        obrisi = prozor._plain_button("Obriši", f"obrisi_{index}")
-        obrisi.setFrame_(NSMakeRect(COLUMN - 88, 0, 88, 28))
-        for deo in (oznaka, prepisi, obrisi):
-            view.addSubview_(deo)
-        return cls(view, oznaka, prepisi, obrisi)

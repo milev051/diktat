@@ -15,3 +15,5 @@ android/.idea/
 
 # macOS smece
 .DS_Store
+.test-result.log
+android/.build-result.log

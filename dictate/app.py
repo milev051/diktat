@@ -30,7 +30,6 @@ import time
 import AppKit
 import objc
 import rumps
-from Foundation import NSAttributedString
 
 from . import (
     audio, autostart, config, debugdump, geministt, hotkey, insert, obrada, overlay,
@@ -41,27 +40,11 @@ from .tok_google import GoogleTok
 from .tok_openai import OpenAiTok
 from .tok_gemini import GeminiTok
 from . import upis
+from .istorija import Arhiva
 from .obrada import Obrada
 from .prozor_akcije import ProzorAkcije
 from .prepis_sacuvanog import PrepisSacuvanog
 from .azuriranje_ui import AzuriranjeUI
-
-# Dok snima, naslov je proteklo vreme u sekundama ("07") umesto ikonice.
-ICON = {
-    "idle": "00",
-    "error": "⚠️",
-}
-RED_AFTER = 15.0   # upozorenje važi samo za kratki režim
-
-# Naranđasta umesto ciste zute: zuta je na svetlom menu baru jedva citljiva.
-TITLE_COLORS = {
-    "recording": AppKit.NSColor.systemRedColor,
-    "busy": AppKit.NSColor.systemOrangeColor,
-    "polishing": AppKit.NSColor.systemBlueColor,
-}
-
-ERROR_HUD_SECONDS = 4.0
-
 
 class _StatusClickDelegate(AppKit.NSObject):
     """Klik na ikonicu otvara podešavanja; drugi klik ih sklanja."""
@@ -73,10 +56,7 @@ class _StatusClickDelegate(AppKit.NSObject):
         return self
 
     def clicked_(self, _sender):
-        if self._app._recorder is not None or self._app._starting:
-            self._app._stop_from_menu(None)
-        else:
-            self._app._toggle_settings()
+        self._app._toggle_settings()
 
 
 class State:
@@ -113,13 +93,14 @@ class DictateApp(
     rumps.App,
 ):
     def __init__(self):
-        super().__init__("Diktat", title=ICON["idle"], quit_button=None)
+        super().__init__("Diktat", title="", quit_button=None)
         self.cfg = config.load()
+        config.save(self.cfg)
         self.state = State()
         try:
             autostart.sync(self.cfg.get("start_at_login", True))
         except OSError as exc:
-            self.state.set(phase="error", message=f"Automatsko pokretanje: {exc}")
+            self.state.set(phase="error", message=f"Start at login: {exc}")
         self.hud = overlay.Overlay(self.cfg.get("overlay_position", "bottom"))
         # Okvir sa prepisom uzivo stoji iznad pilule kad su oboje na dnu.
         self.live_panel = overlay.LivePanel(
@@ -128,6 +109,10 @@ class DictateApp(
         )
         self._live_text = ""
         self._live_text_dirty = False
+        self._live_last_update_at = 0.0
+        self._live_waiting = False
+        self._live_trace = None
+        self._live_diag_drawn_at = 0.0
         # Okvir se gasi u trenutku zaustavljanja. Zastavicu dize nit tastera, a
         # sklanja je `_tick` sa glavne niti; posle nje reader jos stize da
         # posalje poslednju potvrdjenu celinu, pa mora da postoji i zabrana da
@@ -135,6 +120,8 @@ class DictateApp(
         self._live_off = True
 
         self._client_error = None
+        self.last_transcription_status = "No completed dictation yet."
+        self.last_transcription_detail = ""
         self._session_lock = threading.Lock()
         self._recorder = None
         # Pokretanje ceka na oslobodjen mikrofon (do ~1.5s), pa STOP ume da
@@ -147,20 +134,25 @@ class DictateApp(
         self._status_click_set = False
         self._error_shown_at = None
         self._record_started_at = 0.0
-        self._last_clock = ""
-        self._menubar = (None, None)
         self._stats_lock = threading.Lock()
         self._dump = None
         self._debug_sessions = {}
         # Red za upis ima svoje stanje (tiketi, brojaci, istorija); ostatak
         # aplikacije ga koristi samo kroz njegove metode.
         self.upis = upis.RedUpisa(
+            arhiva=Arhiva(), clipboard=lambda tekst: (
+                insert.set_clipboard(tekst) if self.cfg.get("save_clipboard", False) else None
+            ),
+            cuvaj_clipboard=lambda: self.cfg.get("save_clipboard", False),
             upisi=lambda tekst: insert.insert(
                 tekst,
                 method=self.cfg.get("insert_method", "auto"),
-                restore_clipboard=self.cfg.get("restore_clipboard", True),
+                restore_clipboard=True,
             ),
-            upisi_deo=insert.insert_live,
+            upisi_deo=self._apply_live_field_final,
+            upisi_preview=self._apply_live_field_preview,
+            kraj_live=insert.finish_live,
+            on_wait=self._live_queue_wait,
             ceka_celinu=self._deferred,
             za_obradu=self._za_obradu,
             posle=self._posle_upisa,
@@ -170,6 +162,8 @@ class DictateApp(
         self.ceka_obradu = obrada.CekanjeObrade()
         self._api_check_result = None
         self._api_check_running = False
+        self._api_check_generation = 0
+        self._api_check_status = ""
         self._settings_window_ui = None
         # Sta je Diktat utisao ili pauzirao, da posle snimanja vrati samo to.
         self.tisina = zvuk.Tisina()
@@ -190,16 +184,18 @@ class DictateApp(
         # gradnja prozora jos ~0.3s; oba su padala na prvi klik na ikonicu.
         # Zato se AVFoundation ucita u pozadini, a prozor napravi unapred.
         self._prozor_moze = False
+        self._show_settings_on_launch = True
         self._sacuvani_dirty = True
         # Snimanje dugmeta misa: natpis u prozoru i znak da ga treba osveziti
         # (dugme stize iz tap niti, a prozor sme da se dira samo iz `_tick`).
         self.mis_status = ""
+        self._mouse_learning = False
         self._mis_dirty = False
         self._prepis_radi = False
         self.prepis_status = ""
         # Ostatak neuspelog diktata od pre pokretanja: prozor se otvori sam,
         # da se prepis ponovi bez trazenja.
-        self._najavi_sacuvane = bool(rezerva.sacuvani())
+        self._najavi_sacuvane = False
 
         def zagrej():
             audio.microphone_granted()
@@ -254,6 +250,19 @@ class DictateApp(
     # --------------------------------------------------------- sesija
 
 
+    def _consume_api_check(self):
+        result = self._api_check_result
+        if result is None:
+            return
+        self._api_check_result = None
+        generation, status = result
+        if generation != self._api_check_generation:
+            return
+        self._api_check_running = False
+        self._api_check_status = status
+        if self._settings_window_ui is not None:
+            self._settings_window_ui.refresh_api_check()
+
     # ----------------------------------------------------------- timer
 
     @rumps.timer(0.05)
@@ -266,13 +275,7 @@ class DictateApp(
         if not self._status_click_set:
             self._configure_status_click()
 
-        if self._api_check_result is not None:
-            result = self._api_check_result
-            self._api_check_result = None
-            rumps.alert(
-                title="Provera API ključeva",
-                message=result + "\n\nProvera ne šalje audio i ne troši minute transkripcije.",
-            )
+        self._consume_api_check()
 
         # Istoriju puni radna nit, a prozor sme da se dira samo odavde.
         if self.upis.istorija_promenjena():
@@ -283,10 +286,12 @@ class DictateApp(
 
         self._tick_live_panel()
         self._tick_azuriranje()
-        if (self._prozor_moze and self._settings_window_ui is None
-                and self._recorder is None and not self._starting):
+        if self._prozor_moze and self._settings_window_ui is None:
             self._settings_window_ui = settings_window.SettingsWindow(self)
             self._settings_window_ui.pripremi()
+        if self._show_settings_on_launch and self._settings_window_ui is not None:
+            self._show_settings_on_launch = False
+            self._open_settings(None)
         if self._najavi_sacuvane and self._settings_window_ui is not None:
             self._najavi_sacuvane = False
             self._open_settings(None)
@@ -299,145 +304,19 @@ class DictateApp(
             if self._settings_window_ui is not None:
                 self._settings_window_ui.refresh()
 
-        phase, message, dirty = self.state.snapshot()
-
-        # Auto-sklanjanje HUD-a sa greskom mora da radi i kad se stanje ne menja.
-        if phase == "error" and self._error_shown_at is not None:
-            if time.monotonic() - self._error_shown_at > ERROR_HUD_SECONDS:
-                self.hud.hide()
-        elif phase != "error":
-            self._error_shown_at = None
-
-        # Dok mikrofon radi, sat ide — bez obzira na to sta pise u `state`.
-        # Prethodni diktat sme da se obradjuje paralelno, a njegova faza je
-        # ranije preuzimala prikaz: naslov bi stao na "AI", brojanje bi se
-        # zamrzlo i delovalo bi da aplikacija ne registruje govor.
-        if self._recorder is not None:
-            clock = self._clock_text()
-            self._last_clock = clock   # ostaje i dok se posle obradjuje
-            self._set_menubar(clock, self._title_color())
-            if self.cfg.get("show_overlay", True):
-                if not self.hud.visible:
-                    self.hud.show(clock, mono=True)
-                else:
-                    self.hud.set_text(clock, mono=True)
-                self.hud.set_state("recording")
-                self.hud.set_busy(self.upis.na_cekanju() > 0)
-            return
-
+        self.state.snapshot()
         if self._azur_dirty:
             self._azur_dirty = False
-            dirty = True
             if self._settings_window_ui is not None:
                 self._settings_window_ui.refresh()
 
-        if not dirty:
-            return
-
-        # U naslovu su UVEK cifre; stanje se vidi po boji. Tekst umesto brojeva
-        # je gutao sat, pa se nije videlo koliko traje ni koliko je ostalo.
-        if phase == "polishing":
-            self._set_menubar(self._last_clock or ICON["idle"], "polishing")
-        elif phase == "thinking":
-            self._set_menubar(self._last_clock or ICON["idle"], "busy")
-        else:
-            naslov = ICON.get(phase, ICON["idle"])
-            if phase != "error" and self.azur_dostupno():
-                # Strelica je jedini znak da ima nove verzije; ne iskace nista.
-                naslov += " ↑"
-            self._set_menubar(naslov)
-
-        if not self.cfg.get("show_overlay", True):
-            return
-
-        if phase in ("recording", "thinking"):
-            # Pilula nosi samo vreme; posle pustanja tastera ono se zamrzne
-            # i stoji dok obrada ne prodje.
-            shown = self._last_clock or "0:00"
-            if not self.hud.visible:
-                self.hud.show(shown, mono=True)
-            else:
-                self.hud.set_text(shown, mono=True)
-            self.hud.set_state("recording" if phase == "recording" else "processing")
-        elif phase == "error":
-            # Greska se pokaze kratko pa se skloni; poruka ostaje u meniju.
-            if self._error_shown_at is None:
-                self._error_shown_at = time.monotonic()
-                self.hud.show(message[:90], mono=False)
-                self.hud.set_state("error")
-        else:
-            self.hud.hide()
-
-
-    def _clock_text(self) -> str:
-        """Proteklo vreme u sekundama, dve cifre. Snimanje ionako staje na
-        granici, pa minuti nemaju sta da rade u naslovu."""
-        elapsed = time.monotonic() - self._record_started_at
-        return f"{min(int(elapsed), int(self._limit_seconds())):02d}"
-
     def _configure_status_click(self):
+        """Keep the app running without a menu bar item or recording counter."""
         nsapp = getattr(self, "_nsapp", None)
         item = getattr(nsapp, "nsstatusitem", None) if nsapp else None
-        button = item.button() if item is not None else None
-        if button is None:
-            return
-        self._status_click_delegate = _StatusClickDelegate.alloc().initWithApp_(self)
-        item.setMenu_(None)
-        button.setTarget_(self._status_click_delegate)
-        button.setAction_("clicked:")
-        self._status_click_set = True
-
-    def _title_color(self):
-        """Boja kaze sta se trenutno desava; cifre uvek stoje.
-
-        Plava (model) ima prednost nad narandzastom (prepoznavanje), a obe nad
-        crvenom (blizu granice) — jer je cekanje na tudji odgovor vaznije od
-        toga koliko dugo traje ovaj snimak.
-        """
-        if self.ceka_obradu.radi():
-            return "polishing"
-        if self.upis.na_cekanju() > 0:
-            return "busy"
-        # OpenAI ima duži sigurnosni limit; crvena boja posle 15 s bi izgledala
-        # kao greška iako snimanje normalno traje. Obrada se i dalje prikazuje
-        # narandžasto preko `busy`, a model plavo preko `polishing`.
-        if self.cfg.get("transcription_provider", "google") == "openai" or (
-            geministt.enabled(self.cfg)
-        ):
-            return None
-        if self._segmenting():
-            # Neprekidni Google režim nema granicu od 30 s po diktatu.
-            return None
-        elapsed = time.monotonic() - self._record_started_at
-        return "recording" if elapsed >= RED_AFTER else None
-
-    def _set_menubar(self, text: str, color=None):
-        """rumps.title ne ume boju, pa naslov ide kao attributed string.
-
-        Cifre su u monospacedDigit fontu — inace se sirina naslova menja svakom
-        promenom sekunde i ostale ikonice u menu baru poskakuju.
-        """
-        if (text, color) == self._menubar:
-            return
-        self._menubar = (text, color)
-        nsapp = getattr(self, "_nsapp", None)
-        item = getattr(nsapp, "nsstatusitem", None) if nsapp else None
-        button = item.button() if item is not None else None
-        if button is None:
-            self.title = text        # pre nego sto rumps napravi status stavku
-            return
-        attrs = {
-            AppKit.NSFontAttributeName:
-                AppKit.NSFont.monospacedDigitSystemFontOfSize_weight_(
-                    0, AppKit.NSFontWeightRegular
-                )
-        }
-        if color is not None:
-            attrs[AppKit.NSForegroundColorAttributeName] = TITLE_COLORS[color]()
-        button.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(text, attrs)
-        )
-
+        if item is not None:
+            item.setVisible_(False)
+            self._status_click_set = True
 
     # -------------------------------------------------- menu callbacks
 
@@ -457,7 +336,30 @@ class DictateApp(
             else None
         )
 
+    def ponovo_pokreni(self):
+        """Ugasi ovaj proces i otvori Diktat iznova.
+
+        Ako prepis još stoji samo na ekranu, prvo se čuva u istoriji i predaje za upis.
+        """
+        tekst = (getattr(self, "_live_text", "") or "").strip()
+        if self._recorder is not None:
+            self._unesi_vidljivi_prepis()
+            self._on_stop()
+        import subprocess
+        import sys
+        from pathlib import Path
+        bundle = AppKit.NSBundle.mainBundle()
+        putanja = str(bundle.bundlePath() or "") if bundle is not None else ""
+        if putanja.endswith(".app"):
+            subprocess.Popen(["open", "-n", putanja])
+        else:
+            koren = Path(__file__).resolve().parent.parent
+            subprocess.Popen([sys.executable, str(koren / "run.py")])
+        self._quit(None)
+
     def _quit(self, _):
+        if self._recorder is not None:
+            self._unesi_vidljivi_prepis()
         # Racunar ne sme da ostane utisan zato sto je Diktat ugasen usred snimanja.
         self.tisina.vrati_odmah()
         try:
@@ -474,4 +376,20 @@ class DictateApp(
 
 
 def main():
+    # Kod na disku može biti ažuriran dok stari proces još radi. Ova oznaka
+    # u logu potvrđuje tačno koji je kod zaista učitan pri pokretanju.
+    import hashlib
+    import faulthandler
+    import signal
+    from pathlib import Path
+    folder = Path(__file__).parent
+    digest = hashlib.sha256(b"".join(
+        (folder / name).read_bytes()
+        for name in ("app.py", "audio.py", "snimanje.py", "geministt.py", "wsock.py", "insert.py", "upis.py", "istorija.py", "tok_gemini.py")
+    )).hexdigest()[:12]
+    print(f"[diktat] učitan kod {digest}", flush=True)
+    faulthandler.enable(all_threads=True)
+    # Poslednji pad je SIGTRAP u nativnoj biblioteci. Uz macOS .ips treba i
+    # Python stek svih niti, da se vidi koja je naša operacija bila u toku.
+    faulthandler.register(signal.SIGTRAP, all_threads=True, chain=True)
     DictateApp().run()

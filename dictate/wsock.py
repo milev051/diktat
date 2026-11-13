@@ -15,10 +15,12 @@ import base64
 import hashlib
 import json
 import os
+import select
 import socket
 import ssl
 import struct
 import threading
+import time
 from urllib.parse import urlsplit
 
 # Fiksna konstanta iz RFC 6455; služi samo za proveru odgovora na rukovanje.
@@ -50,14 +52,19 @@ class WebSocketTimeout(WebSocketError):
 class WebSocket:
     """Sinhroni klijent. Koristi se kao kontekst, da se utičnica uvek zatvori."""
 
-    def __init__(self, url, timeout=30.0, headers=None):
+    def __init__(self, url, timeout=30.0, headers=None, on_diagnostic=None):
         self._url = url
         self._timeout = timeout
         self._headers = dict(headers or {})
+        self._diagnostic = on_diagnostic
         self._sock = None
         self._buf = b""
         self._closed = False
         self._send_lock = threading.Lock()
+        # OpenSSL SSL objekat ne sme da se čita, piše ili zatvara istovremeno
+        # iz dve niti. Kratak read poll pušta slanje između dva čitanja.
+        self._io_lock = threading.RLock()
+        self._read_poll_timeout = None
         self._fragments = []
         self._fragment_opcode = None
         # Razlog zatvaranja stize u CLOSE okviru i JEDINI je trag zasto je
@@ -81,9 +88,11 @@ class WebSocket:
 
         try:
             raw = socket.create_connection((host, port), timeout=self._timeout)
+            self._mark("tcp_ready")
             if secure:
                 ctx = ssl.create_default_context()
                 raw = ctx.wrap_socket(raw, server_hostname=host)
+                self._mark("tls_ready")
             raw.settimeout(self._timeout)
         except OSError as exc:
             raise WebSocketError(f"Ne mogu da se povežem: {exc}") from exc
@@ -102,7 +111,15 @@ class WebSocket:
         zahtev = ("\r\n".join(redovi) + "\r\n\r\n").encode("ascii")
         self._send_all(zahtev)
         self._check_handshake(kljuc)
+        self._mark("websocket_ready")
         return self
+
+    def _mark(self, kind, value=0):
+        if self._diagnostic is not None:
+            try:
+                self._diagnostic(kind, value)
+            except Exception:
+                pass
 
     def _check_handshake(self, kljuc):
         zaglavlje = self._read_until(b"\r\n\r\n")
@@ -146,7 +163,15 @@ class WebSocket:
 
     def _send_all(self, data):
         try:
-            self._sock.sendall(data)
+            began = time.monotonic()
+            with self._io_lock:
+                waited = time.monotonic() - began
+                if waited >= 0.2:
+                    self._mark("socket_lock_wait", waited)
+                sock = self._sock
+                if sock is None:
+                    raise WebSocketError("Veza je zatvorena")
+                sock.sendall(data)
         except OSError as exc:
             raise WebSocketError(f"Slanje nije uspelo: {exc}") from exc
 
@@ -252,12 +277,41 @@ class WebSocket:
         podesi tek za tu fazu; isti kratak timeout tokom slanja bi obarao vezu.
         """
         self._timeout = seconds
-        if self._sock is not None:
-            self._sock.settimeout(seconds)
+        with self._io_lock:
+            if self._sock is not None:
+                self._sock.settimeout(seconds)
+
+    def set_read_poll_timeout(self, seconds):
+        """Skrati samo čitanje dok ono drži I/O katanac; slanje zadržava svoj rok."""
+        self._read_poll_timeout = seconds
+
+    def wait_readable(self, seconds):
+        """Kratko čekaj odgovor bez menjanja roka za slanje na istoj vezi."""
+        try:
+            with self._io_lock:
+                sock = self._sock
+                if sock is None:
+                    raise WebSocketError("Veza je zatvorena")
+                if self._buf or (hasattr(sock, "pending") and sock.pending()):
+                    return True
+            return bool(select.select([sock], [], [], seconds)[0])
+        except (OSError, ValueError) as exc:
+            raise WebSocketError(f"Prekinuta veza: {exc}") from exc
 
     def _napuni(self):
         try:
-            komad = self._sock.recv(65536)
+            with self._io_lock:
+                sock = self._sock
+                if sock is None:
+                    raise WebSocketError("Veza je zatvorena")
+                if self._read_poll_timeout is None:
+                    komad = sock.recv(65536)
+                else:
+                    sock.settimeout(self._read_poll_timeout)
+                    try:
+                        komad = sock.recv(65536)
+                    finally:
+                        sock.settimeout(self._timeout)
         except (socket.timeout, BlockingIOError, ssl.SSLWantReadError,
                 ssl.SSLWantWriteError) as exc:
             raise WebSocketTimeout("Isteklo vreme čekanja odgovora") from exc
@@ -275,11 +329,13 @@ class WebSocket:
                 self._send_frame(OP_CLOSE, struct.pack("!H", 1000))
         except (WebSocketError, OSError):
             pass
-        try:
-            self._sock.close()
-        except OSError:
-            pass
-        self._sock = None
+        with self._io_lock:
+            sock, self._sock = self._sock, None
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
     def __enter__(self):
         return self.connect()

@@ -7,6 +7,8 @@ na pravom mestu.
 
 import struct
 import socket
+import threading
+import time
 import unittest
 
 from dictate import wsock
@@ -109,6 +111,68 @@ def napravi(data):
 
 
 class Citanje(unittest.TestCase):
+    def test_ssl_citanje_slanje_i_zatvaranje_se_ne_preklapaju(self):
+        usao = threading.Event()
+        aktivno = 0
+        preklop = []
+        rokovi = []
+
+        class Sokat(LazniSokat):
+            timeout = 20
+
+            def settimeout(self, seconds):
+                self.timeout = seconds
+
+            def recv(self, n):
+                nonlocal aktivno
+                aktivno += 1
+                usao.set()
+                if aktivno != 1:
+                    preklop.append("recv")
+                rokovi.append(("recv", self.timeout))
+                time.sleep(0.02)
+                aktivno -= 1
+                return super().recv(n)
+
+            def sendall(self, data):
+                if aktivno:
+                    preklop.append("send")
+                rokovi.append(("send", self.timeout))
+                super().sendall(data)
+
+            def close(self):
+                if aktivno:
+                    preklop.append("close")
+
+        ws = wsock.WebSocket("wss://primer/x", timeout=20)
+        sock = Sokat(b"x")
+        ws._sock = sock
+        ws.set_read_poll_timeout(0.25)
+        reader = threading.Thread(target=ws._napuni)
+        reader.start()
+        self.assertTrue(usao.wait(1))
+        ws.send_json({"audio": "x"})
+        ws.close()
+        reader.join(1)
+        self.assertFalse(reader.is_alive())
+        self.assertEqual(preklop, [])
+        self.assertEqual(rokovi[0], ("recv", 0.25))
+        self.assertTrue(all(rok == 20 for kind, rok in rokovi if kind == "send"))
+
+    def test_kratko_cekanje_ne_skracuje_rok_za_slanje(self):
+        levi, desni = socket.socketpair()
+        try:
+            levi.settimeout(20)
+            ws = wsock.WebSocket("ws://localhost")
+            ws._sock = levi
+            self.assertFalse(ws.wait_readable(0.001))
+            self.assertEqual(levi.gettimeout(), 20)
+            desni.sendall(b"x")
+            self.assertTrue(ws.wait_readable(0.1))
+        finally:
+            levi.close()
+            desni.close()
+
     def test_jedna_poruka(self):
         ws = napravi(server_okvir(wsock.OP_TEXT, b'{"a":1}'))
         self.assertEqual(ws.recv_json(), {"a": 1})

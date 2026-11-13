@@ -32,7 +32,7 @@
   "insert_method": "paste",
   "restore_clipboard": true,
   "trailing_space": true,
-  "history_size": 3,
+  "history_size": 100,
   "show_overlay": false,
   "overlay_position": "top-right",
   "groq_enabled": false,

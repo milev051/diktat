@@ -26,13 +26,21 @@ import kotlin.concurrent.thread
 class DictationService : Service() {
 
     companion object {
+        // Isti prag tisine kao rezerva.PRAG_TISINE na Macu.
+        private const val PRAG_GLASA = 0.03
         const val ACTION_TOGGLE = "studio.room211.diktat.TOGGLE"
+        const val ACTION_START = "studio.room211.diktat.START"
+        const val ACTION_STOP = "studio.room211.diktat.STOP"
         private const val CHANNEL = "diktat"
         private const val NOTIFICATION_ID = 1
         // OpenAI prima ceo uobičajeni diktat jednim pozivom. Tek veoma dug
         // snimak se deli na petominutne komade da WAV i radna memorija ostanu
         // bezbedno ispod granice od 25 MB.
         private const val OPENAI_CHUNK_SECONDS = 5 * 60.0
+
+        @Volatile
+        var isActive = false
+            private set
 
         @Volatile
         var isRecording = false
@@ -77,19 +85,38 @@ class DictationService : Service() {
     // svi se salju tek kad korisnik pritisne Stop.
     private val openAiParts = HashMap<Int, MutableList<java.io.File>>()
     @Volatile private var polishing = false
+    // Kasnjenje prepisa za okvir: kad je poslednji glas cut i kad je stigao tekst.
+    @Volatile private var glasAt = 0L
+    @Volatile private var tekstAt = 0L
+    private var prepis = LivePrenos()
+    private val liveVeza = java.util.concurrent.atomic.AtomicReference<WSock?>(null)
+    private val sesijaZavrsena = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var prijemZaustavljen = false
+    private var poslednjeCuvanje = 0L
+    private val salvageRunnable = Runnable { prisilnoZavrsi() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        isActive = true
         cfg = Config(this)
-        pilula = Pilula(this, cfg, ::limitSeconds)
+        pilula = Pilula(this, cfg, ::limitSeconds) { zaustaviIliPrekini() }
+        // Isto pravilo kao na Macu: glas se cuje (poslednjih 1 s), a novog
+        // teksta nema vise od 4 s. Google salje tek posle pauze, pa glasAt
+        // ostaje 0 i okvir ne pozuti.
+        pilula.proveraKasnjenja = {
+            val now = android.os.SystemClock.elapsedRealtime()
+            glasAt > 0 && now - glasAt < 1000 && now - tekstAt > 4000
+        }
         startForeground(NOTIFICATION_ID, buildNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_TOGGLE -> if (isRecording) stopRecording() else startRecording()
+            ACTION_START -> if (!isRecording) startRecording()
+            ACTION_STOP -> if (isRecording) stopRecording()
         }
         return START_NOT_STICKY
     }
@@ -117,6 +144,17 @@ class DictationService : Service() {
             stopSelf()
             return
         }
+        prepis = LivePrenos()
+        sesijaZavrsena.set(false)
+        prijemZaustavljen = false
+        liveVeza.set(null)
+        poslednjeCuvanje = 0L
+        cfg.nedovrseniPrepis = ""
+        handler.removeCallbacks(salvageRunnable)
+        if (pending.get() == 0) {
+            buffered.clear()
+            expected = nextTicket
+        }
         try {
             recorder = Recorder(cfg.sampleRate, Tisina.za(this, cfg)).also { it.start() }
         } catch (exc: Exception) {
@@ -127,6 +165,8 @@ class DictationService : Service() {
         isRecording = true
         session = ++sessionSeq
         startedAt = System.currentTimeMillis()
+        glasAt = 0L
+        tekstAt = android.os.SystemClock.elapsedRealtime()
         pilula.prikazi()
         tick()
         if (cfg.longRecording) {
@@ -134,8 +174,19 @@ class DictationService : Service() {
         }
     }
 
+    private fun zaustaviIliPrekini() {
+        if (isRecording) {
+            stopRecording()
+            return
+        }
+        if (GeminiStt.enabled(cfg) && (busy || prepis.vidjeno().isNotEmpty())) prisilnoZavrsi()
+    }
+
     private fun stopRecording() {
         if (!isRecording) return
+        // Zastavica pre skidanja tajmera: `tick` koji je vec u toku ne sme
+        // ponovo da zakaze brojanje.
+        prijemZaustavljen = true
         isRecording = false
         // Skida se SAMO tajmer. Ranije je ovde stajalo removeCallbacksAndMessages(null),
         // sto je brisalo i `deliver` poruke koje su radne niti vec postavile u red:
@@ -146,11 +197,13 @@ class DictationService : Service() {
         handler.postDelayed(watchdogRunnable, 240_000)
         busy = true
         pilula.osvezi(elapsed(), busy = true, polishing = polishing)
+        zapamtiOdmah()
 
         if (cfg.longRecording) {
             // Petlja sama pokupi ostatak iz reda i posalje rep; ovde se samo
             // trazi kraj, da se poslednji komadi ne izgube.
             recorder?.requestStop()
+            if (GeminiStt.enabled(cfg)) handler.postDelayed(salvageRunnable, 8_000)
             return
         }
 
@@ -235,20 +288,64 @@ class DictationService : Service() {
         var totalBytes = 0L
         var tekst = ""
         var problem: String? = null
+        // Jedna nit cuva redosled delova. Accessibility upis moze da saceka
+        // fokus, pa ne sme da blokira nit koja cita Gemini odgovore.
+        // Ako se prethodni diktat jos obradjuje, novi ceka svoj tiket. Inace
+        // bi njegov potvrdeni deo mogao da pretekne stariji tekst u polju.
+        val liveInsert = cfg.geminiLiveInsert && pending.get() == 1 && !formal() &&
+            InsertService.isRunning && InsertService.hasInputField()
+        val liveWriter = if (liveInsert) java.util.concurrent.Executors.newSingleThreadExecutor()
+            else null
+        val liveParts = mutableListOf<Pair<String, java.util.concurrent.Future<Boolean>>>()
+        val liveFailed = java.util.concurrent.atomic.AtomicBoolean(false)
 
         try {
             var zavrseno = false
-            val preview: ((String) -> Unit)? = if (cfg.geminiLivePreview) { raw ->
-                val text = GeminiStt.postProcess(raw, cfg).trim().takeLast(450)
-                handler.post {
-                    if (session == mojaSesija) pilula.pregled(text)
+            val onUpdate: (String) -> Unit = { raw ->
+                val text = GeminiStt.postProcess(raw, cfg).trim()
+                tekstAt = android.os.SystemClock.elapsedRealtime()
+                zapamtiPrikaz(text)
+                if (cfg.geminiLivePreview) {
+                    val rep = text.takeLast(450)
+                    handler.post {
+                        if (session == mojaSesija) pilula.pregled(rep)
+                    }
+                }
+            }
+            val onFinal: ((String) -> Unit)? = if (liveWriter != null) { raw ->
+                val result = liveWriter.submit<Boolean> {
+                    if (liveFailed.get() || sesijaZavrsena.get()) false else {
+                        val written = runCatching {
+                            val sirovo = GeminiStt.postProcess(raw, cfg).trim()
+                            val chunk = TextPolish.glasovneKomande(sirovo)
+                            val ok = chunk.isBlank() ||
+                                InsertService.commitLive(chunk, cfg.restoreClipboard)
+                            if (ok && sirovo.isNotBlank()) prepis.potvrdi(sirovo)
+                            ok
+                        }.getOrDefault(false)
+                        if (!written) liveFailed.set(true)
+                        written
+                    }
+                }
+                synchronized(liveParts) { liveParts.add(raw to result) }
+            } else null
+            val onInterim: ((String) -> Unit)? = if (liveWriter != null) { raw ->
+                if (raw.isNotBlank()) liveWriter.execute {
+                    if (!liveFailed.get() && !sesijaZavrsena.get()) {
+                        val temporary = GeminiStt.postProcess(raw, cfg).trim()
+                        InsertService.previewLive(temporary)
+                    }
                 }
             } else null
-            val sirov = GeminiStt.recognizeStream(cfg, onUpdate = preview) {
+            val sirov = GeminiStt.recognizeStream(
+                cfg, onUpdate = onUpdate, onFinal = onFinal, onInterim = onInterim,
+                veza = liveVeza,
+            ) {
                 val chunk = rec.nextChunk()
                 when {
                     chunk != null -> {
                         totalBytes += chunk.size
+                        if (peakLevel(chunk) >= PRAG_GLASA) glasAt = android.os.SystemClock.elapsedRealtime()
                         chunk
                     }
                     !zavrseno -> {
@@ -275,6 +372,50 @@ class DictationService : Service() {
                 runCatching { rec.stop() }
                 recorder = null
             }
+            liveWriter?.shutdown()
+        }
+
+        liveWriter?.let { writer ->
+            val parts = synchronized(liveParts) { liveParts.toList() }
+            for ((_, result) in parts) {
+                if (!runCatching { result.get() }.getOrDefault(false)) break
+            }
+            // I privremeni poslovi bez Future-a moraju da zavrse pre ciscenja.
+            writer.awaitTermination(8, java.util.concurrent.TimeUnit.SECONDS)
+        }
+        // Spasavanje je moglo da preuzme kraj dok smo cekali odgovor.
+        if (!sesijaZavrsena.compareAndSet(false, true)) return
+        handler.post { handler.removeCallbacks(salvageRunnable) }
+
+        if (liveWriter != null) {
+            val parts = synchronized(liveParts) { liveParts.toList() }
+            InsertService.finishLive()
+            val rawParts = parts.map { it.first }
+            val full = if (tekst.isNotBlank()) tekst else
+                GeminiStt.postProcess(rawParts.joinToString(" "), cfg)
+            val missing = prepis.ostatak(full)
+            val zaIstoriju = if (full.isNotBlank()) full else missing
+            if (zaIstoriju.isNotBlank()) cfg.addHistory(TextPolish.glasovneKomande(zaIstoriju))
+            if (missing.isNotBlank()) {
+                val rest = TextPolish.glasovneKomande(missing)
+                if (!InsertService.insert(rest, cfg.restoreClipboard)) {
+                    problem = listOfNotNull(problem, "Upis nije uspeo; ostatak je u clipboard-u")
+                        .joinToString(". ")
+                    cfg.nedovrseniPrepis = rest
+                } else {
+                    cfg.nedovrseniPrepis = ""
+                }
+            } else {
+                cfg.nedovrseniPrepis = ""
+            }
+            // Uspesno upisani delovi su vec u polju i istoriji.
+            tekst = ""
+        } else {
+            val missing = prepis.ostatak(tekst)
+            if (missing.isNotBlank()) {
+                tekst = missing
+                if (problem == "Ništa nije prepoznato") problem = null
+            }
         }
 
         cfg.addRecordedSeconds(totalBytes / 2.0 / cfg.sampleRate)
@@ -282,6 +423,52 @@ class DictationService : Service() {
         handler.post {
             deliver(tekst, poruka, myTicket, last = true, sesija = mojaSesija)
         }
+    }
+
+    private fun zapamtiPrikaz(tekst: String) {
+        if (tekst.isBlank() || sesijaZavrsena.get()) return
+        prepis.vidi(tekst)
+        val sada = System.currentTimeMillis()
+        if (sada - poslednjeCuvanje >= 500) {
+            poslednjeCuvanje = sada
+            cfg.nedovrseniPrepis = tekst
+        }
+    }
+
+    private fun zapamtiOdmah() {
+        val tekst = prepis.vidjeno()
+        if (tekst.isBlank()) return
+        poslednjeCuvanje = System.currentTimeMillis()
+        cfg.nedovrseniPrepis = tekst
+    }
+
+    /**
+     * Tok nije završio posle Stop-a, ili je korisnik ponovo pritisnuo Završi.
+     * U polje ide tekst koji je već bio na prikazu, pa se veza seče.
+     */
+    private fun prisilnoZavrsi() {
+        if (!sesijaZavrsena.compareAndSet(false, true)) return
+        handler.removeCallbacks(salvageRunnable)
+        handler.removeCallbacks(tickRunnable)
+        prijemZaustavljen = true
+        isRecording = false
+        liveVeza.get()?.abort()
+        runCatching { recorder?.stop() }
+        recorder = null
+        val tekst = prepis.ostatak("")
+        InsertService.finishLive()
+        if (tekst.isNotBlank()) {
+            val clean = TextPolish.glasovneKomande(tekst)
+            cfg.nedovrseniPrepis = clean
+            cfg.addHistory(clean)
+            thread {
+                if (InsertService.insert(clean, cfg.restoreClipboard)) cfg.nedovrseniPrepis = ""
+            }
+            toast("Veza je stala. Prikazan tekst je upisan.")
+        }
+        pending.set(0)
+        busy = false
+        finishSession()
     }
 
     private fun ship(pcm: ByteArray, last: Boolean) {
@@ -539,16 +726,21 @@ class DictationService : Service() {
 
     private fun insertNow(sirov: String) {
         val text = TextPolish.glasovneKomande(sirov)
+        if (text.isBlank()) return
         cfg.addHistory(text)
         // Tekst i dalje zavrsava u clipboard-u kad upis ne prodje — izgubiti ga
         // je gore. Poruka preko ekrana se ne prikazuje: pojavljivala se posle
         // svakog diktata i samo smetala.
         if (!InsertService.isRunning) {
             copyToClipboard(text)
+            cfg.nedovrseniPrepis = ""
             return
         }
         // Upis ceka da se fokus vrati u polje, pa ne sme na glavnu nit.
-        thread { InsertService.insert(text, cfg.restoreClipboard) }
+        thread {
+            if (InsertService.insert(text, cfg.restoreClipboard)) cfg.nedovrseniPrepis = ""
+            else cfg.nedovrseniPrepis = text
+        }
     }
 
     private fun finishSession() {
@@ -573,7 +765,7 @@ class DictationService : Service() {
     private fun limitSeconds(): Int = Prepoznaj.granica(cfg)
 
     private fun tick() {
-        if (!isRecording) return
+        if (!isRecording || prijemZaustavljen) return
         val sec = elapsed()
         val limit = limitSeconds()
         if (sec >= limit) {
@@ -583,6 +775,7 @@ class DictationService : Service() {
             stopRecording()
             return
         }
+        if (!isRecording || prijemZaustavljen) return
         pilula.osvezi(sec, busy = false, polishing = polishing)
         handler.postDelayed(tickRunnable, 250)
     }
@@ -590,9 +783,13 @@ class DictationService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(tickRunnable)
         handler.removeCallbacks(watchdogRunnable)
+        handler.removeCallbacks(salvageRunnable)
+        if (!sesijaZavrsena.get()) zapamtiOdmah()
+        liveVeza.get()?.abort()
         recorder?.stop()
         pilula.sakrij()
         isRecording = false
+        isActive = false
         super.onDestroy()
     }
 

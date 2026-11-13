@@ -96,11 +96,23 @@ class Setup(unittest.TestCase):
 
     def test_prazan_jezik_pada_na_podrazumevani(self):
         # Prazan spisak bi znacio "sam prepoznaj jezik" — model tada ume da
-        # odluta na hrvatski ili bosanski, pa uvek ide nagovestaj.
+        # odluta na hrvatski, engleski ili ruski, pa uvek ide jedan kod.
         setup = geministt._live_setup(cfg(language=""))["setup"]
         self.assertEqual(
             setup["inputAudioTranscription"]["languageCodes"], ["sr-RS"]
         )
+
+    def test_drugi_jezik_se_ne_salje(self):
+        setup = geministt._live_setup(cfg(language="en-US"))["setup"]
+        prepis = setup["inputAudioTranscription"]
+        self.assertEqual(prepis["languageCodes"], ["sr-RS"])
+        self.assertNotIn("languageHints", prepis)
+        self.assertNotIn("languageAuto", prepis)
+
+    def test_migrate_zakucava_srpski(self):
+        ostalo = config._migrate({"language": "ru-RU", "language_codes": ["en-US"]})
+        self.assertEqual(ostalo["language"], "sr-RS")
+        self.assertNotIn("language_codes", ostalo)
 
     def test_serijalizuje_se_kao_json(self):
         import json
@@ -237,6 +249,9 @@ class Strimovanje(unittest.TestCase):
             def __enter__(self_): return self_
             def __exit__(self_, *a): return False
             def set_timeout(self_, seconds): pass
+            def wait_readable(self_, seconds):
+                return not poruke.empty()
+            def set_read_poll_timeout(self_, seconds): pass
             def send_json(self_, poruka):
                 if "audio" in (poruka.get("realtimeInput") or {}) and not hasattr(self_, "sent"):
                     self_.sent = True

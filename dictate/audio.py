@@ -7,8 +7,10 @@ import time
 import sounddevice as sd
 
 BLOCK_MS = 100
+START_ROK = 1.5
 
 _pa_lock = threading.Lock()
+_active_recorders = set()
 
 
 def refresh_devices():
@@ -20,11 +22,16 @@ def refresh_devices():
     sempl. Reinicijalizacija traje oko 2ms, pa je jeftino uraditi je i naslepo.
     """
     with _pa_lock:
+        # Istorija prethodnog diktata osvežava Podešavanja i dok sledeći
+        # već snima. PortAudio terminate tada bi ugasio novi mikrofon.
+        if _active_recorders:
+            return False
         try:
             sd._terminate()
         except Exception:  # noqa: BLE001 - ako vec nije inicijalizovan, svejedno
             pass
         sd._initialize()
+        return True
 
 
 def current_input_name() -> str:
@@ -44,6 +51,8 @@ class Recorder:
         self.max_seconds = max_seconds
         self._q: queue.Queue = queue.Queue()
         self._stop = threading.Event()
+        self._first_chunk = threading.Event()
+        self._release_lock = threading.Lock()
         self._stream = None
         self._level = 0.0
         # Postavlja ih app.py; drze se po snimku jer vise sesija moze da tece paralelno.
@@ -53,6 +62,7 @@ class Recorder:
         self.ticket = 0
         self._tail_timer = None
         self.captured = 0
+        self.last_audio_at = 0.0
         self.hit_limit = False   # snimanje prekinuto granicom, ne korisnikom
 
     # -- unutrasnji callback iz PortAudio niti --
@@ -61,8 +71,12 @@ class Recorder:
             return
         data = bytes(indata)
         self.captured += len(data)
+        if data:
+            self.last_audio_at = time.monotonic()
         self._q.put(data)
         self._level = peak(data)
+        if data:
+            self._first_chunk.set()
 
     def _resolve_device(self):
         """Uredjaj se pamti po IMENU, ne po indeksu — indeksi se pomeraju cim
@@ -79,25 +93,49 @@ class Recorder:
 
     def _open(self):
         blocksize = int(self.sample_rate * BLOCK_MS / 1000)
-        self._stream = sd.RawInputStream(
-            samplerate=self.sample_rate,
-            blocksize=blocksize,
-            device=self._resolve_device(),
-            channels=1,
-            dtype="int16",
-            callback=self._callback,
-        )
-        self._stream.start()
+        with _pa_lock:
+            self._stream = sd.RawInputStream(
+                samplerate=self.sample_rate,
+                blocksize=blocksize,
+                device=self._resolve_device(),
+                channels=1,
+                dtype="int16",
+                callback=self._callback,
+            )
+            _active_recorders.add(self)
+            self._stream.start()
+
+    def _close_stream(self):
+        with _pa_lock:
+            try:
+                if self._stream is not None:
+                    try:
+                        self._stream.stop()
+                    finally:
+                        self._stream.close()
+            finally:
+                self._stream = None
+                _active_recorders.discard(self)
 
     def start(self):
-        try:
-            self._open()
-        except Exception:  # noqa: BLE001
-            # Skoro uvek znaci da je lista uredjaja zastarela — slusalice su
-            # izvucene ili vracene. Osvezi je i probaj jos jednom.
-            print("[diktat] mikrofon nije otvoren, osvezavam listu uredjaja")
-            refresh_devices()
-            self._open()
+        for attempt in range(2):
+            try:
+                self._first_chunk.clear()
+                self._open()
+                # Otvoren strim nije dokaz da mikrofon daje zvuk. Tajmer se
+                # pali tek kad stigne prvi blok, uključujući blok tišine.
+                if not self._first_chunk.wait(START_ROK):
+                    raise RuntimeError("Mikrofon je otvoren, ali ne šalje zvuk.")
+                return
+            except Exception:  # noqa: BLE001
+                try:
+                    self._close_stream()
+                except Exception:
+                    pass
+                if attempt:
+                    raise
+                print("[diktat] mikrofon nije spreman, osvežavam uređaje i pokušavam ponovo")
+                refresh_devices()
 
     def stop(self, tail=0.0):
         """Zavrsi snimanje, ali tek posle `tail` sekundi.
@@ -123,13 +161,10 @@ class Recorder:
             self._tail_timer.cancel()
             self._tail_timer = None
         self._stop.set()
-        if self._stream is not None:
-            try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception:  # noqa: BLE001 - zatvaranje ne sme da obori sesiju
-                pass
-            self._stream = None
+        try:
+            self._close_stream()
+        except Exception:  # noqa: BLE001 - zatvaranje ne sme da obori sesiju
+            pass
 
     @property
     def level(self) -> float:

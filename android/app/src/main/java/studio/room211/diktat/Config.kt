@@ -9,9 +9,33 @@ class Config(context: Context) {
 
     private val prefs = context.getSharedPreferences("diktat", Context.MODE_PRIVATE)
 
+    init {
+        val edit = prefs.edit()
+            .putBoolean("continuous", true)
+            .putInt("continuous_max_seconds", 600)
+            .putInt("gemini_live_max_seconds", 600)
+            .putBoolean("gemini_live_preview", true)
+            .putBoolean("gemini_live_insert", false)
+            .putBoolean("utisaj_zvuk", false)
+            .putBoolean("pauziraj_plejer", false)
+            .putBoolean("samo_zarezi", false)
+            .putString("text_style", "spoken")
+            .putBoolean("polish_paragraphs", false)
+            .putBoolean("polish_bullets", false)
+            .putBoolean("polish_commas", false)
+            .putBoolean("polish_dedupe", false)
+            .putBoolean("update_check_on_start", true)
+            .remove("polish").remove("groq_api_key").remove("openai_api_key")
+        if (!prefs.getBoolean("compact_android_v1", false)) {
+            edit.putString("transcription_provider", "gemini_live")
+                .putBoolean("compact_android_v1", true)
+        }
+        edit.apply()
+    }
+
     companion object {
         /** Izvori transkripcije; spisak stoji na jednom mestu. */
-        val PROVIDERS = setOf("google", "openai", "gemini_live")
+        val PROVIDERS = MobilePolicy.providers
 
         // Kljucevi se NE ugraduju u APK. Repozitorijum se deli, pa bi ugraden
         // kljuc znacio da svaka instalacija trosi tudji nalog, i da kljuc
@@ -46,14 +70,10 @@ class Config(context: Context) {
      * vrednost bezbedno pada na Google.
      */
     var transcriptionProvider: String
-        get() = when (prefs.getString("transcription_provider", "google")) {
-            "openai" -> "openai"
-            "gemini_live" -> "gemini_live"
-            else -> "google"
-        }
+        get() = MobilePolicy.provider(prefs.getString("transcription_provider", "gemini_live"))
         set(v) = prefs.edit().putString(
             "transcription_provider",
-            if (v in PROVIDERS) v else "google",
+            if (v in PROVIDERS) v else "gemini_live",
         ).apply()
 
     /** Ključ se unosi u aplikaciji; nema ugrađenog OpenAI ključa. */
@@ -106,13 +126,12 @@ class Config(context: Context) {
         }
         set(v) = prefs.edit().putBoolean("lowercase", v).apply()
 
-    /** Независно: уклони интерпункцију, уз очување сепаратора у бројевима. */
+    /**
+     * Interpunkcija se na telefonu UVEK uklanja (odluka 2026-11-13: prekidac
+     * je skinut sa ekrana). Separatori u brojevima ostaju (TextPolish).
+     */
     var stripPunctuation: Boolean
-        get() = if (prefs.contains("strip_punctuation")) {
-            prefs.getBoolean("strip_punctuation", true)
-        } else {
-            prefs.getString("text_style", "spoken") != "written"
-        }
+        get() = true
         set(v) = prefs.edit().putBoolean("strip_punctuation", v).apply()
 
     /**
@@ -147,7 +166,7 @@ class Config(context: Context) {
      *                delove dok snimanje tece dalje
      */
     var continuous: Boolean
-        get() = prefs.getBoolean("continuous", true)
+        get() = true
         set(v) = prefs.edit().putBoolean("continuous", v).apply()
 
     /**
@@ -158,7 +177,7 @@ class Config(context: Context) {
     val pauseSeconds get() = prefs.getFloat("pause_seconds", 0.7f).toDouble()
 
     /** Sigurnosna granica i za neprekidni rezim — da zaboravljen diktat stane. */
-    val continuousMaxSeconds get() = prefs.getInt("continuous_max_seconds", 3600)
+    val continuousMaxSeconds get() = MobilePolicy.MAX_SECONDS
 
     /**
      * Granica bas za Gemini Live, kratka i namerno drugacija od ostalih.
@@ -170,11 +189,32 @@ class Config(context: Context) {
      * pritisak, kao i inace.
      */
     val geminiLiveMaxSeconds: Int
-        get() = prefs.getInt("gemini_live_max_seconds", 120).coerceIn(30, 3600)
+        get() = MobilePolicy.MAX_SECONDS
 
     var geminiLivePreview: Boolean
-        get() = prefs.getBoolean("gemini_live_preview", false)
+        get() = transcriptionProvider == "gemini_live"
         set(v) = prefs.edit().putBoolean("gemini_live_preview", v).apply()
+
+    var geminiLiveInsert: Boolean
+        get() = false
+        set(v) = prefs.edit().putBoolean("gemini_live_insert", v).apply()
+
+    /**
+     * Poslednji prepis koji je korisnik video, a još nije sigurno upisan.
+     *
+     * `commit`, ne `apply`: ako proces padne odmah posle, tekst mora da ostane.
+     */
+    var nedovrseniPrepis: String
+        get() = prefs.getString("nedovrseni_prepis", "") ?: ""
+        set(v) {
+            prefs.edit().putString("nedovrseni_prepis", v.take(20_000)).commit()
+        }
+
+    var porukaPosleRestarta: String
+        get() = prefs.getString("poruka_posle_restarta", "") ?: ""
+        set(v) {
+            prefs.edit().putString("poruka_posle_restarta", v).commit()
+        }
 
     /** Uvek ukljuceno: ako sazimanje ne uspe, salje se sirov zvuk kao i pre. */
     val compressAudio = true
@@ -272,9 +312,10 @@ class Config(context: Context) {
     /** Uvek ukljuceno: bez razmaka se recenice slepe pri nadovezivanju. */
     val trailingSpace = true
 
-    private val historyLimit = 5
+    /** Isto kao na Macu: dictate/istorija.py NAJVISE_PREPISKA. */
+    private val historyLimit = 100
 
-    /** Najnoviji uspešni diktati, najviše pet; čuvaju se lokalno. */
+    /** Najnoviji uspešni diktati, najviše sto; čuvaju se lokalno. */
     fun history(): List<String> {
         val raw = prefs.getString("history", null) ?: return emptyList()
         return runCatching {

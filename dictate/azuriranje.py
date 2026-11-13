@@ -130,6 +130,28 @@ def novije(trenutna: str, izdanje: str) -> bool:
     return False
 
 
+def nudi_izdanje(trenutna: str, oznaka: str) -> bool:
+    """Strelica i zeleno dugme kad je izdanje novije.
+
+    Oznaka lokalne popravke ne gasi poziv. Klik preuzima izdanje, a
+    Mac izmene se posle toga vrate preko raspakovanog koda.
+    """
+    return novije(trenutna, oznaka)
+
+
+def poruka_provere(trenutna: str, oznaka: str) -> str:
+    if novije(trenutna, oznaka):
+        if lokalna_popravka():
+            return (
+                f"Dostupna je nova verzija {oznaka}. "
+                "Preuzimanje zadržava lokalne izmene."
+            )
+        return f"Dostupna je nova verzija {oznaka}."
+    if lokalna_popravka():
+        return f"Imaš najnoviju verziju ({trenutna}). Lokalne izmene ostaju."
+    return f"Imaš najnoviju verziju ({trenutna})."
+
+
 def _raspakuj(sadrzaj: bytes, cilj: Path) -> Path:
     """GitHub arhiva ima jedan koreni folder (milev051-diktat-<sha>)."""
     with tarfile.open(fileobj=io.BytesIO(sadrzaj), mode="r:gz") as arhiva:
@@ -148,6 +170,10 @@ def _raspakuj(sadrzaj: bytes, cilj: Path) -> Path:
     return izvor
 
 
+def lokalna_popravka() -> bool:
+    return (INSTALIRANO / "LOKALNA-POPRAVKA").is_file()
+
+
 def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
     """Preuzmi kod izdanja i zameni instaliranu kopiju. Ne restartuje."""
     if not instalirana_kopija():
@@ -155,6 +181,9 @@ def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
             "Ovo je razvojna kopija iz foldera projekta. Azuriraj je sa git pull, "
             "pa pokreni ./make_app.sh install."
         )
+    # Izdanje se preuzima i kad postoji lokalna popravka. Mac kod te popravke
+    # vraća se preko arhive, jer GitHub izdanje ne zna za nesačuvane izmene.
+    zadrzi_lokalno = lokalna_popravka()
     javi(f"Preuzimam {izdanje.oznaka}…")
     with _zahtev(izdanje.arhiva, 60) as odgovor:
         sadrzaj = odgovor.read()
@@ -197,6 +226,15 @@ def instaliraj(izdanje: Izdanje, javi=lambda _poruka: None) -> None:
         podesavanja = INSTALIRANO / "config.json"
         if podesavanja.exists():
             shutil.copy2(podesavanja, novo / "config.json")
+        if zadrzi_lokalno:
+            javi("Zadržavam lokalne izmene…")
+            lokalno = INSTALIRANO / "dictate"
+            if lokalno.is_dir():
+                shutil.rmtree(novo / "dictate")
+                shutil.copytree(lokalno, novo / "dictate", ignore=shutil.ignore_patterns("__pycache__"))
+            marker = INSTALIRANO / "LOKALNA-POPRAVKA"
+            if marker.is_file():
+                shutil.copy2(marker, novo / "LOKALNA-POPRAVKA")
         (novo / FAJL_VERZIJE).write_text(izdanje.oznaka + "\n", encoding="utf-8")
 
         # Zamena je dva preimenovanja u istom folderu, pa nema trenutka u kom

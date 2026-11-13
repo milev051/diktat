@@ -28,6 +28,15 @@ class _Aplikacija:
 
 
 class Odvojen(unittest.TestCase):
+    def test_stop_oslobadja_mikrofon_i_pre_otvaranja_mrezne_veze(self):
+        aplikacija = _Aplikacija()
+        snimac = _Snimac()
+        komadi = DictateApp._tracked(aplikacija, snimac)
+        # Mreža još nije uzela ni prvi komad iz generatora.
+        snimac.stop()
+        self.assertTrue(aplikacija.oslobodjen.wait(1.0))
+        self.assertEqual(list(komadi), [])
+
     def test_stop_oslobadja_mikrofon_dok_slanje_visi(self):
         aplikacija = _Aplikacija()
         snimac = _Snimac()

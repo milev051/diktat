@@ -120,6 +120,29 @@ class Instalacija(unittest.TestCase):
         # Radni folder ne ostaje posle instalacije.
         self.assertEqual(sorted(p.name for p in self.dom.iterdir()), ["app"])
 
+    def test_lokalna_popravka_i_dalje_nudi_novije_izdanje(self):
+        (self.app / "LOKALNA-POPRAVKA").write_text("2026-10-28")
+        self.assertTrue(azuriranje.novije("v1.74", "v1.76"))
+        self.assertTrue(azuriranje.nudi_izdanje("v1.74", "v1.76"))
+        self.assertIn("zadržava", azuriranje.poruka_provere("v1.74", "v1.76"))
+
+    def test_bez_lokalne_popravke_nudi_novije_izdanje(self):
+        self.assertTrue(azuriranje.nudi_izdanje("v1.74", "v1.76"))
+        self.assertIn("nova verzija", azuriranje.poruka_provere("v1.74", "v1.76"))
+
+    def test_lokalna_popravka_prezivi_preuzimanje(self):
+        (self.app / "LOKALNA-POPRAVKA").write_text("2026-10-28")
+        self._instaliraj({
+            "run.py": "novi\n",
+            "dictate/novi.py": "y = 2\n",
+            "requirements.txt": "rumps\n",
+        })
+        self.assertEqual((self.app / "run.py").read_text(), "novi\n")
+        self.assertTrue((self.app / "dictate" / "stari.py").exists())
+        self.assertFalse((self.app / "dictate" / "novi.py").exists())
+        self.assertTrue((self.app / "LOKALNA-POPRAVKA").is_file())
+        self.assertEqual(azuriranje.trenutna_verzija(), "v1.67")
+
     def test_losa_arhiva_ne_dira_instalaciju(self):
         with self.assertRaises(ValueError):
             self._instaliraj({"README.md": "bez koda\n"})

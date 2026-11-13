@@ -261,39 +261,6 @@ class SpisakTacaka(unittest.TestCase):
         self.assertEqual(app._apply_rules("Zdravo, SVETE!"), "zdravo, svete!")
 
 
-class BojaNaslova(unittest.TestCase):
-    """U naslovu su uvek cifre; stanje se čita iz boje."""
-
-    def napravi_sat(self, **kw):
-        import time
-        app = napravi(**kw)
-        app._record_started_at = time.monotonic()
-        return app
-
-    def test_model_ima_prednost(self):
-        app = self.napravi_sat()
-        app.ceka_obradu.pocni()
-        for _ in range(3):
-            app.upis.novi_tiket(1)
-        self.assertEqual(app._title_color(), "polishing")
-
-    def test_prepoznavanje_je_narandzasto(self):
-        app = self.napravi_sat()
-        app.upis.novi_tiket(1)
-        self.assertEqual(app._title_color(), "busy")
-
-    def test_neprekidno_nema_crvenu_granicu(self):
-        # Bez granice od 30s crveno upozorenje nema šta da najavi.
-        app = self.napravi_sat(continuous=True)
-        app._record_started_at = 0.0
-        self.assertIsNone(app._title_color())
-
-    def test_blizu_granice_je_crveno(self):
-        app = self.napravi_sat(continuous=False)
-        app._record_started_at = 0.0      # kao da traje jako dugo
-        self.assertEqual(app._title_color(), "recording")
-
-
 class StopDokSePokrece(unittest.TestCase):
     """Brz start pa odmah stop.
 
@@ -456,6 +423,34 @@ class JedanZahtevPoDiktatu(unittest.TestCase):
         # Prazan spisak = nije uzet put "ceo diktat", nego uobicajeni.
         self.assertEqual(self.put("google"), [])
 
+    def test_google_delovi_idu_u_okvir_a_u_polje_tek_na_stop(self):
+        import threading
+        app = self.napravi("google")
+        app.cfg["max_request_seconds"] = 0.5     # svaki komad je zaseban deo
+        app._segmenting = lambda: True
+        app._settle_phase = lambda *a, **k: None
+        app._session_lock = threading.Lock()
+        app.upis = type("Upis", (), {"novi_tiket": lambda *a: self.fail("upis u toku")})()
+        sacuvano = []
+        app._sacuvaj_prepis = lambda rec, t: sacuvano.append(t)
+        prvi, drugi = b"\x01\x00" * 8000, b"\x02\x00" * 8000   # po 0,5 s
+        rep = b"\x03\x00" * 1600
+        tekstovi = {prvi: "prvi", drugi: "drugi", rep: "rep"}
+        app._recognize_or_keep = lambda pcm: tekstovi[pcm]
+
+        class Snimak:
+            session = 1
+            cancelled = False
+            zaustavljen = False
+
+        rec = Snimak()
+        app._recorder = rec
+        app._tracked = lambda r: iter([prvi, drugi, rep])
+        ceo = app._transcribe(rec)
+        self.assertEqual(ceo, "prvi drugi rep")
+        self.assertEqual(app._live_text, "prvi drugi")
+        self.assertIn("prvi drugi", sacuvano)
+
 
 class GranicaTrajanja(unittest.TestCase):
     """Koliko sme da traje jedan pritisak, po izvoru transkripcije."""
@@ -499,6 +494,7 @@ class PrikazUzivo(unittest.TestCase):
 
     class _Recorder:
         cancelled = False
+        zaustavljen = False
         session = 1
         ticket = 1
         live_insert = False
@@ -508,11 +504,21 @@ class PrikazUzivo(unittest.TestCase):
         app = napravi(live_preview=True)
         app._live_text = ""
         app._live_text_dirty = False
-        app._live_preview(self._Recorder(), "ovo je MEĐUrezultat")
+        app._recorder = self._Recorder()
+        app._live_preview(app._recorder, "ovo je MEĐUrezultat")
         # Prikaz prolazi kroz ista pravila kao i prepis koji se ubacuje
         # (ovde: mala slova; kvačice se skidaju samo ako je to izabrano).
         self.assertEqual(app._live_text, "ovo je međurezultat")
         self.assertTrue(app._live_text_dirty)
+
+    def test_prethodni_diktat_ne_prepisuje_prikaz_novog(self):
+        app = napravi(live_preview=True)
+        app._live_text = "novi diktat"
+        app._live_text_dirty = False
+        app._recorder = self._Recorder()
+        app._live_preview(self._Recorder(), "zakašnjeli tekst prethodnog")
+        self.assertEqual(app._live_text, "novi diktat")
+        self.assertFalse(app._live_text_dirty)
 
     def test_otkazan_diktat_ne_crta(self):
         app = napravi(live_preview=True)
@@ -537,12 +543,17 @@ class GasenjePrikaza(unittest.TestCase):
             self.visible = False
             self.text = ""
 
-        def show(self, text=""):
+        def show(self, text="", status=""):
             self.visible = True
             self.text = text
+            self.status = status
 
-        def set_text(self, text):
+        def set_text(self, text, status=""):
             self.text = text
+            self.status = status
+
+        def set_delayed(self, delayed):
+            self.delayed = delayed
 
         def hide(self):
             self.visible = False
@@ -563,6 +574,25 @@ class GasenjePrikaza(unittest.TestCase):
         self.assertTrue(app.live_panel.visible)
         self.assertEqual(app.live_panel.text, "prva celina")
 
+    def test_kasnjenje_prepisa_se_prikazuje_dok_zvuk_stize(self):
+        app = self._app()
+        app._recorder = type("Rec", (), {"last_audio_at": time.monotonic(), "level": 0.2})()
+        app._live_last_update_at = time.monotonic() - 5
+        app._live_waiting = False
+        app._tick_live_panel()
+        # Kasnjenje se pokazuje bojom tacke, ne tekstom koji treba citati.
+        self.assertTrue(app.live_panel.delayed)
+        self.assertNotIn("Transcription delayed", app.live_panel.status)
+        self.assertEqual(app.live_panel.text, "prva celina")
+
+    def test_tisina_ne_prijavljuje_zastoj_servisa(self):
+        app = self._app()
+        app._recorder = type("Rec", (), {"last_audio_at": time.monotonic(), "level": 0.01})()
+        app._live_last_update_at = time.monotonic() - 5
+        app._live_waiting = False
+        app._tick_live_panel()
+        self.assertEqual(app.live_panel.status, "")
+
     def test_okvir_izlazi_pre_prvog_teksta(self):
         # Server ume celoj sesiji da ne posalje medjurezultat; okvir ipak mora
         # da izadje odmah, a ne tek uz potvrdjenu celinu na pauzi.
@@ -574,9 +604,20 @@ class GasenjePrikaza(unittest.TestCase):
 
     def test_bez_live_izvora_nema_okvira(self):
         app = self._app()
-        app.cfg["transcription_provider"] = "google"
+        app.cfg["transcription_provider"] = "openai"
         app._tick_live_panel()
         self.assertFalse(app.live_panel.visible)
+
+    def test_google_ima_okvir_bez_upozorenja_o_kasnjenju(self):
+        # Google salje tekst tek posle pauze, pa 5 s bez teksta nije kvar.
+        app = self._app()
+        app.cfg.update(transcription_provider="google", continuous=True)
+        app._recorder = type("Rec", (), {"last_audio_at": time.monotonic(), "level": 0.2})()
+        app._live_last_update_at = time.monotonic() - 5
+        app._live_waiting = False
+        app._tick_live_panel()
+        self.assertTrue(app.live_panel.visible)
+        self.assertEqual(app.live_panel.status, "")
 
     def test_zaustavljanje_gasi_odmah(self):
         app = self._app()

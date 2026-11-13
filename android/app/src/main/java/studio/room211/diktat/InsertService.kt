@@ -38,6 +38,13 @@ class InsertService : AccessibilityService() {
         fun insert(text: String, restoreClipboard: Boolean = false): Boolean =
             instance?.insertNow(text, restoreClipboard) ?: false
 
+        fun previewLive(text: String): Boolean = instance?.previewNow(text) ?: false
+
+        fun commitLive(text: String, restoreClipboard: Boolean): Boolean =
+            instance?.commitNow(text, restoreClipboard) ?: false
+
+        fun finishLive() { instance?.finishNow() }
+
         /**
          * Ima li uopste polja u koje bi tekst mogao da udje.
          * Bez pokusaja i cekanja — zove se pre snimanja, mora da bude trenutno.
@@ -61,42 +68,142 @@ class InsertService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
+    private var liveNode: AccessibilityNodeInfo? = null
+    private var livePreview = ""
+    private var liveBlocked = false
+
+    @Synchronized
+    private fun previewNow(text: String): Boolean {
+        if (text.isBlank() || liveBlocked) return false
+        val node = findEditable() ?: return false.also { liveBlocked = true }
+        try {
+            if (liveNode != null && node != liveNode) {
+                liveBlocked = true
+                return false
+            }
+            val (kind, current) = sadrzaj(node)
+            if (kind == Sadrzaj.NEJASNO) {
+                liveBlocked = true
+                return false
+            }
+            val replacement = if (livePreview.isEmpty()) current + text else {
+                if (!current.endsWith(livePreview)) {
+                    liveBlocked = true
+                    return false
+                }
+                current.dropLast(livePreview.length) + text
+            }
+            if (!setExact(node, replacement)) {
+                liveBlocked = true
+                return false
+            }
+            if (liveNode == null) liveNode = AccessibilityNodeInfo.obtain(node)
+            livePreview = text
+            return true
+        } finally {
+            @Suppress("DEPRECATION") node.recycle()
+        }
+    }
+
+    @Synchronized
+    private fun commitNow(text: String, restoreClipboard: Boolean): Boolean {
+        val oldNode = liveNode
+        val oldPreview = livePreview
+        val node = findEditable()
+        if (node != null) {
+            try {
+                if (oldNode != null && node == oldNode) {
+                    val (kind, current) = sadrzaj(node)
+                    if (kind != Sadrzaj.NEJASNO && !current.endsWith(oldPreview)) {
+                        // Korisnik je izmenio privremeni tekst: ne dodaj duplikat.
+                        clearLive()
+                        return true
+                    }
+                    if (kind != Sadrzaj.NEJASNO && current.endsWith(oldPreview) &&
+                        setExact(node, current.dropLast(oldPreview.length) + text)
+                    ) {
+                        clearLive()
+                        return true
+                    }
+                }
+            } finally {
+                @Suppress("DEPRECATION") node.recycle()
+            }
+        }
+        // Ako je fokus presao u drugo polje, ukloni samo svoj nedovrseni rep.
+        rollbackLive()
+        clearLive()
+        return insertNow(text, restoreClipboard)
+    }
+
+    @Synchronized
+    private fun finishNow() {
+        rollbackLive()
+        clearLive()
+    }
+
+    private fun rollbackLive() {
+        val oldNode = liveNode ?: return
+        if (!oldNode.refresh()) return
+        val (kind, current) = sadrzaj(oldNode)
+        if (kind != Sadrzaj.NEJASNO && livePreview.isNotEmpty() &&
+            current.endsWith(livePreview)) {
+            setExact(oldNode, current.dropLast(livePreview.length))
+        }
+    }
+
+    private fun clearLive() {
+        liveNode?.let { @Suppress("DEPRECATION") it.recycle() }
+        liveNode = null
+        livePreview = ""
+        liveBlocked = false
+    }
+
     // ------------------------------------------------------------------
 
     /**
-     * SET_TEXT ide PRVI, PASTE tek ako on ne prodje.
+     * PASTE je prvi: ciljna aplikacija sama obradjuje natpis i selekciju.
      *
-     * Android od 13 prikaze sistemsko obavestenje „kopirano" cim neka aplikacija
-     * upise u clipboard, a PASTE bez toga ne radi — pa se posle svakog diktata
-     * javljala poruka koja se ne moze ugasiti. SET_TEXT ne dira clipboard.
-     * Polje se ne prepisuje: postojeci tekst se cita i novi se nadovezuje.
+     * Accessibility tekst moze biti natpis i kada postoji selekcija.
+     * Zato ne rekonstruisemo sadrzaj polja. SET_TEXT je rezerva samo za
+     * eksplicitno prazno polje; ostalo ostaje u clipboard-u ako PASTE ne radi.
      */
+    @Synchronized
     private fun insertNow(text: String, restoreClipboard: Boolean): Boolean {
         repeat(TRIES) {
             val node = findEditable()
             if (node != null) {
-                // Kad se ne zna da li je ono u polju sadrzaj ili natpis, SET_TEXT
-                // se ne koristi: pogresna procena ili upisuje natpis ispred, ili
-                // brise korisnikov tekst. PASTE u tom slucaju ne moze da promasi.
-                val (vrsta, postojece) = sadrzaj(node)
-                if (vrsta != Sadrzaj.NEJASNO && setText(node, postojece, text)) {
-                    runCatching { @Suppress("DEPRECATION") node.recycle() }
-                    return true
-                }
-                // Neke aplikacije (WebView, deo Compose polja) odbijaju SET_TEXT;
-                // tu ostaje clipboard, uz sistemsku poruku koju ne kontrolisemo.
+                // Native PASTE sam razlikuje natpis i tekst i postuje kursor.
+                // node.text se nikad ne nadovezuje: WebView ume da prijavi
+                // natpis kao tekst cak i sa selekcijom na njegovom kraju.
                 val previous = if (restoreClipboard) currentClip() else null
                 putOnClipboard(text)
                 val done = paste(node)
                 runCatching { @Suppress("DEPRECATION") node.recycle() }
                 if (done) {
                     if (restoreClipboard) {
-                        // Ciljna aplikacija jos cita iz clipboard-a kad PASTE
-                        // prodje, pa se ne sme vratiti odmah.
                         Thread.sleep(CLIP_RESTORE_MS)
                         putOnClipboard(previous ?: "")
                     }
                     return true
+                }
+                // SET_TEXT je dozvoljen samo kad nema sadrzaja za cuvanje.
+                // Ne ponavljaj PASTE posle uspesnog upisa.
+                val fallbackNode = findEditable()
+                if (fallbackNode != null) {
+                    try {
+                        val replacement = InputContent.setTextFallback(
+                            fallbackNode.text?.toString().orEmpty(),
+                            fallbackNode.isShowingHintText,
+                            text,
+                        )
+                        if (replacement != null && setText(fallbackNode, "", replacement)) {
+                            if (restoreClipboard) putOnClipboard(previous ?: "")
+                            return true
+                        }
+                    } finally {
+                        @Suppress("DEPRECATION") fallbackNode.recycle()
+                    }
                 }
             }
             Thread.sleep(WAIT_MS)
@@ -127,26 +234,25 @@ class InsertService : AccessibilityService() {
      * „Ovde probaj diktat" u nasoj probi — pa bi nadovezivanje upisalo taj
      * natpis ispred izdiktiranog teksta.
      *
-     * Nijedan pojedinacni signal nije dovoljan: `isShowingHintText` mnoge
-     * aplikacije ne postavljaju, `hintText` ume da bude prazan. Zato:
-     *   - prazan tekst ili prijavljen hint  -> PRAZNO
-     *   - postoji kursor (selekcija >= 0)   -> TEKST, sadrzaj je stvaran
-     *   - inace                             -> NEJASNO, i tu se NE nagadja
+     * Kursor na nuli postoji i kada WebView prikazuje samo natpis. Takvo
+     * polje je NEJASNO i ide kroz PASTE, bez nadovezivanja na node.text.
+     * Isti put cuva stvaran tekst kada korisnik postavi kursor na pocetak.
      */
     private fun sadrzaj(node: AccessibilityNodeInfo): Pair<Sadrzaj, String> {
         val tekst = node.text?.toString().orEmpty()
         if (tekst.isEmpty() || node.isShowingHintText) return Sadrzaj.PRAZNO to ""
         val hint = runCatching { node.hintText?.toString() }.getOrNull()
-        if (!hint.isNullOrEmpty() && hint == tekst) return Sadrzaj.PRAZNO to ""
-        if (node.textSelectionStart >= 0 || node.textSelectionEnd >= 0) {
+        if (InputContent.canAppend(tekst, hint, node.textSelectionStart, node.textSelectionEnd)) {
             return Sadrzaj.TEKST to tekst
         }
         return Sadrzaj.NEJASNO to tekst
     }
 
     private fun setText(node: AccessibilityNodeInfo, postojece: String, text: String): Boolean =
+        setExact(node, postojece + text)
+
+    private fun setExact(node: AccessibilityNodeInfo, merged: String): Boolean =
         runCatching {
-            val merged = postojece + text
             val args = Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, merged

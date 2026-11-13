@@ -1,3 +1,10 @@
+# Aktuelna desktop pravila, 2026-11-04
+
+Mac koristi kompaktan engleski meni iz `settings_window.py` i fiksnu politiku `config.desktop_policy`.
+Oba servisa imaju 600 s, toggle i continuous. Gemini Live uvek prikazuje prepis; Google ne.
+AI obrada, Groq/OpenAI ključ i rezervni audio nisu aktivni. Ne vraćati staro ponašanje iz beležaka ispod.
+Android ovom izmenom nije menjan. Detalji i instalacija su na početku README.md.
+
 # Napomene za održavanje
 
 Ovaj projekat održavaju modeli, ne ljudi. Ovde su odluke i **razlozi** za njih,
@@ -195,6 +202,35 @@ nije stalo … oslobadjam mikrofon silom" u log. Ta linija u logu znači da
 postoji još jedan uzrok, i odatle se traži.
 `tests/test_mikrofon_odvojen.py` pada na starom kodu i prolazi na novom.
 
+**Gemini Live čitanje ne sme da skraćuje rok za slanje na istoj WebSocket vezi.**
+Čitač i pošiljalac koriste isti socket. `set_timeout(0.5)` u čitaču je zato
+postavio i slanju rok od pola sekunde; pri kratkom zastoju u sred razgovora
+slanje je padalo sa `The write operation timed out`, a Stop nije donosio
+konačan prepis. Čitač sada čeka podatke sa `select`, dok rok za mrežno slanje
+ostaje 20 s. `test_kratko_cekanje_ne_skracuje_rok_za_slanje` čuva taj uslov.
+
+**Isti TLS objekat ne sme da se koristi istovremeno u više niti.**
+Pola sekunde za čitanje nije jedini problem: SSL read, write, pending i close
+moraju da dele `_io_lock`. Rok za kratko čitanje se postavlja i vraća samo
+dok čitač drži taj katanac; slanje ima svoj puni rok. Time se uklanja
+nedozvoljena paralelna upotreba OpenSSL objekta, bez nagađanja da je ona
+jedini uzrok nativnog pada. Posle pada od 30.09. u 18:58 `.ips` potvrđuje
+malloc memory corruption, ali ne mesto gde je memorija prvo oštećena.
+Taj proces je pokrenut u 18:42 i još je imao stari kod: kopiranje izvora
+u instalaciju ne menja učitane module. Svako pokretanje zato sada upisuje
+otisak učitanog koda i uključuje faulthandler (i SIGTRAP) u log.
+
+**Osvežavanje istorije ne sme da ugasi aktivan mikrofon** (30.09.2026).
+Kada prepis prethodnog diktata stigne pošto je sledeći već počeo,
+`SettingsWindow.refresh` osvežava audio uređaje. `sd._terminate()` tu je
+gasio strim novog diktata; tajmer je išao, ali mikrofon nije davao zvuk.
+`audio.refresh_devices` zato preskače reinicijalizaciju dok postoji otvoren
+snimač, a otvaranje, zatvaranje i reinicijalizacija dele `_pa_lock`.
+`Recorder.start` čeka prvi audio blok pre uspeha i jednom ponavlja otvaranje
+ako blok izostane. Pumpa u `_tracked` kreće pri pozivu, pre otvaranja mrežne
+veze; ne sme da ostane lenji generator. Testovi su u `test_audio_lifecycle`
+i `test_mikrofon_odvojen`.
+
 **Prazan prepis se i dalje prijavljuje.** Web Speech ume da vrati prazan
 rezultat za uredan govor: izmereno na tri snimka (15.7s, 3.5s i 1.8s, vrh
 amplitude 0.31), svi vraćaju `""` i kao FLAC i kao sirov PCM. Takav segment ne
@@ -333,20 +369,22 @@ vraćaj običnu varijantu bez izričitog zahteva — `_migrate` zatečeno `"gemi
 obara na `"google"`.
 
 **Mac direktan unos je opcioni.** Zvuk već ide tokom snimanja; kada je
-`gemini_live_insert` uključen, zasebna nit čita `inputTranscription` paralelno
-sa slanjem zvuka. Samo potvrđene celine idu u red za unos, istim tiketom do
-kraja sesije. Međurezultat se nikad ne kuca: model može da ga promeni i time
-bi obrisao korisnikovu ručnu ispravku. Pre svakog dela kursor ide na kraj
-aktivnog polja. Lokalna pravila se primenjuju po celini; AI tekstualni prolaz
-se preskače jer bi na kraju duplirao ili zamenio korisnikove ispravke.
+`gemini_live_insert` uključen, zasebna nit čita privremene i potvrđene delove
+paralelno sa slanjem zvuka. Oba idu u isti red za unos, istim tiketom do kraja
+sesije. `insert.preview_live` menja samo rep koji je sam upisao u običnom
+Accessibility polju; ako polje nije podržano ili korisnik promeni taj rep,
+prestaje da menja privremeni tekst. `insert.insert_live` zamenjuje rep
+potvrđenom celinom ili koristi dosadašnje kucanje. Kraj tiketa uklanja
+nepotvrđeni rep posle greške ili otkazivanja. AI tekstualni prolaz čeka kraj
+diktata i zato isključuje upis uživo.
 
-**Međurezultat se prikazuje, ali se NE kuca.** Direktan upis u polje čeka
-potvrđenu celinu, a ona stiže tek na pauzi — između dve potvrde korisnik nema
-nikakav znak da aplikacija čuje, pa upis deluje neresponzivno. Zato postoji
-`overlay.LivePanel`: okvir pri dnu ekrana koji prima `on_update` (potvrđeno +
-međurezultat) i pokazuje rep od 400 znakova. Kucati međurezultat se ne sme —
-model ga menja, pa bi izmena obrisala ručnu ispravku; to je ceo razlog zašto
-okvir postoji umesto „samo kucaj sve što stigne".
+**Okvir i polje su nezavisni.** `overlay.LivePanel` prima `on_update` i pokazuje
+rep od 400 znakova. Gašenje okvira ne isključuje `on_interim` ni direktan upis.
+`live_diagnostics` prikazuje vremena u tom okviru i kad je prepis skriven;
+`dijagnostika.LiveTrace` beleži u `~/Library/Logs/Diktat-live.log` samo slanje,
+odgovor i upis, bez sadržaja govora ili ključa. `RedUpisa.on_wait` razlikuje
+Gemini kašnjenje od čekanja ranijeg tiketa, a `insert.live_failure_reason`
+objašnjava zašto neko polje odbija privremene izmene.
 
 Okvir je `NonactivatingPanel` koji propušta klik, kao i pilula: da fokus ostane
 u polju u koje tekst treba da ode. Radna nit samo ostavlja tekst u

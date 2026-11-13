@@ -13,7 +13,7 @@ class AzuriranjeUI:
 
     def azur_dostupno(self) -> bool:
         izdanje = self._azur_izdanje
-        return izdanje is not None and azuriranje.novije(
+        return izdanje is not None and azuriranje.nudi_izdanje(
             azuriranje.trenutna_verzija(), izdanje.oznaka
         )
 
@@ -25,12 +25,12 @@ class AzuriranjeUI:
         """
         trenutna = azuriranje.trenutna_verzija() or "?"
         if self._azur_radi:
-            return self._azur_status or "Sačekaj…", False
+            return self._azur_status or "Please wait…", False
         if self.azur_dostupno():
-            return f"Ažuriraj {trenutna} → {self._azur_izdanje.oznaka}", True
+            return f"Update {trenutna} → {self._azur_izdanje.oznaka}", True
         if self._azur_ishod:
             return f"{self._azur_ishod} ({trenutna})", False
-        return f"Proveri ažuriranje ({trenutna})", False
+        return f"Check for updates ({trenutna})", False
 
     def _tick_azuriranje(self):
         if self._azur_restart and self._recorder is None and not self._starting:
@@ -41,6 +41,13 @@ class AzuriranjeUI:
                 # Tastatura ostaje ukljucena: ovaj proces gasi tek nova instanca,
                 # a ako se ona ne pokrene, Diktat mora i dalje da radi.
                 azuriranje.ponovo_pokreni()
+        if (not self._azur_radi and not self._azur_restart
+                and self._recorder is None and not self._starting
+                and self.upis.na_cekanju() == 0 and self.azur_dostupno()):
+            tag = self._azur_izdanje.oznaka
+            if getattr(self, "_azur_auto_attempt", None) != tag:
+                self._azur_auto_attempt = tag
+                self._azur_klik()
         if (self.cfg.get("update_check", True) and not self._azur_radi
                 and time.time() - self._azur_proveren_u > azuriranje.RAZMAK_PROVERE):
             self._azur_proveri(rucno=False)
@@ -49,7 +56,7 @@ class AzuriranjeUI:
         self._azur_radi = True
         self._azur_proveren_u = time.time()
         if rucno:
-            self._azur_status = "Proveravam…"
+            self._azur_status = "Checking…"
             self._azur_ishod = ""
         self._azur_dirty = True
 
@@ -58,18 +65,19 @@ class AzuriranjeUI:
                 izdanje = azuriranje.poslednje()
                 self._azur_izdanje = izdanje
                 trenutna = azuriranje.trenutna_verzija()
-                if azuriranje.novije(trenutna, izdanje.oznaka):
-                    self._azur_status = f"Dostupna je nova verzija {izdanje.oznaka}."
-                else:
-                    self._azur_status = f"Imaš najnoviju verziju ({trenutna})."
-                    if rucno:
-                        self._azur_ishod = "Najnovija verzija"
+                self._azur_status = (f"Update available: {izdanje.oznaka}"
+                                     if azuriranje.novije(trenutna, izdanje.oznaka)
+                                     else "Up to date")
+                if rucno and azuriranje.lokalna_popravka():
+                    self._azur_ishod = "Local changes"
+                elif rucno and not azuriranje.novije(trenutna, izdanje.oznaka):
+                    self._azur_ishod = "Up to date"
             except Exception as exc:  # noqa: BLE001
                 # Tiha provera bez mreze ne sme da prepise poslednji dobar ishod.
                 if rucno or not self._azur_status:
-                    self._azur_status = f"Provera nije uspela: {_short_error(exc)}"
+                    self._azur_status = f"Check failed: {_short_error(exc)}"
                 if rucno:
-                    self._azur_ishod = "Provera nije uspela"
+                    self._azur_ishod = "Check failed"
             finally:
                 self._azur_radi = False
                 self._azur_dirty = True
@@ -83,8 +91,8 @@ class AzuriranjeUI:
             self._azur_proveri(rucno=True)
             return
         if self._recorder is not None or self._starting:
-            self._azur_status = "Sačekaj da se diktat završi, pa klikni ponovo."
-            self._azur_ishod = "Sačekaj kraj diktata"
+            self._azur_status = "Finish dictation before updating."
+            self._azur_ishod = "Finish dictation first"
             self._azur_dirty = True
             return
         izdanje = self._azur_izdanje
@@ -98,11 +106,11 @@ class AzuriranjeUI:
         def worker():
             try:
                 azuriranje.instaliraj(izdanje, javi=javi)
-                javi("Ponovo pokrećem…")
+                javi("Restarting…")
                 self._azur_restart = True
             except Exception as exc:  # noqa: BLE001
-                javi(f"Ažuriranje nije uspelo: {_short_error(exc)}")
-                self._azur_ishod = "Ažuriranje nije uspelo"
+                javi(f"Update failed: {_short_error(exc)}")
+                self._azur_ishod = "Update failed"
             finally:
                 self._azur_radi = False
                 self._azur_dirty = True

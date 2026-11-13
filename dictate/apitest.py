@@ -12,8 +12,23 @@ import urllib.parse
 import urllib.request
 
 
+# Groq je iza Cloudflare-a. Podrazumevani Python-urllib potpis dobija
+# HTTP 403, error code 1010, pre nego sto kljuc uopste stigne do Groq-a.
+USER_AGENT = "Diktat/1.0"
+KEY_FIELDS = ("polish_api_key", "groq_api_key", "openai_api_key")
+
+
+def apply_fields(cfg: dict, fields: dict) -> None:
+    """Upisi kljuceve iz polja. Prazan unos ostaje prazan, razmaci se skidaju."""
+    for key in KEY_FIELDS:
+        if key in fields:
+            cfg[key] = str(fields.get(key) or "").strip()
+
+
 def _get(url: str, headers: dict[str, str] | None = None) -> dict:
-    request = urllib.request.Request(url, headers=headers or {})
+    poslato = {"User-Agent": USER_AGENT}
+    poslato.update(headers or {})
+    request = urllib.request.Request(url, headers=poslato)
     try:
         raw = urllib.request.urlopen(request, timeout=30).read()
     except urllib.error.HTTPError as exc:
@@ -64,3 +79,19 @@ def check_all(cfg: dict) -> list[str]:
             "data",
         ),
     ]
+
+
+def check_gemini(cfg: dict) -> str:
+    """Check only the desktop transcription key, without audio or text."""
+    key = str(cfg.get("polish_api_key") or "").strip()
+    if not key:
+        return "Gemini: API key is not set"
+    url = "https://generativelanguage.googleapis.com/v1beta/models?key=" + urllib.parse.quote(key, safe="")
+    try:
+        _get(url)
+        return "Gemini: API key works"
+    except Exception as exc:
+        # URLs in urllib errors can contain credentials.
+        if isinstance(exc, RuntimeError) and str(exc).startswith("HTTP "):
+            return "Gemini: " + str(exc).split(":", 1)[0]
+        return "Gemini: connection failed"

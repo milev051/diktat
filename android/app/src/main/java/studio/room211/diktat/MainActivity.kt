@@ -1,6 +1,8 @@
 package studio.room211.diktat
 
 import android.Manifest
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -10,15 +12,19 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.view.inputmethod.EditorInfo
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -56,17 +62,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trafficLine: TextView
     private lateinit var polishLine: TextView
     private lateinit var previewOut: TextView
+    private lateinit var dictationStart: MaterialButton
+    private lateinit var dictationStop: MaterialButton
+    private val dictationHandler = Handler(Looper.getMainLooper())
+    private val dictationTick = object : Runnable {
+        override fun run() {
+            updateDictationButtons()
+            maybeAutoUpdate()
+            dictationHandler.postDelayed(this, 250)
+        }
+    }
     private lateinit var historyRows: LinearLayout
     private lateinit var permissionCard: ViewGroup
     private lateinit var dozvoleRows: LinearLayout
     private lateinit var permissionRows: LinearLayout
-    private lateinit var updateLine: TextView
     private lateinit var updateButton: MaterialButton
     private var updateButtonBackground: ColorStateList? = null
     private var updateButtonStroke: ColorStateList? = null
     private var updateButtonText: ColorStateList? = null
     private var updateLineColor: ColorStateList? = null
     private var novoIzdanje: Azuriranje.Izdanje? = null
+    private var dugmeVerzije: MaterialButton? = null
     private var proveraUToku = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,27 +100,14 @@ class MainActivity : AppCompatActivity() {
             setPadding(side, dp(8), side, dp(32))
         }
 
-        root.addView(TextView(this).apply {
-            text = "verzija ${versionName()}"
-            setTextAppearance(
-                com.google.android.material.R.style.TextAppearance_Material3_BodySmall
-            )
-            alpha = 0.6f
-            setPadding(dp(4), dp(12), 0, dp(16))
-        })
-
+        root.addView(dugmeAzuriranja())
+        root.addView(switch(this, "Lowercase", cfg.lowercase) { cfg.lowercase = it })
+        root.addView(switch(this, "Remove diacritics", cfg.asciiDiacritics) { cfg.asciiDiacritics = it })
+        root.addView(switch(this, "Abbreviations", cfg.abbreviations) { cfg.abbreviations = it })
+        root.addView(compactProvider())
+        root.addView(compactKey())
         root.addView(nedostajuceDozvole())
-        root.addView(azuriranje())
         root.addView(istorija())
-        // Grupisano po pitanju na koje odgovaras: snimanje glasa, ispravka
-        // teksta i osnovni izgled teksta su odvojene celine.
-        root.addView(dozvole())
-        root.addView(glasovniUnos())
-        root.addView(ispravkaTeksta())
-        root.addView(apiKeys())
-        root.addView(tekst())
-        root.addView(potrosnja())
-        root.addView(proba())
 
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -114,6 +117,12 @@ class MainActivity : AppCompatActivity() {
 
         // Tiha provera: nista ne iskace, dugme samo pozeleni ako ima nove verzije.
         if (cfg.updateCheckOnStart) proveriAzuriranje(tiho = true)
+        val posleRestarta = cfg.porukaPosleRestarta
+        if (posleRestarta.isNotBlank()) {
+            cfg.porukaPosleRestarta = ""
+            Toast.makeText(this, posleRestarta, Toast.LENGTH_LONG).show()
+        }
+        vratiPrekinutPrepis()
 
         // Sadrzaj ide ispod statusne trake, pa se razmak dodaje rucno. Visina
         // tastature se mora dodati na dno: bez toga tastatura prekrije polje u
@@ -140,9 +149,73 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         showPermissions()
-        showTraffic()
         showHistory()
-        polishLine.text = "Poziva modelu danas: ${cfg.polishCountToday}"
+        dictationHandler.post(dictationTick)
+    }
+
+    override fun onPause() {
+        dictationHandler.removeCallbacks(dictationTick)
+        super.onPause()
+    }
+
+    private fun updateDictationButtons() {
+        if (!::dictationStart.isInitialized) return
+        val recording = DictationService.isRecording
+        dictationStart.isEnabled = true
+        dictationStart.text = if (recording) "Stop" else "Record"
+
+    }
+
+    /**
+     * Gasi proces i otvara aplikaciju iznova.
+     *
+     * Ako je prepis ostao samo na prikazu, ide u clipboard pre gašenja: polje
+     * u drugoj aplikaciji tada više nije u fokusu, pa se lepi ručno.
+     */
+    private fun ponovoPokreni() {
+        val tekst = cfg.nedovrseniPrepis.trim()
+        if (tekst.isNotBlank()) {
+            getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                ClipData.newPlainText("diktat", tekst)
+            )
+            cfg.nedovrseniPrepis = ""
+            cfg.porukaPosleRestarta = "Prekinut prepis je u clipboard-u. Nalepi ga u polje."
+        }
+        val restart = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        val pending = PendingIntent.getActivity(
+            applicationContext,
+            77,
+            restart,
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        getSystemService(AlarmManager::class.java)
+            .set(AlarmManager.RTC, System.currentTimeMillis() + 400, pending)
+        finishAffinity()
+        android.os.Process.killProcess(android.os.Process.myPid())
+        kotlin.system.exitProcess(0)
+    }
+
+    private fun vratiPrekinutPrepis() {
+        if (DictationService.isRecording) return
+        val tekst = cfg.nedovrseniPrepis.trim()
+        if (tekst.isBlank()) return
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(
+            ClipData.newPlainText("diktat", tekst)
+        )
+        cfg.nedovrseniPrepis = ""
+        Toast.makeText(
+            this,
+            "Prekinut prepis je u clipboard-u. Nalepi ga u polje.",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+
+    private fun dictationCommand(action: String) {
+        val intent = Intent(this, DictationService::class.java).setAction(action)
+        if (action == DictationService.ACTION_START) startForegroundService(intent)
+        else startService(intent)
+        updateDictationButtons()
     }
 
     // ------------------------------------------------------------ kartice
@@ -155,19 +228,9 @@ class MainActivity : AppCompatActivity() {
      * aplikaciju i nestaje sama kada je sve odobreno.
      */
     private fun nedostajuceDozvole(): ViewGroup {
-        val (card, box) = card(this, "Nedostaju dozvole")
-        box.addView(
-            body(
-                this,
-                "Aplikacija je pri pokretanju proverila šta joj nedostaje. Dodirni " +
-                    "dugme, odobri, pa se vrati nazad; kartica nestaje kada je sve na " +
-                    "svom mestu.",
-            )
-        )
         permissionRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        box.addView(permissionRows)
-        permissionCard = card
-        return card
+        permissionCard = permissionRows
+        return permissionRows
     }
 
     /** Jedna stavka provere: ime, zasto treba, da li je odobrena i gde se odobrava. */
@@ -183,13 +246,13 @@ class MainActivity : AppCompatActivity() {
     private fun provere(): List<Provera> {
         val spisak = mutableListOf(
             Provera(
-                "Mikrofon",
+                "Microphone",
                 "bez njega nema snimanja",
                 { checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED },
                 { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1) },
             ),
             Provera(
-                "Digitalni asistent",
+                "Digital assistant",
                 "bočni taster pokreće diktat",
                 { jeNas(secure("assistant")) || jeNas(secure("voice_interaction_service")) },
                 {
@@ -200,7 +263,7 @@ class MainActivity : AppCompatActivity() {
                 },
             ),
             Provera(
-                "Prikaz preko drugih aplikacija",
+                "Display over other apps",
                 "tajmer dok snimaš",
                 { Settings.canDrawOverlays(this) },
                 {
@@ -215,13 +278,13 @@ class MainActivity : AppCompatActivity() {
                 },
             ),
             Provera(
-                "Unos teksta (Pristupačnost)",
+                "Text input (Accessibility)",
                 "bez toga tekst ostaje u clipboard-u",
                 { InsertService.isRunning },
                 { openAny(Settings.ACTION_ACCESSIBILITY_SETTINGS) },
             ),
             Provera(
-                "Instaliranje ažuriranja",
+                "Install updates",
                 "nova verzija se instalira iz aplikacije",
                 { Azuriranje.smeDaInstalira(this) },
                 { Azuriranje.otvoriDozvolu(this) },
@@ -229,7 +292,7 @@ class MainActivity : AppCompatActivity() {
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             spisak += Provera(
-                "Obaveštenja",
+                "Notifications",
                 "stanje diktata u statusnoj traci",
                 {
                     checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
@@ -263,8 +326,7 @@ class MainActivity : AppCompatActivity() {
             val nedostaju = sve.filter { it.obavezna && !odobreno(it) }
             permissionCard.visibility = if (nedostaju.isEmpty()) View.GONE else View.VISIBLE
             for (stavka in nedostaju) {
-                permissionRows.addView(button(this, "Odobri: ${stavka.naziv}") { stavka.otvori() })
-                permissionRows.addView(indent(this, body(this, stavka.zasto)))
+                permissionRows.addView(button(this, "Allow: ${stavka.naziv}") { stavka.otvori() })
             }
         }
 
@@ -291,75 +353,160 @@ class MainActivity : AppCompatActivity() {
     private fun jeNas(vrednost: String) = vrednost.contains(packageName)
 
     /**
-     * Verzija i azuriranje sa GitHub izdanja.
+     * Azuriranje sa GitHub izdanja, bez natpisa na ekranu.
      *
-     * Aplikacija nije na Google Play-u, pa niko ne javlja da je izasla nova
-     * verzija. Dugme je zeleno samo kada nova verzija stvarno postoji: tako se
-     * stanje vidi sa vrha ekrana, bez otvaranja bilo cega.
+     * Aplikacija nije na Google Play-u. Nova verzija se preuzima sama kada se
+     * ne snima; Android i dalje trazi potvrdu instalacije.
      */
-    private fun azuriranje(): ViewGroup {
-        val (card, box) = card(this, "Verzija i ažuriranje")
-        box.addView(
-            body(
-                this,
-                "Instalirana verzija ${versionName()}. Aplikacija nije na Google Play-u, " +
-                    "pa nova verzija stiže sa GitHub izdanja i instalira se kao i svaki " +
-                    "drugi APK.",
-            )
-        )
-        updateLine = body(this, "")
-        updateLineColor = updateLine.textColors
-        box.addView(updateLine)
+    private var downloadRunning = false
+    private var attemptedUpdate = ""
+    private var pendingApk: File? = null
+    private lateinit var geminiKeyRow: LinearLayout
+    private lateinit var geminiCheck: MaterialButton
+    private var keyCheckGeneration = 0
 
-        updateButton = button(this, "Proveri ažuriranje") {
-            val spremno = novoIzdanje
-            if (spremno != null) preuzmiIzdanje(spremno) else proveriAzuriranje(tiho = false)
-        }
-        updateButtonBackground = updateButton.backgroundTintList
-        updateButtonStroke = updateButton.strokeColor
-        updateButtonText = updateButton.textColors
-        box.addView(updateButton)
-
-        box.addView(
-            switch(this, "Proveri ažuriranje pri pokretanju", cfg.updateCheckOnStart) {
-                cfg.updateCheckOnStart = it
-            }
-        )
-        prikaziStanje(
-            if (cfg.updateCheckOnStart) "Proveravam GitHub izdanja\u2026" else "Još nije provereno.",
-            null,
-        )
-        return card
+    private fun prikaziStanje(poruka: String, izdanje: Azuriranje.Izdanje?) {
+        novoIzdanje = izdanje
+        dugmeVerzije?.text = "Version ${versionName()}\n$poruka"
     }
 
-    /** Jedno mesto koje crta stanje provere; zeleno znaci „ima nova verzija". */
-    private fun prikaziStanje(poruka: String, izdanje: Azuriranje.Izdanje?) {
-        if (!::updateLine.isInitialized) return
-        novoIzdanje = izdanje
-        updateLine.text = poruka
-        if (izdanje != null) {
-            val zelena = ColorStateList.valueOf(ZELENA)
-            updateButton.text = "Preuzmi i instaliraj ${izdanje.oznaka}"
-            updateButton.backgroundTintList = zelena
-            updateButton.strokeColor = zelena
-            updateButton.setTextColor(0xFFFFFFFF.toInt())
-            updateLine.setTextColor(ZELENA)
-            updateLine.alpha = 1f
-        } else {
-            updateButton.text = "Proveri ažuriranje"
-            updateButton.backgroundTintList = updateButtonBackground
-            updateButtonStroke?.let { updateButton.strokeColor = it }
-            updateButtonText?.let { updateButton.setTextColor(it) }
-            updateLineColor?.let { updateLine.setTextColor(it) }
-            updateLine.alpha = 0.75f
+    /**
+     * Veliko dugme na vrhu: pokazuje instaliranu verziju i na klik pita GitHub
+     * za novo izdanje. Ako ga ima, preuzima APK i otvara sistemsku instalaciju.
+     */
+    private fun dugmeAzuriranja(): MaterialButton {
+        val dugme = button(this, "Version ${versionName()}\nCheck for updates") {
+            val izdanje = novoIzdanje
+            when {
+                izdanje != null && !Azuriranje.smeDaInstalira(this) -> {
+                    Toast.makeText(this, "Allow installing updates, then tap again.", Toast.LENGTH_LONG).show()
+                    Azuriranje.otvoriDozvolu(this)
+                }
+                izdanje != null -> {
+                    attemptedUpdate = ""
+                    prikaziStanje("Downloading ${izdanje.oznaka}\u2026", izdanje)
+                    preuzmiIzdanje(izdanje)
+                }
+                else -> proveriAzuriranje(tiho = false)
+            }
         }
+        dugme.minHeight = dp(64)
+        dugme.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+        dugme.contentDescription = "Check for updates"
+        (dugme.layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(8)
+        dugmeVerzije = dugme
+        return dugme
+    }
+
+    private fun maybeAutoUpdate() {
+        if (DictationService.isActive || downloadRunning || isFinishing || isDestroyed) return
+        val apk = pendingApk
+        if (apk != null) {
+            pendingApk = null
+            runCatching { Azuriranje.instaliraj(this, apk) }
+            return
+        }
+        val release = novoIzdanje ?: return
+        if (attemptedUpdate == release.oznaka || !Azuriranje.smeDaInstalira(this)) return
+        attemptedUpdate = release.oznaka
+        preuzmiIzdanje(release)
+    }
+
+    private fun compactProvider(): ViewGroup {
+        val providers = listOf("gemini_live", "google")
+        val spinner = android.widget.Spinner(this).apply {
+            adapter = android.widget.ArrayAdapter(this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Gemini 3.5 Transcribe Live", "Google Speech-to-Text"))
+            setSelection(providers.indexOf(cfg.transcriptionProvider).coerceAtLeast(0))
+            contentDescription = "Transcription service"
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    cfg.transcriptionProvider = providers[position]
+                    if (::geminiKeyRow.isInitialized) geminiKeyRow.visibility =
+                        if (position == 0) View.VISIBLE else View.GONE
+                }
+            }
+        }
+        // Ceo izbor servisa stoji u okviru, istom kao polje kljuca ispod njega.
+        return android.widget.FrameLayout(this).apply {
+            background = okvir()
+            setPadding(dp(4), 0, dp(4), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) }
+            addView(spinner, android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(56), Gravity.CENTER_VERTICAL,
+            ))
+        }
+    }
+
+    private fun bojaTeme(attr: Int): Int {
+        val v = android.util.TypedValue()
+        theme.resolveAttribute(attr, v, true)
+        return v.data
+    }
+
+    private fun okvir() = android.graphics.drawable.GradientDrawable().apply {
+        cornerRadius = dp(14).toFloat()
+        setStroke(dp(1), bojaTeme(com.google.android.material.R.attr.colorOutline))
+    }
+
+    private fun compactKey(): ViewGroup {
+        geminiKeyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val (layout, edit) = field(this, "", cfg.polishApiKey) { cfg.polishApiKey = it }
+        layout.isHintEnabled = false
+        edit.contentDescription = "Gemini API key"
+        // Polje kljuca je uokvireno, kao izbor servisa iznad njega.
+        layout.boxBackgroundMode = com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE
+        layout.boxStrokeWidth = dp(1)
+        layout.boxStrokeWidthFocused = dp(2)
+        layout.setBoxStrokeColorStateList(ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+            intArrayOf(
+                bojaTeme(androidx.appcompat.R.attr.colorPrimary),
+                bojaTeme(com.google.android.material.R.attr.colorOutline),
+            ),
+        ))
+        val r = dp(14).toFloat()
+        layout.setBoxCornerRadii(r, r, r, r)
+        geminiKeyRow.setPadding(0, dp(8), 0, 0)
+        geminiKeyRow.gravity = Gravity.CENTER_VERTICAL
+        edit.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        edit.setOnFocusChangeListener { _, focused -> if (!focused) checkGeminiKey() }
+        geminiKeyRow.addView(layout, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        geminiCheck = button(this, "✓") { checkGeminiKey() }
+        geminiCheck.contentDescription = "Check Gemini key"
+        geminiKeyRow.addView(geminiCheck, LinearLayout.LayoutParams(dp(56), dp(56)).apply {
+            marginStart = dp(8)
+        })
+        geminiKeyRow.visibility = if (cfg.transcriptionProvider == "gemini_live") View.VISIBLE else View.GONE
+        checkGeminiKey()
+        return geminiKeyRow
+    }
+
+    private fun checkGeminiKey() {
+        if (!::geminiCheck.isInitialized) return
+        val key = cfg.polishApiKey
+        val generation = ++keyCheckGeneration
+        geminiCheck.text = "…"
+        Thread {
+            val ok = runCatching { Polish.testKey(Config(this)) }.isSuccess
+            runOnUiThread {
+                if (isDestroyed || generation != keyCheckGeneration || key != cfg.polishApiKey) return@runOnUiThread
+                geminiCheck.text = if (ok) "✓" else "×"
+                geminiCheck.setTextColor(if (ok) ZELENA else 0xFFB3261E.toInt())
+                geminiCheck.contentDescription = if (ok) "Gemini key works" else "Gemini key check failed"
+            }
+        }.start()
     }
 
     /** `tiho` je provera pri pokretanju: ne otvara prozore i ne javlja gresku. */
     private fun proveriAzuriranje(tiho: Boolean) {
         if (proveraUToku) return
         proveraUToku = true
-        if (!tiho) prikaziStanje("Proveravam GitHub izdanja\u2026", null)
+        if (!tiho) prikaziStanje("Checking\u2026", null)
         Thread {
             val ishod = runCatching { Azuriranje.poslednje() }
             runOnUiThread {
@@ -369,15 +516,15 @@ class MainActivity : AppCompatActivity() {
                 ishod.onSuccess { izdanje ->
                     if (Azuriranje.novije(trenutna, izdanje.oznaka)) {
                         prikaziStanje(
-                            "Nova verzija ${izdanje.oznaka} je spremna, instalirana je $trenutna.",
+                            "Update ${izdanje.oznaka} available, tap to install",
                             izdanje,
                         )
                     } else {
-                        prikaziStanje("Imaš najnoviju verziju ($trenutna).", null)
+                        prikaziStanje("Up to date", null)
                     }
                 }.onFailure { greska ->
                     prikaziStanje(
-                        "Provera nije uspela: ${greska.message ?: "nepoznata greška"}",
+                        "Check failed: ${greska.message ?: "unknown error"}",
                         null,
                     )
                 }
@@ -386,75 +533,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun preuzmiIzdanje(izdanje: Azuriranje.Izdanje) {
-        if (!Azuriranje.smeDaInstalira(this)) {
-            AlertDialog.Builder(this)
-                .setTitle("Potrebna dozvola")
-                .setMessage(
-                    "Android traži da aplikaciji dozvoliš instaliranje aplikacija iz " +
-                        "nepoznatih izvora. Otvoriću podešavanja, pa se vrati nazad i " +
-                        "probaj ponovo."
-                )
-                .setPositiveButton("Otvori podešavanja") { _, _ -> Azuriranje.otvoriDozvolu(this) }
-                .setNegativeButton("Odustani", null)
-                .show()
-            return
-        }
-
-        val traka = LinearProgressIndicator(this).apply {
-            max = 100
-            progress = 0
-        }
-        val prozor = AlertDialog.Builder(this)
-            .setTitle("Preuzimam ${izdanje.oznaka}")
-            .setView(LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(24), dp(20), dp(24), dp(8))
-                addView(traka)
-            })
-            .setCancelable(false)
-            .create()
-        prozor.show()
-
-        val kontekst = applicationContext
+        if (!Azuriranje.smeDaInstalira(this) || downloadRunning) return
+        downloadRunning = true
         Thread {
-            val ishod = runCatching {
-                Azuriranje.preuzmi(kontekst, izdanje.adresaApk) { deo ->
-                    runOnUiThread { traka.setProgressCompat(deo, true) }
-                }
-            }
+            val result = runCatching { Azuriranje.preuzmi(applicationContext, izdanje.adresaApk) {} }
             runOnUiThread {
-                if (prozor.isShowing && !isFinishing && !isDestroyed) prozor.dismiss()
+                downloadRunning = false
                 if (isDestroyed) return@runOnUiThread
-                ishod.onSuccess { fajl: File ->
-                    runCatching { Azuriranje.instaliraj(this, fajl) }.onFailure { greska ->
-                        prikaziStanje(
-                            "Instalacija nije pokrenuta: ${greska.message ?: "nepoznata greška"}",
-                            izdanje,
-                        )
-                    }
-                }.onFailure { greska ->
-                    prikaziStanje(
-                        "Preuzimanje nije uspelo: ${greska.message ?: "nepoznata greška"}",
-                        izdanje,
-                    )
-                }
+                result.onSuccess { pendingApk = it; maybeAutoUpdate() }
+                    .onFailure { prikaziStanje("Download failed, tap to retry", izdanje) }
             }
         }.start()
     }
 
+    /**
+     * Istorija ide od ivice do ivice ekrana: obican spisak sa linijama izmedju
+     * redova, bez zaobljenih dugmadi. Svih do 100 diktata je u stranici, pa se
+     * do starijih dolazi obicnim skrolovanjem.
+     */
     private fun istorija(): ViewGroup {
-        val (card, box) = card(this, "Istorija diktata")
-        box.addView(body(this, "Poslednjih 5 uspešnih rezultata. Klikni na poruku da kopiraš ceo tekst."))
         historyRows = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                // Ponistava bocni razmak stranice (16 dp), da redovi dodju do ivice.
+                marginStart = -dp(16)
+                marginEnd = -dp(16)
+                topMargin = dp(16)
+            }
         }
-        box.addView(historyRows)
-        box.addView(button(this, "Obriši istoriju") {
-            cfg.clearHistory()
-            showHistory()
-        })
         showHistory()
-        return card
+        return historyRows
+    }
+
+    private fun linija() = View(this).apply {
+        setBackgroundColor(bojaTeme(com.google.android.material.R.attr.colorOutlineVariant))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
     }
 
     private fun showHistory() {
@@ -462,19 +577,33 @@ class MainActivity : AppCompatActivity() {
         historyRows.removeAllViews()
         val items = cfg.history()
         if (items.isEmpty()) {
-            historyRows.addView(body(this, "Još nema sačuvanih diktata."))
+            historyRows.addView(body(this, "No dictation yet.").apply {
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+            })
             return
         }
+        val talas = android.util.TypedValue().also {
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
+        }.resourceId
+        historyRows.addView(linija())
         items.forEachIndexed { index, text ->
-            val item = button(this, "") {
-                copyHistory(text)
+            val item = TextView(this).apply {
+                this.text = (index + 1).toString() + ". " +
+                    text.replace(Regex("\\s+"), " ").trim()
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                minHeight = dp(52)
+                setPadding(dp(16), 0, dp(16), 0)
+                setBackgroundResource(talas)
+                isClickable = true
+                setOnClickListener { copyHistory(text) }
             }
-            item.text = (index + 1).toString() + ". " +
-                text.replace(Regex("\\s+"), " ").trim()
-            item.gravity = Gravity.START
-            item.maxLines = 4
-            item.ellipsize = TextUtils.TruncateAt.END
-            historyRows.addView(item)
+            historyRows.addView(item, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ))
+            historyRows.addView(linija())
         }
     }
 
@@ -484,7 +613,7 @@ class MainActivity : AppCompatActivity() {
         getSystemService(ClipboardManager::class.java).setPrimaryClip(
             ClipData.newPlainText("Diktat", text.trimEnd() + " ")
         )
-        Toast.makeText(this, "Kopirano u clipboard.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Copied.", Toast.LENGTH_SHORT).show()
     }
 
     private fun dozvole(): ViewGroup {
@@ -565,9 +694,17 @@ class MainActivity : AppCompatActivity() {
                 "Prikazuj prepis uživo tokom snimanja",
                 cfg.geminiLivePreview,
             ) { cfg.geminiLivePreview = it })
+            addView(switch(
+                this@MainActivity,
+                "Upisuj tekst u aktivno polje tokom govora",
+                cfg.geminiLiveInsert,
+            ) { cfg.geminiLiveInsert = it })
             addView(body(
                 this@MainActivity,
-                "Međurezultat se prikazuje uz tajmer. U polje ulazi samo konačan tekst.",
+                "Privremeni tekst se tokom govora menja u aktivnom polju kada ono to podržava; " +
+                    "potvrđeni delovi ostaju. Prikaz uz tajmer može biti isključen. " +
+                    "Ako je uključena AI ispravka teksta, upis čeka kraj diktata. " +
+                    "Potrebni su Pristupačnost i aktivno polje za unos.",
             ))
         }
         val showProviderOptions: (String) -> Unit = { provider ->
@@ -831,17 +968,22 @@ class MainActivity : AppCompatActivity() {
         )
         box.addView(button(this, "Poništi brojač") {
             cfg.resetTraffic()
-            showTraffic()
-        })
+            })
         return card
     }
 
     private fun proba(): ViewGroup {
-        val (card, box) = card(this, "Proba diktata")
-        val (test, testEdit) = field(this, "Ovde probaj diktat", lines = 6)
-        box.addView(test)
-        box.addView(button(this, "Obriši") { testEdit.setText("") })
-        return card
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val (layout, edit) = field(this, "", lines = 4)
+        layout.isHintEnabled = false
+        edit.contentDescription = "Dictation text"
+        box.addView(layout)
+        dictationStart = button(this, "Record") {
+            edit.requestFocus()
+            dictationCommand(if (DictationService.isRecording) DictationService.ACTION_STOP else DictationService.ACTION_START)
+        }
+        box.addView(dictationStart)
+        return box
     }
 
     // ------------------------------------------------------------ podaci

@@ -14,6 +14,10 @@ CONFIG_PATH = ROOT / "config.json"
 # Izvori transkripcije; nepoznata vrednost bezbedno pada na Google, da
 # postojece instalacije nastave da rade.
 PROVIDERS = ("google", "openai", "gemini_live")
+# Jedini jezik prepoznavanja. Ne cita se iz config.json: stari
+# `language_codes` je znao da ostavi drugi kod, a prazno na Live API-ju
+# znaci da model sam bira jezik.
+JEZIK = "sr-RS"
 
 DEFAULTS = {
     # --- Prepoznavanje ---
@@ -21,7 +25,9 @@ DEFAULTS = {
     # "gemini_live" = gemini-3.5-transcribe-live preko Live API-ja.
     # Obicni "gemini" (gemini-3.5-transcribe) je uklonjen: 25 zahteva dnevno
     # na besplatnom nivou ne znaci nista za svakodnevni rad.
-    "transcription_provider": "google",
+    "transcription_provider": "gemini_live",
+    # Nema izbora u prozoru. Drugi kod, ili prazan spisak na Gemini Live,
+    # ukljucuje automatsko prepoznavanje (engleski uz srpski ili ruski).
     "language": "sr-RS",
     "api_key": "",                # prazno = ugradjeni javni Chromium kljuc
     "openai_api_key": "",          # opciono; koristi se samo uz OpenAI provajder
@@ -31,11 +37,12 @@ DEFAULTS = {
     # Live salje zvuk DOK snimas, ~2,5 MB po minutu; zaboravljen diktat tu ne
     # trosi samo vreme nego i podatke, sve dok neko ne primeti. Zato je granica
     # kratka i ne stoji na ekranu, kao ni ostala polja koja se nameste jednom.
-    "gemini_live_max_seconds": 120,    # sigurnosna granica jednog Gemini diktata
+    "gemini_live_max_seconds": 600,    # sigurnosna granica jednog Gemini diktata
     "gemini_live_insert": False,       # potvrđene celine odmah u aktivno polje na Mac-u
     # Okvir sa prepisom dok govoriš. Direktan upis stiže tek kad Gemini potvrdi
     # celinu, pa bez ovoga između dve potvrde nema znaka da aplikacija čuje.
     "live_preview": True,
+    "live_diagnostics": False,     # samo vremena/stanje, bez zvuka, teksta i ključa
     "recorded_seconds": 0.0,       # ukupno vreme uhvaćenog zvuka na ovom računaru
     # Maskiranje psovki je uklonjeno kao podesavanje: uvek `pFilter=0`.
     # Podrazumevano je "spoken": mala slova, bez interpunkcije. "written" znaci
@@ -80,7 +87,7 @@ DEFAULTS = {
     "mouse_swipe": None,
     "mode": "toggle",             # nacin aktivacije: "hold" | "toggle"
     "continuous": True,           # bez granice; sece na svakoj pauzi
-    "continuous_max_seconds": 3600,  # sigurnosna granica i za neprekidni
+    "continuous_max_seconds": 600,  # sigurnosna granica i za neprekidni
     "min_seconds": 0.35,          # kraci pritisak se tretira kao obican Cmd
 
     # --- Izlaz ---
@@ -88,8 +95,9 @@ DEFAULTS = {
     # kad tekst ima nov red, jer bi ga kucanje poslalo kao Enter.
     "insert_method": "auto",      # "auto" | "type" | "paste" | "clipboard_only"
     "restore_clipboard": True,
-    "history_size": 5,            # koliko poslednjih tekstova cuvati za kopiranje
-    "rezervni_snimak": True,      # zvuk diktata na disku dok prepis ne uspe (dictate/rezerva.py)
+    "save_clipboard": False,      # ostavi diktat u clipboard-u samo po izboru korisnika
+    "history_size": 100,          # koliko poslednjih tekstova cuvati za kopiranje
+    "rezervni_snimak": False,      # zvuk diktata na disku dok prepis ne uspe (dictate/rezerva.py)
     "update_check": True,         # pitaj GitHub za novu verziju pri otvaranju i jednom dnevno
     "start_at_login": True,       # pokreni instalirani Diktat pri prijavi na Mac
     "show_overlay": False,        # pilula sa vremenom preko ekrana
@@ -100,7 +108,7 @@ DEFAULTS = {
     "polish_model": "",           # prazno = gemini-flash-lite-latest
     "text_model": "gemini",       # "gemini" | "groq"
     "polish_prompt": "",          # prazno = ugradjeno uputstvo
-    "polish_paragraphs": True,
+    "polish_paragraphs": False,
     # Preuredi u spisak tacaka (nalik ASD-STE100); iskljucuje pasuse.
     "polish_bullets": False,
     # Izbaci slucajno udvojene reci i fraze (govorna ispravka).
@@ -128,7 +136,29 @@ def load() -> dict:
             cfg.update(saved)
         except (json.JSONDecodeError, OSError) as exc:
             raise RuntimeError(f"Ne mogu da procitam {CONFIG_PATH}: {exc}") from exc
-    return _migrate(cfg, saved)
+    return desktop_policy(_migrate(cfg, saved))
+
+
+def desktop_policy(cfg):
+    """Apply the fixed desktop behavior, including existing installations.
+
+    Legacy helpers remain usable by replay tools; the running desktop app
+    always loads this policy, so old settings cannot re-enable removed features.
+    """
+    if (not cfg.get("compact_desktop_v1")
+            or cfg.get("transcription_provider") not in ("google", "gemini_live")):
+        cfg["transcription_provider"] = "gemini_live"
+    cfg.update(update_check=True, hotkey_section=True, hotkey_grave=False, samo_zarezi=False,
+               compact_desktop_v1=True, mode="toggle", continuous=True, continuous_max_seconds=600,
+               gemini_live_max_seconds=600, gemini_live_insert=False,
+               live_preview=True,
+               live_diagnostics=False, utisaj_zvuk=False, pauziraj_plejer=False,
+               save_clipboard=False, rezervni_snimak=False, debug=False, show_overlay=False,
+               text_style="spoken", polish_paragraphs=False, polish_bullets=False,
+               polish_dedupe=False)
+    for key in ("groq_api_key", "openai_api_key", "ai_pre"):
+        cfg.pop(key, None)
+    return cfg
 
 
 def _migrate(cfg: dict, saved=None) -> dict:
@@ -136,11 +166,12 @@ def _migrate(cfg: dict, saved=None) -> dict:
     saved = cfg if saved is None else saved
     if "gemini_live_insert" not in saved and saved.get("gemini_live_preview"):
         cfg["gemini_live_insert"] = True
+    # Novi izbor čuvanja je nezavisan od automatskog unosa.
+    if "save_clipboard" not in saved and cfg.get("insert_method") == "clipboard_only":
+        cfg["insert_method"] = "auto"
     cfg.pop("gemini_live_preview", None)
-    if "language_codes" in cfg:
-        codes = cfg.pop("language_codes") or []
-        if codes:
-            cfg["language"] = codes[0]
+    cfg.pop("language_codes", None)
+    cfg["language"] = JEZIK
     for staro, novo in (
         ("web_api_key", "api_key"),
         ("web_max_seconds", "max_request_seconds"),
@@ -184,8 +215,8 @@ def _migrate(cfg: dict, saved=None) -> dict:
     cfg["text_model"] = (
         "groq" if str(cfg.get("text_model", "gemini")).lower() == "groq" else "gemini"
     )
-    # Istorija je namerno fiksirana na pet stavki, da bude ista kao na telefonu.
-    cfg["history_size"] = 5
+    # Istorija je fiksirana na 100, isto kao na telefonu. Prozor pokazuje pet redova.
+    cfg["history_size"] = 100
     try:
         cfg["recorded_seconds"] = max(0.0, float(cfg.get("recorded_seconds", 0.0)))
     except (TypeError, ValueError):
@@ -210,8 +241,9 @@ def _migrate(cfg: dict, saved=None) -> dict:
     # podrazumevani "spoken" ostaje malim slovima bez znakova.
     if "lowercase" not in saved:
         cfg["lowercase"] = cfg.get("text_style") != "written"
-    if "strip_punctuation" not in saved:
-        cfg["strip_punctuation"] = cfg.get("text_style") != "written"
+    # Prekidac „Remove punctuation" je uklonjen (13.11.2026), isto kao na
+    # telefonu: interpunkcija se uvek uklanja.
+    cfg["strip_punctuation"] = True
 
     for mrtvo in ("engine", "credentials_json", "project_id", "location",
                   "model", "punctuation",

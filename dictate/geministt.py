@@ -119,12 +119,16 @@ def vocabulary(cfg) -> list[str]:
 
 
 def _language_codes(cfg) -> list[str]:
-    """Nagovestaj jezika; prazno podesavanje pada na podrazumevani `sr-RS`.
+    """Uvek samo srpski.
 
-    Prazan spisak bi znacio „sam prepoznaj jezik", sto je ovde losije: diktat je
-    na srpskom, a bez nagovestaja model ume da odluta na hrvatski ili bosanski.
+    Prazan `languageCodes` na Live API-ju znaci automatsko prepoznavanje,
+    ukljucujuci mesavinu jezika (dokumentacija, 26.08.2026). Jedan kod je i
+    dalje nagovestaj, ne brava, ali prazno ili drugi kod je ono sto model
+    odvede na engleski uz srpski ili ruski. Vrednost iz podesavanja se ne
+    cita: izbor jezika je uklonjen, a zateceni kod ne sme da se vrati.
     """
-    return [str(cfg.get("language") or "sr-RS").strip() or "sr-RS"]
+    del cfg
+    return ["sr-RS"]
 
 
 def post_process(text: str, cfg) -> str:
@@ -215,7 +219,7 @@ def recognize_live(pcm: bytes, cfg, timeout=180) -> str:
 
 
 def recognize_stream(komadi, cfg, timeout=180, on_update=None,
-                     on_final=None, on_interim=None) -> str:
+                     on_final=None, on_interim=None, on_diagnostic=None) -> str:
     """Isto, ali zvuk stiže IZ GENERATORA — dok korisnik još priča.
 
     Ovo je jedini način da se ukloni čekanje na kraju. Izmereno na 64.7s zvuka:
@@ -231,8 +235,17 @@ def recognize_stream(komadi, cfg, timeout=180, on_update=None,
     # 16-bit mono: dva bajta po semplu, pa je komad od 100ms rate/10*2 bajtova.
     korak = max(2, (rate // 1000) * LIVE_CHUNK_MS * 2)
     delovi = []
+    def diagnose(kind, value=0):
+        if on_diagnostic is not None:
+            try:
+                on_diagnostic(kind, value)
+            except Exception:
+                pass
     try:
-        with WebSocket(f"{WS_ENDPOINT}?key={key}", timeout=timeout) as ws:
+        diagnose("connecting")
+        with WebSocket(
+            f"{WS_ENDPOINT}?key={key}", timeout=timeout, on_diagnostic=diagnose
+        ) as ws:
             ws.send_json(_live_setup(cfg))
             odgovor = ws.recv_json()
             if odgovor is None:
@@ -242,16 +255,22 @@ def recognize_stream(komadi, cfg, timeout=180, on_update=None,
                     f"Live API nije prihvatio podešavanje: {str(odgovor)[:200]}",
                     retryable=False,
                 )
+            diagnose("connected")
             def posalji(data):
                 for i in range(0, len(data), korak):
+                    piece = data[i:i + korak]
+                    diagnose("send_start")
                     ws.send_json({"realtimeInput": {"audio": {
-                        "data": base64.b64encode(data[i:i + korak]).decode("ascii"),
+                        "data": base64.b64encode(piece).decode("ascii"),
                         "mimeType": f"audio/pcm;rate={rate}",
                     }}})
+                    diagnose("send_done", len(piece))
 
-            if any(callback is not None for callback in (on_update, on_final, on_interim)):
+            if any(callback is not None for callback in
+                   (on_update, on_final, on_interim, on_diagnostic)):
                 return _stream_with_preview(
-                    ws, komadi, posalji, korak, rate, on_update, on_final, on_interim
+                    ws, komadi, posalji, korak, rate, on_update, on_final,
+                    on_interim, diagnose,
                 )
 
             # Ostatak koji nije pun komad nosi se u sledeći prolaz: komadi sa
@@ -318,12 +337,13 @@ def recognize_stream(komadi, cfg, timeout=180, on_update=None,
             if posle_zadnjeg:
                 delovi.append(posle_zadnjeg)
     except WebSocketError as exc:
+        diagnose("error", exc.__class__.__name__)
         raise GeminiSttError(f"Gemini Transcribe Live: {exc}", exc.retryable) from exc
     return " ".join(deo.strip() for deo in delovi if deo.strip()).strip()
 
 
 def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
-                         on_final, on_interim):
+                         on_final, on_interim, on_diagnostic=None):
     """Čitaj Live odgovore paralelno sa slanjem zvuka za živi režim.
 
     Potvrđene celine se prosleđuju čim stignu. Međurezultat sme da se menja,
@@ -334,7 +354,9 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
     stanje = {"interim": "", "error": None}
     poslato = threading.Event()
     procitano = threading.Event()
-    ws.set_timeout(0.5)
+    # Socket dele čitač i pošiljalac. set_timeout(0.5) je skraćivao i rok za
+    # slanje zvuka, pa je Live veza pucala usred razgovora pri kratkom zastoju.
+    ws.set_read_poll_timeout(0.25)
 
     def prikazi():
         tekst = " ".join([*delovi, stanje["interim"]]).strip()
@@ -348,11 +370,29 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
                 # Prikaz je dodatak; ne sme da obori niti izgubi prepis.
                 pass
 
+    def pozovi_dijagnostiku(kind, value=0):
+        if on_diagnostic is not None:
+            on_diagnostic(kind, value)
+
     def citaj():
         zadnja_poruka = time.monotonic()
         try:
             while True:
                 try:
+                    if not ws.wait_readable(0.5):
+                        if not poslato.is_set():
+                            continue
+                        if not delovi and not stanje["interim"]:
+                            rok = LIVE_FIRST_SECONDS
+                        elif stanje["interim"]:
+                            rok = LIVE_IDLE_SECONDS
+                        else:
+                            rok = LIVE_QUIET_SECONDS
+                        if time.monotonic() - zadnja_poruka >= rok:
+                            if delovi or stanje["interim"]:
+                                break
+                            raise GeminiSttError("Gemini Transcribe Live nije vratio prepis.", True)
+                        continue
                     poruka = ws.recv_json()
                 except WebSocketTimeout:
                     if not poslato.is_set():
@@ -369,7 +409,9 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
                         raise GeminiSttError("Gemini Transcribe Live nije vratio prepis.", True)
                     continue
                 if poruka is None:
-                    if not delovi and not stanje["interim"] and ws.close_reason:
+                    if (not poslato.is_set()
+                            or ws.close_code not in (None, 1000)
+                            or (not delovi and not stanje["interim"] and ws.close_reason)):
                         raise GeminiSttError(_zatvoreno(ws), _prolazno(ws))
                     break
                 if "error" in poruka:
@@ -381,6 +423,7 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
                 if tekst:
                     delovi.append(tekst)
                     stanje["interim"] = ""
+                    pozovi_dijagnostiku("final", len(tekst))
                     pozovi(on_final, tekst)
                     pozovi(on_interim, "")
                     prikazi()
@@ -388,6 +431,7 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
                     medju = _live_interim(poruka)
                     if medju:
                         stanje["interim"] = medju
+                        pozovi_dijagnostiku("interim", len(medju))
                         pozovi(on_interim, medju)
                         prikazi()
         except (GeminiSttError, WebSocketError) as exc:
@@ -418,6 +462,7 @@ def _stream_with_preview(ws, komadi, posalji, korak, rate, on_update,
             raise stanje["error"]
         if stanje["interim"]:
             delovi.append(stanje["interim"])
+            pozovi_dijagnostiku("final", len(stanje["interim"]))
             pozovi(on_final, stanje["interim"])
         return " ".join(deo.strip() for deo in delovi if deo.strip()).strip()
     finally:
@@ -453,7 +498,7 @@ def _sa_ponavljanjem(posao):
 
 
 def recognize_live_stream(komadi, cfg, timeout=180, on_update=None,
-                          on_final=None, on_interim=None) -> str:
+                          on_final=None, on_interim=None, on_diagnostic=None) -> str:
     """Strimuj zvuk dok traje snimanje; vrati prepis kad snimanje stane.
 
     Bez ponavljanja: komadi stižu iz mikrofona i mogu se pročitati samo jednom,
@@ -463,4 +508,5 @@ def recognize_live_stream(komadi, cfg, timeout=180, on_update=None,
     return recognize_stream(
         komadi, cfg, timeout=timeout, on_update=on_update,
         on_final=on_final, on_interim=on_interim,
+        on_diagnostic=on_diagnostic,
     )

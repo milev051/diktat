@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 
-from . import audio, config, geministt, rezerva
+from . import audio, config, dijagnostika, geministt, insert, rezerva
 from .pomoc import _short_error
 
 # Koliko posle repa STOP sme da ceka pre nego sto osigurac oslobodi mikrofon.
@@ -19,6 +19,13 @@ STOP_ROK = 3.0
 
 class Snimanje:
     """Deo DictateApp-a; stanje drzi DictateApp.__init__."""
+
+    def _zapamti_problem(self, error):
+        opis = dijagnostika.objasni(error)
+        self.last_transcription_status = opis
+        self.last_transcription_detail = (
+            f"Last error ({time.strftime('%H:%M:%S')}):\n{opis}\n{error}"
+        )
 
     def _stop_from_menu(self, _):
         self._on_stop()
@@ -48,7 +55,6 @@ class Snimanje:
 
     def _on_start(self):
         """Vraca False ako snimanje nije poceto — hotkey tada vrati svoje stanje."""
-        self._live_off = False
         with self._session_lock:
             self._starting += 1
             self._stop_requested = False
@@ -67,6 +73,9 @@ class Snimanje:
         None = pritisak je u medjuvremenu prestao da vazi (prekidac se ne dira).
         """
         if not self._await_slot():
+            error = "Previous recording is releasing the microphone. Try again."
+            self._zapamti_problem(error)
+            self.state.set(phase="error", message=error)
             return False
         with self._session_lock:
             if moj is not None and moj != getattr(self, "_start_seq", moj):
@@ -89,18 +98,30 @@ class Snimanje:
             try:
                 recorder.start()
             except Exception as exc:  # noqa: BLE001
+                self._zapamti_problem(f"Mikrofon: {exc}")
                 self.state.set(phase="error", message=f"Mikrofon: {exc}")
                 return False
             recorder.session = self._nova_sesija(zakljucano=True)
+            recorder.live_text = ""
+            recorder.prikaz_u_polju = ""
+            recorder.potvrdjeni_prepis = ""
             recorder.snimak = (
                 rezerva.Snimak.novi(int(self.cfg["sample_rate"]))
                 if self.cfg.get("rezervni_snimak", True) else None
             )
             self._recorder = recorder
+            self._live_off = False
+            self._live_text = ""
+            self._prikaz_u_polju = ""
+            self._potvrdjeni_prepis = ""
+            self._live_text_dirty = True
+            self._live_waiting = False
+            self._live_last_update_at = time.monotonic()
             recorder.live_insert = (
                 geministt.enabled(self.cfg)
                 and bool(self.cfg.get("gemini_live_insert", False))
                 and self.cfg.get("insert_method", "auto") != "clipboard_only"
+                and not self._deferred()
             )
             self._record_started_at = time.monotonic()
             recorder.pokrenuto = self._record_started_at
@@ -128,6 +149,8 @@ class Snimanje:
                     self._stop_requested = True
                 return
             recorder.zaustavljen = True
+        # Istorija mora prethoditi promeni faze i skrivanju okvira.
+        self._unesi_vidljivi_prepis(recorder)
         self.state.set(phase="thinking")
         # Okvir sa prepisom nestaje odmah, ne kad rep istekne: snimanje je za
         # korisnika gotovo u trenutku kad pusti taster.
@@ -138,6 +161,48 @@ class Snimanje:
         cuvar = threading.Timer(rep + STOP_ROK, self._cuvar_zaustavljanja, args=(recorder,))
         cuvar.daemon = True
         cuvar.start()
+
+    def _sacuvaj_prepis(self, recorder, tekst):
+        if not tekst or not tekst.strip():
+            return True
+        recorder.live_text = tekst.strip()
+        saved = self.upis.zapamti(recorder.live_text, sesija=recorder.session)
+        if saved is False:
+            self.last_transcription_status = "Could not save text to disk. Text remains in memory."
+            print("[diktat] čuvanje teksta na disk nije uspelo; proveri slobodan prostor", flush=True)
+        return saved
+
+    def _unesi_vidljivi_prepis(self, recorder=None):
+        """Tekst sa okvira ide u polje čim korisnik stane, pre nego što tok pukne."""
+        recorder = recorder or self._recorder
+        if recorder is None:
+            return
+        tekst = (getattr(recorder, "live_text", None)
+                 or getattr(self, "_live_text", "") or "").strip()
+        # Ne čeka zaključavanje zatvaranja mikrofona, mrežu ili tiket prethodnog diktata.
+        self._sacuvaj_prepis(recorder, tekst)
+        with recorder._release_lock:
+            if not tekst or getattr(recorder, "prikaz_u_polju", ""):
+                return
+            # Živi upis je potvrđene celine već stavio u red. Ovde ide samo
+            # rep koji još nije otišao, inače se isti tekst pojavi dvaput.
+            if getattr(recorder, "live_insert", False) and insert.ima_prikaz():
+                insert.zadrzi_prikaz()
+                recorder.prikaz_u_polju = tekst
+                return
+            vec = (
+                getattr(recorder, "potvrdjeni_prepis", "")
+                if getattr(recorder, "live_insert", False) else ""
+            )
+            dodatak = insert.ostatak_prepisa(vec, tekst)
+            recorder.prikaz_u_polju = tekst
+            if not dodatak:
+                return
+            if not getattr(recorder, "ticket", 0):
+                recorder.ticket = self.upis.novi_tiket(recorder.session)
+            ticket = recorder.ticket
+            sesija = recorder.session
+        self.upis.predaj_deo(ticket, dodatak + " ", sesija)
 
     def _cuvar_zaustavljanja(self, recorder):
         """STOP mora da zaustavi sat, sta god da se zaglavilo iza njega.
@@ -216,9 +281,14 @@ class Snimanje:
     def _release_recorder(self, recorder):
         """Audio je gotov: pusti mikrofon ODMAH da moze sledeci diktat,
         dok prepoznavanje ovog jos traje u pozadini."""
+        # Pumpa i sesija mogu da stignu ovde istovremeno. Druga čeka da se
+        # zatvaranje završi i tiket dodeli, umesto da preda nedodeljeni tiket 0.
+        with recorder._release_lock:
+            self._release_recorder_once(recorder)
+
+    def _release_recorder_once(self, recorder):
         if recorder.released:
             return
-        recorder.released = True
         # Strim se zatvara PRE oslobadjanja slota: sledeci diktat reinicijalizuje
         # PortAudio, a to ne sme da se desi dok je neki strim jos otvoren.
         # Ticket se uzima dok slot jos drzimo, da nova sesija ne preuzme nizi broj.
@@ -228,6 +298,7 @@ class Snimanje:
         self.tisina.vrati()
         if not recorder.ticket:
             recorder.ticket = self.upis.novi_tiket(recorder.session)
+        recorder.released = True
         with self._session_lock:
             if self._recorder is recorder:
                 self._recorder = None
@@ -286,16 +357,21 @@ class Snimanje:
                 self._release_recorder(recorder)
                 red.put(None)
 
+        def komadi():
+            try:
+                while True:
+                    komad = red.get()
+                    if komad is None:
+                        return
+                    yield komad
+            finally:
+                # Potrosac je odustao (pala mreza): mikrofon mora da stane i sam.
+                recorder.stop()
+
+        # Pumpa kreće odmah, čak i dok mreža još otvara Live vezu. Generator
+        # sa yield na ovom nivou bi odložio pumpu do prvog mrežnog čitanja.
         threading.Thread(target=pumpa, name="diktat-mikrofon", daemon=True).start()
-        try:
-            while True:
-                komad = red.get()
-                if komad is None:
-                    return
-                yield komad
-        finally:
-            # Potrosac je odustao (pala mreza): mikrofon mora da stane i sam.
-            recorder.stop()
+        return komadi()
 
     def _run_session(self, recorder):
         text = ""
@@ -311,6 +387,20 @@ class Snimanje:
             )
             self._release_recorder(recorder)
 
+        # Ticket dodeljen u _release_recorder mora da se preda tacno jednom,
+        # inace red ubacivanja stane zauvek.
+        ticket = recorder.ticket
+        # Završetak stare sesije nikad ne čita niti briše prikaz nove sesije.
+        u_polju = getattr(recorder, "prikaz_u_polju", "") or ""
+        prikaz = (getattr(recorder, "live_text", "") or "").strip()
+        dobijen = (text or "").strip()
+        if prikaz and (not dobijen or prikaz.startswith(dobijen) or len(prikaz) > len(dobijen)):
+            najbolji = prikaz
+        else:
+            najbolji = dobijen or prikaz
+        # Čuvanje prethodi svim izlazima, uključujući grešku i prazan dodatak.
+        tekst_sacuvan = self._sacuvaj_prepis(recorder, najbolji)
+
         # Rezervni snimak ostaje samo kad prepis nije stigao; uspeo diktat ga
         # brise odmah, da glas ne stoji na disku bez razloga.
         # Gemini Live na tisinu ne vrati nista, pa bi slucajan pritisak izlazio
@@ -322,43 +412,57 @@ class Snimanje:
                 print(f"[diktat] tisina (vrh {snimak.vrh:.3f}), greska se ne prijavljuje: {error}",
                       flush=True)
             error = nova_greska
-            if obrisi:
+            if obrisi and (not najbolji or tekst_sacuvan):
                 snimak.obrisi()
         sacuvan = snimak is not None and snimak.putanja.exists()
         if sacuvan:
             self._sacuvani_dirty = True
 
-        # Ticket dodeljen u _release_recorder mora da se preda tacno jednom,
-        # inace red ubacivanja stane zauvek.
-        ticket = recorder.ticket
-        if recorder.cancelled or error:
+        dodatak = insert.ostatak_prepisa(u_polju, najbolji)
+
+        if recorder.cancelled:
             self.upis.predaj(ticket, "", recorder.session)
-            if error and not recorder.cancelled:
-                if sacuvan:
-                    error = f"{error[:120]} · snimak je sačuvan u Podešavanjima"
-                self.state.set(phase="error", message=error)
-            else:
-                self._settle_phase()
+            self._settle_phase()
             return
 
-        if getattr(recorder, "live_insert", False):
-            if text.strip():
-                self.upis.zapamti(text)
+        if error and not dodatak and not u_polju and not najbolji:
             self.upis.predaj(ticket, "", recorder.session)
+            self._zapamti_problem(error)
+            if sacuvan:
+                error = f"{error[:120]} · snimak je sačuvan u Podešavanjima"
+            self.state.set(phase="error", message=error)
             return
 
-        text = text.strip()
-        if not text:
+        if error and not dodatak:
+            self.upis.predaj(ticket, "", recorder.session)
+            self._zapamti_problem(error)
+            if sacuvan:
+                error = f"{error[:120]} · snimak je sačuvan u Podešavanjima"
+            self.state.set(phase="error", message=error)
+            return
+
+        if not dodatak and not u_polju:
+            self.last_transcription_status = "No speech recognized."
             self.upis.predaj(ticket, "", recorder.session)
             self._settle_phase("(nista)")
             return
 
-        text = self._finish(text)
-        if not self._deferred():
-            debug_session = self._debug_sessions.pop(recorder.session, None)
-            if debug_session is not None:
-                debug_session.final(text)
-        self.upis.predaj(ticket, text, recorder.session)
+        if dodatak:
+            dodatak = self._finish(dodatak)
+            self.last_transcription_status = "Transcription completed."
+            if najbolji:
+                self.upis.zapamti(najbolji, sesija=recorder.session)
+            if not self._deferred():
+                debug_session = self._debug_sessions.pop(recorder.session, None)
+                if debug_session is not None:
+                    debug_session.final(dodatak)
+            self.upis.predaj(ticket, dodatak, recorder.session)
+            return
+
+        self.last_transcription_status = "Transcription completed." if u_polju else "No speech recognized."
+        if u_polju:
+            self.upis.zapamti(u_polju, sesija=recorder.session)
+        self.upis.predaj(ticket, "", recorder.session)
 
     def _finish(self, text: str) -> str:
         # Razmak na kraju je uvek: bez njega se recenice slepe pri nadovezivanju.

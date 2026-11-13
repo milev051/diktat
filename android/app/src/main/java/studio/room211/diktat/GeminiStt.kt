@@ -150,6 +150,9 @@ object GeminiStt {
     fun recognizeStream(
         cfg: Config,
         onUpdate: ((String) -> Unit)? = null,
+        onFinal: ((String) -> Unit)? = null,
+        onInterim: ((String) -> Unit)? = null,
+        veza: AtomicReference<WSock?>? = null,
         komadi: () -> ByteArray?,
     ): String {
         val rate = cfg.sampleRate
@@ -159,6 +162,7 @@ object GeminiStt {
         val enc = Base64.getEncoder()
 
         WSock("$WS_ENDPOINT?key=${key(cfg)}", CONNECT_TIMEOUT_MS).use { ws ->
+            veza?.set(ws)
             try {
                 ws.connect()
                 ws.sendText(liveSetup(cfg).toString())
@@ -188,8 +192,10 @@ object GeminiStt {
                     }
                 }
 
-                if (onUpdate != null) {
-                    return streamWithPreview(ws, komadi, ::posalji, korak, rate, onUpdate)
+                if (onUpdate != null || onFinal != null || onInterim != null) {
+                    return streamWithPreview(
+                        ws, komadi, ::posalji, korak, rate, onUpdate, onFinal, onInterim
+                    )
                 }
 
                 // Ostatak koji nije pun komad nosi se u sledeci prolaz:
@@ -264,6 +270,8 @@ object GeminiStt {
                 if (posleZadnjeg.isNotEmpty()) delovi.add(posleZadnjeg)
             } catch (e: WSock.WSException) {
                 throw GeminiSttException("Gemini Transcribe Live: ${e.message}", e.retryable)
+            } finally {
+                veza?.compareAndSet(ws, null)
             }
         }
         return delovi.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ").trim()
@@ -275,7 +283,9 @@ object GeminiStt {
         posalji: (ByteArray) -> Unit,
         korak: Int,
         rate: Int,
-        onUpdate: (String) -> Unit,
+        onUpdate: ((String) -> Unit)?,
+        onFinal: ((String) -> Unit)?,
+        onInterim: ((String) -> Unit)?,
     ): String {
         val delovi = mutableListOf<String>()
         var interim = ""
@@ -286,7 +296,7 @@ object GeminiStt {
 
         fun prikazi() {
             val text = (delovi + interim).filter { it.isNotBlank() }.joinToString(" ").trim()
-            runCatching { onUpdate(text) }
+            if (onUpdate != null) runCatching { onUpdate(text) }
         }
 
         thread(name = "gemini-live-preview", isDaemon = true) {
@@ -321,11 +331,14 @@ object GeminiStt {
                     if (final.isNotBlank()) {
                         delovi.add(final)
                         interim = ""
+                        if (onFinal != null) runCatching { onFinal(final) }
+                        if (onInterim != null) runCatching { onInterim("") }
                         prikazi()
                     } else {
                         val temporary = liveInterim(message)
                         if (temporary.isNotBlank()) {
                             interim = temporary
+                            if (onInterim != null) runCatching { onInterim(temporary) }
                             prikazi()
                         }
                     }
@@ -361,7 +374,10 @@ object GeminiStt {
                 throw GeminiSttException("Gemini Transcribe Live nije završio odgovor.", true)
             }
             error.get()?.let { throw it }
-            if (interim.isNotBlank()) delovi.add(interim)
+            if (interim.isNotBlank()) {
+                delovi.add(interim)
+                if (onFinal != null) runCatching { onFinal(interim) }
+            }
             return delovi.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ").trim()
         } finally {
             sent.set(true)

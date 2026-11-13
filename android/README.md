@@ -1,8 +1,18 @@
 # Diktat (Android)
 
+## Kompaktan ekran, 2026-11-04
+
+Ovaj odeljak zamenjuje starija uputstva ispod za ekran podešavanja.
+
+- Engleski, jedna kolona, bez naslova grupa. Checkboxovi su prvi. Servisi su Gemini 3.5 Transcribe Live i Google Speech-to-Text. Gemini je početni izbor i jedini ima prepis uživo, bez prekidača za gašenje.
+- Neprekidno snimanje i prekidač su fiksni. Oba servisa staju posle 600 sekundi.
+- Pravila se pale pojedinačno. Remove punctuation uklanja svu interpunkciju kada je uključen.
+- Istorija je levo poravnata, do 100 tekstova, pet vidljivih redova, bez klizača.
+- Verzija se ne ispisuje. Novo GitHub izdanje se preuzima i nudi sistemu za instalaciju samo, kada se ne snima. Potvrda instalacije i dalje pripada Androidu.
+- Nema AI obrade, OpenAI/Groq ključeva, utišavanja zvuka ni pauziranja medija u ovom ekranu.
+
 Zadrži **bočni taster**, pričaj, zadrži ga ponovo — tekst se upiše tamo gde ti
-je kursor. Bez naloga i bez ključeva, isti Google Web Speech endpoint kao macOS
-verzija.
+je kursor.
 
 ```
 00 … 14   snima            (zeleno)
@@ -16,10 +26,15 @@ snimanje teče dalje, pa tekst stiže usput. Sigurnosna granica ostaje jedan sat
 Kada se izabere OpenAI, ova opcija nestaje i na njenom mestu se prikazuju
 **OpenAI dugi diktat** i izbor pisma.
 
-Uz **Gemini 3.5 Transcribe Live** možeš uključiti **Prikazuj prepis uživo tokom
-snimanja**. Trenutni tekst se prikazuje uz tajmer bez preuzimanja fokusa;
-lokalna pravila se vide odmah. U aktivno polje se upisuje konačan tekst nakon
-zaustavljanja.
+Uz **Gemini 3.5 Transcribe Live** možeš uključiti prikaz prepisa uz tajmer i
+**Upisuj tekst u aktivno polje tokom govora**. Privremeni tekst se menja u
+polju ako ono podržava Accessibility upis; potvrđeni delovi ostaju. Prikaz uz
+tajmer može biti isključen. Ako je uključena AI ispravka teksta, upis čeka kraj.
+
+Na početku aplikacije je polje za direktan diktat sa dugmadima **Snimi** i
+**Završi**. Taster **Pošalji** na tastaturi takođe zaustavlja snimanje ako ga
+tastatura prikazuje. Dugme **Završi** postoji i na plutajućem tajmeru dok se
+diktira u drugim aplikacijama.
 
 U običnom režimu staje na 30s — i zato što endpoint odbija duže zahteve, i da slučajno
 pokrenut diktat ne snima satima. Nastavak traži nov pritisak.
@@ -494,3 +509,19 @@ app/src/main/java/studio/room211/diktat/
   Config.kt              podešavanja
 build.sh                 napravi i instaliraj
 ```
+
+## Ispravka upisa 1.75
+
+Natpis praznog polja (npr. „Poruka”) više se ne nadovezuje na diktat kada
+Android prijavi kursor na nuli bez pouzdanih hint metapodataka. Tada se koristi
+sistemski PASTE, koji čuva stvarni sadržaj i položaj kursora. Kod ne uklanja
+izgovorenu reč „poruka”. Testovi: `./gradlew test`; proba na telefonu: prazno
+polje, postojeći tekst i diktat koji zaista počinje rečju „poruka”.
+
+## Ispravka upisa 1.76
+
+Završni upis koristi sistemski PASTE, koji obrađuje stvarni sadržaj i selekciju
+u ciljnoj aplikaciji. Natpis polja se više ne koristi za sastavljanje poruke,
+čak ni kada Android prijavi kursor na njegovom kraju. SET_TEXT je rezerva samo
+za eksplicitno prazno polje. Ako polje ne podržava upis, diktat ostaje u clipboard-u.
+Android može prikazati sistemsko obaveštenje o kopiranju.

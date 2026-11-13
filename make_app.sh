@@ -81,6 +81,12 @@ prepisi_kod() {
     echo "Preuzeta postojeca podesavanja iz config.json."
   fi
 
+  # Lokalna popravka ne sme nestati kada dugme preuzme starije izdanje.
+  # Oznaka je u instaliranoj kopiji; ne sadrži ključeve ni lične podatke.
+  if [ -n "$(git -C "$IZVOR" status --porcelain -- dictate 2>/dev/null)" ]; then
+    date -u '+%Y-%m-%dT%H:%M:%SZ' > "$DOM/app/LOKALNA-POPRAVKA"
+  fi
+
   # Okruzenje se prepisuje kad se promeni requirements.txt, da ne zaostane.
   # Venv nosi apsolutne putanje samo u skriptama koje ne koristimo;
   # `venv/bin/python` racuna prefiks iz svoje putanje.
@@ -91,6 +97,14 @@ prepisi_kod() {
     cp requirements.txt "$DOM/venv/requirements.txt"
     echo "Okruzenje prepisano."
   fi
+  # Svaka instalacija bira Gemini Live, bez ispisa ili zamene API kljuca.
+  (cd "$DOM/app" && "$DOM/venv/bin/python" - <<'PYTHON'
+from dictate import config
+cfg = config.load()
+cfg["transcription_provider"] = "gemini_live"
+config.save(config.desktop_policy(cfg))
+PYTHON
+  )
 }
 
 if [ "${1:-}" = "azuriraj" ]; then

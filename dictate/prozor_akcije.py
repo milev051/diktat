@@ -10,7 +10,7 @@ import time
 
 import AppKit
 
-from . import apitest, autostart, config, hotkey, insert, rezerva, settings_window
+from . import apitest, autostart, config, dijagnostika, hotkey, insert, rezerva, settings_window
 
 
 class ProzorAkcije:
@@ -22,6 +22,8 @@ class ProzorAkcije:
         if self._settings_window_ui is None:
             self._settings_window_ui = settings_window.SettingsWindow(self)
         self._settings_window_ui.show()
+        if self.cfg.get("transcription_provider") == "gemini_live":
+            self._check_api_keys(None)
         # Svako otvaranje pita GitHub, ali ne cesce od jednom u minuti: dva
         # brza klika na ikonicu ne treba da budu dva zahteva.
         if (self.cfg.get("update_check", True) and not self._azur_radi
@@ -74,25 +76,12 @@ class ProzorAkcije:
     def settingsCheckbox_(self, sender):
         key = str(sender.identifier() or "")
         value = sender.state() == AppKit.NSControlStateValueOn
-        if key == "text_style_written":
-            self.cfg["text_style"] = "written" if value else "spoken"
-        elif key == "pravilno":
-            config.postavi_pravilno(self.cfg, value)
-        elif key in ("hotkey_section", "hotkey_grave"):
-            self.cfg[key] = value
-            config.save(self.cfg)
-            self._restart_hotkey()
-        elif key == "lokalna_pravila":
-            # Prekidač grupe je izvedeno stanje: ugašena grupa znači „pravilno",
-            # tj. sva pravila ugašena, uz pamćenje zatečenog izbora.
-            config.postavi_pravilno(self.cfg, not value)
-        elif key == "ai_obrada":
-            # Nije peto podesavanje nego precica nad alatima: gasenje pamti
-            # zatecen izbor, paljenje ga vraca.
-            config.postavi_ai_obradu(self.cfg, value)
-        elif key == "debug":
-            self.cfg["debug"] = value
-            self._apply_debug(value)
+        if key == "strip_punctuation":
+            self.cfg["strip_punctuation"] = value
+            self.cfg["samo_zarezi"] = False
+        elif key == "punctuation":
+            self.cfg["strip_punctuation"] = not value
+            self.cfg["samo_zarezi"] = False
         elif key == "start_at_login":
             try:
                 autostart.sync(value)
@@ -115,22 +104,13 @@ class ProzorAkcije:
             self.cfg["transcription_provider"] = (
                 settings_window.provider_from_title(title)
             )
-            if self.cfg["transcription_provider"] == "openai":
-                self.cfg["openai_output_script"] = "latin"
-        elif key == "text_model":
-            self.cfg["text_model"] = "groq" if title.startswith("Groq") else "gemini"
+            config.desktop_policy(self.cfg)
+            if self.cfg["transcription_provider"] == "gemini_live":
+                self._check_api_keys(None)
         elif key == "input_device":
             self.cfg["input_device"] = (
-                None if title == "Sistemski podrazumevani" else title
+                None if title == settings_window.MIKROFON_PODRAZUMEVANI else title
             )
-        elif key == "interpunkcija" and title in settings_window.INTERPUNKCIJA:
-            strip, zarezi = settings_window.INTERPUNKCIJA[title]
-            self.cfg["strip_punctuation"] = strip
-            self.cfg["samo_zarezi"] = zarezi
-        elif key == "mode":
-            self.cfg["mode"] = "hold" if title == "Drži taster" else "toggle"
-            if hasattr(self, "listener"):
-                self.listener.mode = self.cfg["mode"]
         config.save(self.cfg)
         if self._settings_window_ui is not None:
             self._settings_window_ui.refresh()
@@ -141,17 +121,21 @@ class ProzorAkcije:
         if key:
             self.cfg[key] = field.stringValue().strip()
             config.save(self.cfg)
+            if key == "polish_api_key":
+                self._check_api_keys(None)
 
     def _dugme_misa_snimljeno(self, vrsta, broj):
         """Zove se van tap niti kad korisnik pritisne dugme koje se snima."""
+        self._mouse_learning = False
         if vrsta is None:
-            self.mis_status = "Snimanje otkazano."
-        else:
-            self.cfg["mouse_button"] = broj if vrsta == "mis" else None
-            self.cfg["mouse_key_vk"] = broj if vrsta == "taster" else None
-            self.cfg["mouse_swipe"] = broj if vrsta == "swipe" else None
-            config.save(self.cfg)
-            self.mis_status = f"Snimljeno: {hotkey.naziv_prekidaca(self.cfg)}."
+            self._mouse_escape_at = time.monotonic()
+        self.mis_status = ""
+        self.cfg["mouse_button"] = broj if vrsta == "mis" else None
+        self.cfg["mouse_key_vk"] = broj if vrsta == "taster" else None
+        self.cfg["mouse_swipe"] = broj if vrsta == "swipe" else None
+        if vrsta is None:
+            self.listener.iskljuci_dugme()
+        config.save(self.cfg)
         self._mis_dirty = True
 
     def settingsButton_(self, sender):
@@ -182,9 +166,10 @@ class ProzorAkcije:
             self._sacuvani_dirty = True
         elif action == "mouse_learn":
             if self.listener.snimi_dugme(self._dugme_misa_snimljeno):
-                self.mis_status = "Pritisni željeno dugme miša… (Esc otkazuje)"
+                self._mouse_learning = True
+                self.mis_status = "Press mouse button (Esc clears)"
             else:
-                self.mis_status = "Nema Accessibility dozvole."
+                self.mis_status = "Accessibility permission required"
             self._mis_dirty = True
         elif action == "mouse_off":
             self.cfg["mouse_button"] = None
@@ -196,6 +181,10 @@ class ProzorAkcije:
             self._mis_dirty = True
         elif action == "check_api":
             self._check_api_keys(sender)
+        elif action == "open_live_log":
+            dijagnostika.LIVE_LOG.parent.mkdir(parents=True, exist_ok=True)
+            dijagnostika.LIVE_LOG.touch(exist_ok=True)
+            subprocess.Popen(["open", str(dijagnostika.LIVE_LOG)])
         elif action == "quit":
             self._quit(sender)
         elif action == "stop_recording":
@@ -211,19 +200,47 @@ class ProzorAkcije:
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
             ])
 
-    def _check_api_keys(self, _):
-        if self._api_check_running:
-            self.state.set(phase="thinking", message="Provera API ključeva već traje…")
+    def _procitaj_kljuceve_iz_polja(self):
+        """Provera mora da vidi tekst u polju, ne stari config.json.
+
+        Klik na dugme inace ume da krene pre nego sto polje zavrsi unos,
+        pa se proveri prethodni kljuc.
+        """
+        ui = getattr(self, "_settings_window_ui", None)
+        if ui is None or getattr(ui, "window", None) is None:
             return
+        fields = {}
+        for key in apitest.KEY_FIELDS:
+            view = ui.controls.get(key)
+            if view is not None and hasattr(view, "stringValue"):
+                fields[key] = view.stringValue()
+        if not fields:
+            return
+        apitest.apply_fields(self.cfg, fields)
+        config.save(self.cfg)
+
+    def _check_api_keys(self, _):
+        self._procitaj_kljuceve_iz_polja()
+        snapshot = {"polish_api_key": self.cfg.get("polish_api_key", "")}
+        if (self._api_check_running
+                and getattr(self, "_api_check_pending_key", None) == snapshot["polish_api_key"]):
+            return
+        generation = getattr(self, "_api_check_generation", 0) + 1
+        self._api_check_generation = generation
+        self._api_check_pending_key = snapshot["polish_api_key"]
         self._api_check_running = True
-        self.state.set(phase="thinking", message="Proveravam API ključeve…")
+        self._api_check_status = ""
+        self._api_check_result = None
+        if self._settings_window_ui is not None:
+            self._settings_window_ui.refresh_api_check()
 
         def worker():
             try:
-                result = "\n".join(apitest.check_all(self.cfg))
-            except Exception as exc:  # noqa: BLE001
-                result = f"Provera nije uspela: {exc}"
-            self._api_check_result = result
-            self._api_check_running = False
+                result = apitest.check_gemini(snapshot)
+            except Exception:
+                result = "Gemini: connection failed"
+            # An old response must not mark a newly entered key as valid.
+            if generation == self._api_check_generation:
+                self._api_check_result = (generation, result)
 
         threading.Thread(target=worker, daemon=True).start()

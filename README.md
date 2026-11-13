@@ -1,5 +1,24 @@
 # Diktat
 
+## macOS: kompaktan meni, 2026-11-04
+
+Ovaj odeljak zamenjuje starija macOS uputstva ispod. Android ekran podešavanja prati isti skup: engleski, bez naslova grupa, Gemini Live ili Google, nezavisna pravila i istorija. Verzija se ne ispisuje.
+- Prozor `Speech to Text` je na engleskom, u jednoj uskoj koloni (sadržaj 248 px, sa marginama 272 px) bez naslova nad kontrolama i grupama, sa razmakom od 4 px. Nema stavke ni brojača u menu baru. Podešavanja se otvaraju pri pokretanju aplikacije i ostaju dok se ne pritisne Esc ili X. Klik u drugu aplikaciju ih ne zatvara. Ponovno pokretanje i dalje zaustavlja staru instancu. Checkboxovi su prvi. Na dnu su, jedno pored drugog, dugme miša i Quit. Dugme miša ima okvir i natpis unutra, levo. Istorija ima levo poravnat natpis, skrol bez vidljivog klizača i 10 px unutrašnjeg razmaka. Nazivi mikrofona, servisa i ključa ostaju dostupni čitaču ekrana.
+- Verzija se ne prikazuje i nema dugmeta za ažuriranje. Nova GitHub verzija se preuzima i instalira sama, tek kada nema snimanja ni teksta koji čeka upis.
+- Početni servis je Gemini 3.5 Transcribe Live. Može se izabrati i Google Speech-to-Text; izbor se pamti.
+- Aktivacija je uvek prekidač. Neprekidno snimanje je uključeno, a oba servisa automatski staju posle 600 sekundi i traže novu aktivaciju.
+- Oba servisa prikazuju prepis u okviru za snimanje: tamna kartica sa crvenom tačkom koja pulsira. Na Androidu kartica ima samo tekst i mali Stop, bez brojača.
+- Jedno dugme `Record mouse button` stoji levo od `Quit`, u istom redu na dnu. Prikazuje snimljeno dugme ili taster unutar okvira. Natpis je poravnat ulevo. Ponovni klik snima drugo; Esc tokom snimanja briše prečicu i ostavlja prozor otvoren. Esc van snimanja zatvara prozor.
+- Ostaju mikrofon, pojedinačna lokalna pravila, pokretanje pri prijavi i istorija teksta do 100 diktata. `Remove punctuation` uklanja interpunkciju kada je uključen (negativna logika); nema zajedničkog prekidača pravila.
+- Taster § je uvek uključen, a ` isključen; njihovi izbori i ukupno snimljeno vreme se ne prikazuju. Snimljeni taster miša nosi naziv `Mouse: F18` ili odgovarajući naziv dugmeta.
+- Oznaka uz Gemini ključ proverava pristup pri otvaranju menija, završetku unosa i kliku: `…` znači provera, zelena `✓` uspeh, crveno `×` neuspeh. Ishod nije potvrda preostale kvote niti uspešnog audio prepisa. Stari odgovor ne može obojiti novi ključ.
+- Nema AI obrade teksta, Groq/OpenAI ključeva, izbora OpenAI transkripcije, utišavanja računara, pauziranja medija, direktnog Gemini upisa tokom snimanja, dijagnostike, čuvanja diktata u clipboard-u ni rezervnih audio snimaka. Stari audio fajlovi se ovom izmenom ne brišu.
+- `config.desktop_policy` primenjuje fiksno ponašanje i na postojeće instalacije. Svaka instalacija preko make_app.sh bira Gemini Live, bez izmene njegovog ključa. Izbor servisa se inače pamti između pokretanja. Gemini ključ ostaje lokalno.
+- Provera: `./run.sh tests`. Instalacija izmena bez promene potpisa i dozvola: `./make_app.sh kod`.
+
+Stariji moduli i njihovi testovi ostaju dostupni za ranije tokove i replay alate; uklonjene mogućnosti nisu dostupne u aktivnoj desktop aplikaciji.
+
+
 > **English:** Push-to-talk speech-to-text dictation for macOS and Android: hold
 > a key, speak, release, and the text is typed into whatever app is in focus.
 > The macOS app is written in Python (rumps, PyObjC, sounddevice) and the
@@ -74,16 +93,57 @@ Na Mac-u su u **Podešavanja → Snimanje i tekst** dva nezavisna izbora:
   Okvir nikad ne uzima fokus i propušta klik, pa tekst i dalje ide u polje koje
   je bilo aktivno, a nestaje istog trenutka kad zaustaviš snimanje. Postoji zato što potvrđena celina od Gemini-ja stiže tek na
   pauzi: između dve potvrde inače nema nikakvog znaka da aplikacija čuje.
-- **Upisuj tekst tokom snimanja u aktivno polje**: potvrđene celine se odmah
-  kucaju u polje, pa raniju reč možeš da klikneš i ispraviš dok govoriš dalje.
-  Pre naredne celine kursor se vraća na kraj. Međurezultat se **nikad** ne
-  kuca, da Gemini ne bi prebrisao ručnu ispravku; on se vidi samo u okviru.
-  Lokalna pravila rade pri svakom upisu, a zasebna AI obrada teksta na kraju se
-  u ovom režimu preskače.
+- **Upisuj tekst tokom snimanja u aktivno polje**: u običnom polju koje
+  podržava Pristupačnost privremeni tekst se menja dok govoriš, a potvrđeni
+  deo ostaje. Menja se samo rep koji je Diktat upisao. U drugim poljima
+  potvrđene celine se kucaju na pauzi. Ovo radi i kad je okvir isključen.
+  Ako je uključena AI obrada celog teksta, upis čeka kraj diktata.
+- **Prikazuj dijagnostiku uživo**: u okviru pokazuje da li zvuk odlazi na
+  mrežu, kada Gemini vraća tekst, koliko čeka red za upis i da li polje prima
+  privremeni tekst. Radi i kada je prikaz prepisa isključen. Dugme **Otvori
+  dnevnik uživo** otvara `~/Library/Logs/Diktat-live.log`; u njemu su vremena
+  i razlozi, bez zvuka, izgovorenih reči i API ključa.
 
-Na Androidu je isti prikaz uživo zaseban izbor **Prikazuj prepis uživo tokom
-snimanja**; tekst stoji uz tajmer, a u polje se ubacuje konačan rezultat po
-zaustavljanju.
+Lokalna instalacija iz projekta sa neuvedenim izmenama koda dobija oznaku
+`LOKALNA-POPRAVKA`. Dugme i dalje preuzima novije GitHub izdanje. Posle
+raspakivanja vraća lokalni folder `dictate/`, da nesnimljene Mac izmene
+ne nestanu. Oznaka verzije postaje oznaka izdanja. Ažuriranje samo iz
+foldera projekta i dalje ide kroz `./make_app.sh kod`.
+Za povratak na zvanična izdanja oznaka se može ručno ukloniti iz instaliranog
+foldera, uz svest da će sledeće izdanje zameniti lokalne izmene.
+
+**Agent Desk na Mac-u:** Diktat prepoznaje njegovu native aplikaciju i u
+režimu „auto“ i pri potvrdi živog prepisa koristi standardno lepljenje.
+Privremeni prepis ostaje u okviru umesto direktne Accessibility izmene
+Agent Deskovog web polja. Potvrđeni tekst se lepi na trenutnom mestu kursora;
+prikazani tekst ostaje sačuvan u istoriji i kopijama nezavisno od uspeha unosa.
+
+**Čuvanje prepisa na Mac-u:** svaki prepis se čuva pre nego što se prikaže.
+Stop prvo stavlja ceo prikazani diktat u istoriju, pa tek onda
+skriva okvir i čeka ostatak obrade. Ovo ne zavisi od lepljenja, aktivnog polja,
+mreže ili reda prethodnih diktata. Završetak stare sesije ne briše prikaz nove.
+Istorija poslednjih pet diktata opstaje posle ponovnog pokretanja aplikacije.
+
+Nezavisni dnevnik svake verzije prepisa ostaje u
+`~/Library/Application Support/Diktat/prepisi/` kao JSONL fajl sa poljem `text`.
+Uz njega se atomski čuva `istorija.json`. Ako je glavni fajl oštećen ili je
+proces pao tokom upisa, istorija se obnavlja iz ispravnih redova dnevnika.
+Rezervne kopije teksta se ne brišu automatski. Ako upis na disk ne uspe,
+tekst ostaje u memoriji i status prijavljuje neuspeh; audio se ne briše zbog
+navodno uspešnog čuvanja teksta.
+
+U **Podešavanja → Unos i clipboard** prekidač **Čuvaj diktat i u clipboard-u**
+bira da li diktat ostaje i u clipboard-u. Početno je isključen: lepljenje
+privremeno koristi clipboard, a zatim vraća prethodni sadržaj. Istorija i
+rezervne kopije rade nezavisno od prekidača. Ako macOS ne može da pročita
+aktivno polje kroz Accessibility, Diktat ipak pokušava unos. Ne ponavlja ga
+naslepo, da ne bi duplirao tekst. Bez aktivnog polja ili potrebne dozvole
+unos nije garantovan, ali prepis ostaje u istoriji.
+Eksterni menadžeri clipboard istorije mogu zabeležiti i privremenu kopiju.
+
+Na Androidu su prikaz uz tajmer i upis tokom govora zasebni izbori. Aplikacija
+ima polje za direktan diktat i dugme **Završi**; isto dugme postoji na
+plutajućem tajmeru pri diktiranju u drugim aplikacijama.
 
 Mana: komadi sa mikrofona se čitaju samo jednom, pa neuspeo poziv nema šta da
 ponovi. Na telefonu takav diktat propada. Mac zato usput čuva zvuk dok prepis
@@ -169,16 +229,10 @@ pošalje poruku, a bash skripta tu poruku ne ume da primi.
 
 Na drugom računaru se ništa ne povlači ručno. Aplikacija pri pokretanju i
 jednom dnevno tiho pita GitHub koje je poslednje izdanje (isto koje koristi i
-telefon). Kad je novije od instaliranog:
+telefon). U podešavanjima nema natpisa verzije ni dugmeta za proveru ili
+instalaciju. Nova verzija se i dalje preuzima sama.
 
-- u traci menija pored cifara stoji **↑**,
-- u zaglavlju Podešavanja, između „Zaustavi snimanje" i „Zatvori Diktat",
-  dugme pozeleni i piše
-  „Ažuriraj v1.66 → v1.67". Inače piše „Proveri ažuriranje (v1.66)", sa
-  instaliranom verzijom u zagradi, i radi i ručno. Pun ishod provere je u
-  opisu koji iskoči kad se miš zadrži nad dugmetom.
-
-Klik preuzme kod tog izdanja, zameni instaliranu kopiju, doinstalira
+Kad je izdanje novije, aplikacija sama preuzme kod, zameni instaliranu kopiju, doinstalira
 biblioteke ako se `requirements.txt` promenio i ponovo pokrene Diktat.
 `config.json` sa ključevima ostaje. Ako diktat traje, ažuriranje čeka da se
 završi. Automatska provera se gasi sa `"update_check": false` u `config.json`.
@@ -310,7 +364,7 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 
 | Ključ | Podrazumevano | Objašnjenje |
 |---|---|---|
-| `language` | `sr-RS` | jezik prepoznavanja |
+| `language` | `sr-RS` | uvek srpski; drugi kod se pri čitanju vraća na `sr-RS` |
 | `api_key` | `""` | prazno = ugrađeni javni ključ |
 | `transcription_provider` | `google` | `google`, `openai` ili `gemini_live`; međusobno isključivi izbor |
 | `openai_api_key` | `""` | OpenAI Platform ključ; ne čuvati ga u repozitorijumu |
@@ -349,8 +403,8 @@ izvora, tekstualna pravila i ostale opcije nalaze se u prozoru Podešavanja.
 | `segment_after_seconds` | `0` | `0` = seci na svakoj pauzi, ma koliko kratka celina |
 | `min_seconds` | `0.35` | kraći pritisak = obična prečica, ne diktat |
 | `insert_method` | `auto` | `auto` = kuca tekst i ne dira clipboard (prelazi na lepljenje samo za tekst sa novim redom); `type` \| `paste` \| `clipboard_only` | `paste`, `type` (znak po znak), `clipboard_only` |
-| `restore_clipboard` | `true` | vraća stari clipboard posle lepljenja |
-| `history_size` | `3` | koliko poslednjih tekstova čuvati za kopiranje |
+| `save_clipboard` | `false` | ostavi diktat i u clipboard-u; isključeno vraća prethodni sadržaj, istorija se uvek čuva |
+| `history_size` | `100` | koliko poslednjih tekstova čuvati; prozor pokazuje pet, ostalo se skroluje |
 | `show_overlay` | `false` | pilula sa vremenom preko ekrana |
 | `live_preview` | `true` | okvir sa prepisom uživo (Gemini Live) |
 | `overlay_position` | `top-right` | `top-right` ili `bottom` |

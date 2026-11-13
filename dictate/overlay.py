@@ -26,6 +26,7 @@ Svi metodi se smeju zvati SAMO sa glavne niti (rumps Timer je na njoj).
 import math
 
 import AppKit
+import objc
 import Quartz
 from Foundation import NSMakeRect
 
@@ -35,7 +36,7 @@ MIN_WIDTH = 74.0
 MAX_WIDTH = 640.0
 SLACK = 3.0              # rezerva da se tekst nikad ne odseca
 RING_WIDTH = 3.0         # zuti prsten kad se nesto obradjuje u pozadini
-MONO_TEMPLATE = "još 99s"   # najsiri sadrzaj tajmera; po njemu je fiksna sirina
+MONO_TEMPLATE = "99s left"   # najsiri sadrzaj tajmera; po njemu je fiksna sirina
 
 BOTTOM_MARGIN = 150      # za position="bottom"
 EDGE_MARGIN = 12         # za position="top-right"
@@ -249,36 +250,132 @@ class Overlay:
 # ---------------------------------------------------------------- prikaz uzivo
 
 LIVE_MAX_WIDTH = 760.0
-LIVE_MIN_HEIGHT = 46.0
-LIVE_MAX_HEIGHT = 200.0
-LIVE_PAD = 18.0
+LIVE_MAX_HEIGHT = 260.0
 LIVE_BOTTOM = 120.0
 LIVE_CHARS = 400          # koliko poslednjih znakova stoji na ekranu
-LIVE_BG = (0.08, 0.09, 0.11)
+# Izgled titla: centriran tekst, iza svakog reda crna cetvrtasta traka 75 %.
+TITL_FONT = 19.0
+TITL_PAD_X = 10.0         # traka viri levo i desno od reda
+TITL_PAD_Y = 4.0          # i iznad prvog, ispod poslednjeg reda
+TITL_TRAKA = (0.0, 0.0, 0.0, 0.75)
+TITL_TRAKA_KASNI = (1.00, 0.80, 0.05, 0.92)   # zuto: prepis kasni, mikrofon snima
+PLACEHOLDER = "Listening…"
+
+
+class TitlView(AppKit.NSView):
+    """Crta tekst kao titl: svaki red na svojoj traci, bez okvira oko svega."""
+
+    def initWithFrame_(self, frame):
+        self = objc.super(TitlView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self.storage = AppKit.NSTextStorage.alloc().init()
+        self.lm = AppKit.NSLayoutManager.alloc().init()
+        self.container = AppKit.NSTextContainer.alloc().initWithContainerSize_(
+            AppKit.NSMakeSize(frame.size.width - 2 * TITL_PAD_X, 1e5)
+        )
+        self.container.setLineFragmentPadding_(0)
+        self.lm.addTextContainer_(self.container)
+        self.storage.addLayoutManager_(self.lm)
+        self.traka = TITL_TRAKA
+        self.visina_reda = 0.0
+        return self
+
+    def isFlipped(self):
+        return True
+
+    @objc.python_method
+    def postavi(self, text, boja, font):
+        stil = AppKit.NSMutableParagraphStyle.alloc().init()
+        stil.setAlignment_(AppKit.NSTextAlignmentCenter)
+        stil.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
+        # Razmak izmedju redova = gornji + donji luft trake, da se trake
+        # dodiruju bez preklapanja i da svaki red ima isti luft gore i dole.
+        stil.setLineSpacing_(2 * TITL_PAD_Y)
+        self.visina_reda = self.lm.defaultLineHeightForFont_(font)
+        attrs = {
+            AppKit.NSFontAttributeName: font,
+            AppKit.NSForegroundColorAttributeName: boja,
+            AppKit.NSParagraphStyleAttributeName: stil,
+        }
+        self.storage.setAttributedString_(
+            AppKit.NSAttributedString.alloc().initWithString_attributes_(text, attrs)
+        )
+        self.setNeedsDisplay_(True)
+
+    @objc.python_method
+    def sirina_teksta(self, width):
+        self.container.setContainerSize_(AppKit.NSMakeSize(width - 2 * TITL_PAD_X, 1e5))
+
+    @objc.python_method
+    def redovi(self):
+        """Pravougaonik svakog reda (koriscen deo), odozgo nadole."""
+        self.lm.ensureLayoutForTextContainer_(self.container)
+        out = []
+        i, n = 0, self.lm.numberOfGlyphs()
+        while i < n:
+            rect, opseg = self.lm.lineFragmentUsedRectForGlyphAtIndex_effectiveRange_(i, None)
+            out.append((rect, opseg))
+            i = opseg.location + opseg.length
+        return out
+
+    @objc.python_method
+    def visina(self) -> float:
+        redovi = self.redovi()
+        if not redovi:
+            return 0.0
+        poslednji = redovi[-1][0]
+        return math.ceil(poslednji.origin.y + self.visina_reda + 2 * TITL_PAD_Y)
+
+    def drawRect_(self, dirty):
+        redovi = self.redovi()
+        if not redovi:
+            return
+        AppKit.NSColor.colorWithRed_green_blue_alpha_(*self.traka).set()
+        for r, opseg in redovi:
+            # Bez praznih razmaka na kraju reda, da traka bude simetricna.
+            vidljiv = self.lm.boundingRectForGlyphRange_inTextContainer_(
+                AppKit.NSMakeRange(opseg.location, opseg.length), self.container
+            )
+            x0 = r.origin.x + TITL_PAD_X - TITL_PAD_X
+            sirina = r.size.width
+            if vidljiv.size.width and vidljiv.size.width < sirina:
+                sirina = vidljiv.size.width
+                x0 = vidljiv.origin.x
+            # Tekst reda pocinje na r.y + PAD_Y; traka ima PAD_Y luft gore i dole.
+            AppKit.NSRectFill(NSMakeRect(
+                x0, r.origin.y, sirina + 2 * TITL_PAD_X, self.visina_reda + 2 * TITL_PAD_Y
+            ))
+        self.lm.drawGlyphsForGlyphRange_atPoint_(
+            AppKit.NSMakeRange(0, self.lm.numberOfGlyphs()),
+            AppKit.NSMakePoint(TITL_PAD_X, TITL_PAD_Y),
+        )
 
 
 class LivePanel:
-    """Okvir sa prepisom koji se ispisuje DOK govoris.
+    """Okvir sa prepisom koji se ispisuje DOK govoris, u izgledu titla.
 
     Postoji zato sto direktan upis u aktivno polje stize tek kad Gemini potvrdi
-    celinu — izmedju dve potvrde nema nikakvog znaka da aplikacija cuje. Ovde se
-    vidi i medjurezultat, koji se u polje namerno NE kuca: model sme da ga
-    promeni, pa bi kasnija izmena obrisala rucnu ispravku.
+    celinu. Ovde se vidi i medjurezultat, koji se u polje namerno NE kuca:
+    model sme da ga promeni, pa bi kasnija izmena obrisala rucnu ispravku.
 
-    Panel je isti soj kao pilula: `NonactivatingPanel`, propusta klik i nikad ne
-    uzima fokus, jer tekst mora da ode u polje koje je bilo aktivno pre diktata.
+    Izgled (od 2026-11-13): centriran tekst, svaki red na crnoj cetvrtastoj
+    traci od 75 %, kao titl. Kad prepis kasni, trake postaju zute, tekst crn.
+
+    Panel je `NonactivatingPanel`, propusta klik i nikad ne uzima fokus, jer
+    tekst mora da ode u polje koje je bilo aktivno pre diktata.
     Svi metodi se zovu SAMO sa glavne niti.
     """
 
     def __init__(self, avoid_pill=False):
         self.avoid_pill = avoid_pill
         self._panel = None
-        self._box = None
-        self._label = None
+        self._view = None
+        self._delayed = False
         self._visible = False
         self._text = ""
         self._font = AppKit.NSFont.systemFontOfSize_weight_(
-            17, AppKit.NSFontWeightMedium
+            TITL_FONT, AppKit.NSFontWeightMedium
         )
 
     @property
@@ -293,7 +390,7 @@ class LivePanel:
             | AppKit.NSWindowStyleMaskNonactivatingPanel
         )
         panel = AppKit.NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(0, 0, LIVE_MAX_WIDTH, LIVE_MIN_HEIGHT),
+            NSMakeRect(0, 0, LIVE_MAX_WIDTH, 40),
             style,
             AppKit.NSBackingStoreBuffered,
             False,
@@ -301,7 +398,7 @@ class LivePanel:
         panel.setLevel_(AppKit.NSScreenSaverWindowLevel)
         panel.setOpaque_(False)
         panel.setBackgroundColor_(AppKit.NSColor.clearColor())
-        panel.setHasShadow_(True)
+        panel.setHasShadow_(False)
         panel.setIgnoresMouseEvents_(True)
         panel.setReleasedWhenClosed_(False)
         panel.setHidesOnDeactivate_(False)
@@ -312,36 +409,26 @@ class LivePanel:
             | AppKit.NSWindowCollectionBehaviorStationary
             | AppKit.NSWindowCollectionBehaviorIgnoresCycle
         )
-
-        box = AppKit.NSView.alloc().initWithFrame_(
-            NSMakeRect(0, 0, LIVE_MAX_WIDTH, LIVE_MIN_HEIGHT)
-        )
-        box.setWantsLayer_(True)
-        box.layer().setCornerRadius_(14.0)
-        box.layer().setBackgroundColor_(
-            Quartz.CGColorCreateGenericRGB(LIVE_BG[0], LIVE_BG[1], LIVE_BG[2], 0.92)
-        )
-        panel.setContentView_(box)
-
-        label = AppKit.NSTextField.alloc().initWithFrame_(
-            NSMakeRect(LIVE_PAD, LIVE_PAD, LIVE_MAX_WIDTH - LIVE_PAD * 2, 20)
-        )
-        label.setBezeled_(False)
-        label.setDrawsBackground_(False)
-        label.setEditable_(False)
-        label.setSelectable_(False)
-        label.setFont_(self._font)
-        label.setTextColor_(AppKit.NSColor.whiteColor())
-        label.setAlignment_(AppKit.NSTextAlignmentLeft)
-        label.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
-        label.setUsesSingleLineMode_(False)
-        label.setMaximumNumberOfLines_(0)
-        label.setStringValue_("")
-        box.addSubview_(label)
-
+        view = TitlView.alloc().initWithFrame_(NSMakeRect(0, 0, LIVE_MAX_WIDTH, 40))
+        panel.setContentView_(view)
         self._panel = panel
-        self._box = box
-        self._label = label
+        self._view = view
+
+    def set_delayed(self, delayed: bool):
+        """Prepis kasni: trake postaju zute, tekst crn, bez poruke."""
+        delayed = bool(delayed)
+        self._build()
+        if delayed == self._delayed:
+            return
+        self._delayed = delayed
+        self._view.traka = TITL_TRAKA_KASNI if delayed else TITL_TRAKA
+        self._crtaj()
+
+    def _boja_teksta(self):
+        prazno = self._text in ("", PLACEHOLDER)
+        if self._delayed:
+            return AppKit.NSColor.colorWithWhite_alpha_(0.0, 0.6 if prazno else 0.95)
+        return AppKit.NSColor.colorWithWhite_alpha_(1.0, 0.6 if prazno else 1.0)
 
     def _width(self) -> float:
         screen = AppKit.NSScreen.mainScreen()
@@ -350,58 +437,51 @@ class LivePanel:
         return min(LIVE_MAX_WIDTH, max(320.0, screen.visibleFrame().size.width - 160))
 
     def _height(self, text, width) -> float:
-        """Visina prelomljenog teksta, ogranicena da okvir ne pokrije ekran."""
-        attrs = {AppKit.NSFontAttributeName: self._font}
-        okvir = AppKit.NSString.stringWithString_(text or " ").boundingRectWithSize_options_attributes_(
-            AppKit.NSMakeSize(width - LIVE_PAD * 2, LIVE_MAX_HEIGHT),
-            AppKit.NSStringDrawingUsesLineFragmentOrigin
-            | AppKit.NSStringDrawingUsesFontLeading,
-            attrs,
-        )
-        return min(
-            LIVE_MAX_HEIGHT,
-            max(LIVE_MIN_HEIGHT, math.ceil(okvir.size.height) + LIVE_PAD * 2),
-        )
+        """Visina svih redova sa trakama, ogranicena da ne pokrije ekran."""
+        self._view.sirina_teksta(width)
+        self._view.postavi(text or " ", self._boja_teksta(), self._font)
+        return min(LIVE_MAX_HEIGHT, self._view.visina())
 
-    def _layout(self, text):
+    def _crtaj(self):
+        if not self._text:
+            return
         width = self._width()
-        height = self._height(text, width)
+        height = self._height(self._text, width)
         screen = AppKit.NSScreen.mainScreen()
         if screen is None:
             return
         v = screen.visibleFrame()
-        # Kad je pilula sa vremenom takodje na dnu, okvir ide iznad nje.
+        # Kad je pilula sa vremenom takodje na dnu, titl ide iznad nje.
         dno = LIVE_BOTTOM + (HEIGHT + 14 if self.avoid_pill else 0)
         x = v.origin.x + (v.size.width - width) / 2
         y = v.origin.y + dno
         self._panel.setFrame_display_(NSMakeRect(x, y, width, height), True)
-        self._box.setFrame_(NSMakeRect(0, 0, width, height))
-        self._label.setFrame_(
-            NSMakeRect(LIVE_PAD, LIVE_PAD, width - LIVE_PAD * 2, height - LIVE_PAD * 2)
-        )
+        self._view.setFrame_(NSMakeRect(0, 0, width, height))
+        self._view.setNeedsDisplay_(True)
 
     # ------------------------------------------------------------------
 
-    def show(self, text=""):
+    def show(self, text="", status=""):
         self._build()
-        self.set_text(text)
+        self.set_text(text, status=status)
         self._panel.orderFrontRegardless()
         self._visible = True
 
-    def set_text(self, text):
+    def set_text(self, text, status=""):
         self._build()
         # Samo rep: dug diktat bi inace prerastao ekran, a gleda se ionako
         # poslednja recenica.
-        clean = " ".join((text or "").split())[-LIVE_CHARS:]
-        prikaz = clean or "Slušam…"
+        clean = " ".join((text or "").split())[-(180 if status else LIVE_CHARS):]
+        prikaz = (status + "\n\n" + (clean or PLACEHOLDER)) if status else (clean or PLACEHOLDER)
         if prikaz == self._text:
             return
         self._text = prikaz
-        self._label.setStringValue_(prikaz)
-        self._layout(prikaz)
+        self._crtaj()
 
     def hide(self):
         if self._panel is not None and self._visible:
             self._panel.orderOut_(None)
         self._visible = False
         self._text = ""
+        if self._view is not None:
+            self.set_delayed(False)

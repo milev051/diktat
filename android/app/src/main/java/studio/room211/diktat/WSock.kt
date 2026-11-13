@@ -273,6 +273,18 @@ class WSock(
         socket = null
     }
 
+    /**
+     * Prekini vezu odmah, i ako je slanje zaglavljeno.
+     *
+     * `close` prvo šalje okvir i može da čeka na pun bafer. Ovde se utičnica
+     * gasi bez tog čekanja, pa i čitanje i slanje izađu iz blokade.
+     */
+    fun abort() {
+        closed = true
+        val sock = socket
+        try { sock?.close() } catch (_: Exception) {}
+    }
+
     companion object {
         /**
          * Fiksna konstanta iz RFC 6455; sluzi samo za proveru odgovora.
