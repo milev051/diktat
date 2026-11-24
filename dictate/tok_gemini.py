@@ -7,7 +7,7 @@ rep obicnog aktivnog polja; potvrda ga zakljucava.
 import time
 from contextlib import nullcontext
 
-from . import dijagnostika, geministt, insert, rezerva
+from . import dijagnostika, geministt, insert, rezerva, sonioxstt
 
 LIVE_MREZNI_ROK = 20
 
@@ -77,6 +77,20 @@ class GeminiTok:
             session.segment(session.next_index(), b"", text, kind="gemini_live")
             session.finish(b"", text)
         return text
+
+    def _recognize_soniox(self, pcm: bytes) -> str:
+        return geministt.post_process(sonioxstt.recognize(pcm, self.cfg), self.cfg)
+
+    def _transcribe_soniox(self, recorder):
+        """Soniox stt-rt-v6: isti okvir uživo kao Gemini Live, zvuk ide u toku."""
+        komadi = self._tracked(recorder)
+        prikaz = lambda tekst: self._live_preview(recorder, tekst)
+        sirovo = sonioxstt.recognize_live_stream(
+            komadi, self.cfg, timeout=LIVE_MREZNI_ROK, on_update=prikaz)
+        if recorder.cancelled:
+            return ""
+        self._settle_phase()
+        return geministt.post_process(sirovo, self.cfg)
 
     def _live_preview_on(self) -> bool:
         return bool(self.cfg.get("live_preview", True))
@@ -149,7 +163,7 @@ class GeminiTok:
         show_diagnostics = bool(self.cfg.get("live_diagnostics", True))
         google = (self.cfg.get("transcription_provider", "google") == "google"
                   and self._segmenting())
-        if not ((show_preview or show_diagnostics) and (geministt.enabled(self.cfg) or google)):
+        if not ((show_preview or show_diagnostics) and (geministt.enabled(self.cfg) or sonioxstt.enabled(self.cfg) or google)):
             return
         recorder = self._recorder
         poslednji = getattr(self, "_live_last_update_at", time.monotonic())

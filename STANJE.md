@@ -1,4 +1,6 @@
 # Stanje
+_2026-11-24_
+- Soniox stt-rt-v6 dodat (Mac + Android 1.88). Mac instaliran i radi na Sonioxu; ključ u ~/.config/diktat/soniox_api_key. APK: Agent Desk data/prilozi/c075f8bd…/Diktat-1.88-soniox.apk, čeka ručnu instalaciju i upis ključa. Otvoreno: živ diktat mikrofonom; objava 1.88 na GitHub (inače auto-ažuriranje Maca na novije izdanje briše lokalnu izmenu).
 _2026-11-13_
 - 1.87 objavljena na GitHub-u (commit 429912e, izdanje v1.87 sa APK). Telefon i Mac odsad nalaze nove verzije sami. Android 1.87: titl dole, bez Stop dugmeta.
 - Android 1.86: dugme sa verzijom i proverom ažuriranja na vrhu ekrana. APK u Agent Desk data/prilozi/13f303fb…/Diktat-1.86.apk. Ažuriranje ne radi dok se na GitHub ne objavi novije izdanje od v1.76.

@@ -106,6 +106,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(switch(this, "Abbreviations", cfg.abbreviations) { cfg.abbreviations = it })
         root.addView(compactProvider())
         root.addView(compactKey())
+        root.addView(compactSonioxKey())
         root.addView(nedostajuceDozvole())
         root.addView(istorija())
 
@@ -362,6 +363,7 @@ class MainActivity : AppCompatActivity() {
     private var attemptedUpdate = ""
     private var pendingApk: File? = null
     private lateinit var geminiKeyRow: LinearLayout
+    private lateinit var sonioxKeyRow: LinearLayout
     private lateinit var geminiCheck: MaterialButton
     private var keyCheckGeneration = 0
 
@@ -413,11 +415,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun compactProvider(): ViewGroup {
-        val providers = listOf("gemini_live", "google")
+        val providers = listOf("gemini_live", "google", "soniox")
         val spinner = android.widget.Spinner(this).apply {
             adapter = android.widget.ArrayAdapter(this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                listOf("Gemini 3.5 Transcribe Live", "Google Speech-to-Text"))
+                listOf("Gemini 3.5 Transcribe Live", "Google Speech-to-Text", "Soniox"))
             setSelection(providers.indexOf(cfg.transcriptionProvider).coerceAtLeast(0))
             contentDescription = "Transcription service"
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
@@ -425,7 +427,9 @@ class MainActivity : AppCompatActivity() {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
                     cfg.transcriptionProvider = providers[position]
                     if (::geminiKeyRow.isInitialized) geminiKeyRow.visibility =
-                        if (position == 0) View.VISIBLE else View.GONE
+                        if (providers[position] == "gemini_live") View.VISIBLE else View.GONE
+                    if (::sonioxKeyRow.isInitialized) sonioxKeyRow.visibility =
+                        if (providers[position] == "soniox") View.VISIBLE else View.GONE
                 }
             }
         }
@@ -484,6 +488,21 @@ class MainActivity : AppCompatActivity() {
         geminiKeyRow.visibility = if (cfg.transcriptionProvider == "gemini_live") View.VISIBLE else View.GONE
         checkGeminiKey()
         return geminiKeyRow
+    }
+
+    /** Polje za Soniox ključ; vidi se samo kad je Soniox izabran. */
+    private fun compactSonioxKey(): ViewGroup {
+        sonioxKeyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val (layout, edit) = field(this, "Soniox API key", cfg.sonioxApiKey) { cfg.sonioxApiKey = it }
+        edit.contentDescription = "Soniox API key"
+        layout.boxBackgroundMode = com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE
+        val r = dp(14).toFloat()
+        layout.setBoxCornerRadii(r, r, r, r)
+        edit.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        sonioxKeyRow.setPadding(0, dp(8), 0, 0)
+        sonioxKeyRow.addView(layout, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        sonioxKeyRow.visibility = if (cfg.transcriptionProvider == "soniox") View.VISIBLE else View.GONE
+        return sonioxKeyRow
     }
 
     private fun checkGeminiKey() {

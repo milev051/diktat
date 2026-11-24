@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 
-from . import audio, config, dijagnostika, geministt, insert, rezerva
+from . import audio, config, dijagnostika, geministt, insert, rezerva, sonioxstt
 from .pomoc import _short_error
 
 # Koliko posle repa STOP sme da ceka pre nego sto osigurac oslobodi mikrofon.
@@ -241,7 +241,7 @@ class Snimanje:
 
     def _limit_seconds(self) -> float:
         """Koliko sme da traje JEDAN pritisak tastera."""
-        if geministt.enabled(self.cfg):
+        if geministt.enabled(self.cfg) or sonioxstt.enabled(self.cfg):
             # Live je jedini izvor koji salje zvuk DOK snimas (~2,5 MB/min), pa
             # zaboravljen diktat tu curi podatke sve vreme, a ne tek na kraju.
             # Zato kratka granica: posle nje se trazi nov pritisak.
@@ -472,6 +472,8 @@ class Snimanje:
         """Svaki servis ima svoj tok: tok_openai.py, tok_gemini.py, tok_google.py."""
         if self.cfg.get("transcription_provider", "google") == "openai":
             return self._transcribe_whole(recorder, "openai")
+        if sonioxstt.enabled(self.cfg):
+            return self._transcribe_soniox(recorder)
         if geministt.enabled(self.cfg):
             return self._transcribe_live(recorder)
         return self._transcribe_google(recorder)
@@ -508,6 +510,8 @@ class Snimanje:
             return ""
         if self.cfg.get("transcription_provider", "google") == "openai":
             return self._recognize_openai(pcm)
+        if sonioxstt.enabled(self.cfg):
+            return self._recognize_soniox(pcm)
         if geministt.enabled(self.cfg):
             return self._recognize_gemini(pcm)
         return self._recognize_google(pcm)

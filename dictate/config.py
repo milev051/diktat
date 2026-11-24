@@ -13,7 +13,7 @@ CONFIG_PATH = ROOT / "config.json"
 
 # Izvori transkripcije; nepoznata vrednost bezbedno pada na Google, da
 # postojece instalacije nastave da rade.
-PROVIDERS = ("google", "openai", "gemini_live")
+PROVIDERS = ("google", "openai", "gemini_live", "soniox")
 # Jedini jezik prepoznavanja. Ne cita se iz config.json: stari
 # `language_codes` je znao da ostavi drugi kod, a prazno na Live API-ju
 # znaci da model sam bira jezik.
@@ -23,6 +23,7 @@ DEFAULTS = {
     # --- Prepoznavanje ---
     # "google" = besplatni Web Speech endpoint; "openai" = GPT transkripcija;
     # "gemini_live" = gemini-3.5-transcribe-live preko Live API-ja.
+    # "soniox" = Soniox stt-rt-v6 uzivo (kljuc u ~/.config/diktat/soniox_api_key).
     # Obicni "gemini" (gemini-3.5-transcribe) je uklonjen: 25 zahteva dnevno
     # na besplatnom nivou ne znaci nista za svakodnevni rad.
     "transcription_provider": "gemini_live",
@@ -146,7 +147,7 @@ def desktop_policy(cfg):
     always loads this policy, so old settings cannot re-enable removed features.
     """
     if (not cfg.get("compact_desktop_v1")
-            or cfg.get("transcription_provider") not in ("google", "gemini_live")):
+            or cfg.get("transcription_provider") not in ("google", "gemini_live", "soniox")):
         cfg["transcription_provider"] = "gemini_live"
     cfg.update(update_check=True, hotkey_section=True, hotkey_grave=False, samo_zarezi=False,
                compact_desktop_v1=True, mode="toggle", continuous=True, continuous_max_seconds=600,

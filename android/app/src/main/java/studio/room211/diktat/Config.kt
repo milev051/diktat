@@ -76,6 +76,11 @@ class Config(context: Context) {
             if (v in PROVIDERS) v else "gemini_live",
         ).apply()
 
+    /** Soniox ključ korisnik upisuje u aplikaciji; ne ugrađuje se u APK. */
+    var sonioxApiKey: String
+        get() = prefs.getString("soniox_api_key", "")!!
+        set(v) = prefs.edit().putString("soniox_api_key", v.trim()).apply()
+
     /** Ključ se unosi u aplikaciji; nema ugrađenog OpenAI ključa. */
     var openAiApiKey: String
         get() = prefs.getString("openai_api_key", "")!!
@@ -99,7 +104,7 @@ class Config(context: Context) {
     val longRecording: Boolean
         get() = when (transcriptionProvider) {
             "openai" -> openAiLongRecording
-            "gemini_live" -> true
+            "gemini_live", "soniox" -> true
             else -> continuous
         }
 
@@ -192,7 +197,7 @@ class Config(context: Context) {
         get() = MobilePolicy.MAX_SECONDS
 
     var geminiLivePreview: Boolean
-        get() = transcriptionProvider == "gemini_live"
+        get() = transcriptionProvider == "gemini_live" || transcriptionProvider == "soniox"
         set(v) = prefs.edit().putBoolean("gemini_live_preview", v).apply()
 
     var geminiLiveInsert: Boolean

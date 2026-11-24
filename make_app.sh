@@ -98,10 +98,12 @@ prepisi_kod() {
     echo "Okruzenje prepisano."
   fi
   # Svaka instalacija bira Gemini Live, bez ispisa ili zamene API kljuca.
+  # Izuzetak: izabran Soniox ostaje (kljuc je u ~/.config/diktat/soniox_api_key).
   (cd "$DOM/app" && "$DOM/venv/bin/python" - <<'PYTHON'
 from dictate import config
 cfg = config.load()
-cfg["transcription_provider"] = "gemini_live"
+if cfg.get("transcription_provider") != "soniox":
+    cfg["transcription_provider"] = "gemini_live"
 config.save(config.desktop_policy(cfg))
 PYTHON
   )

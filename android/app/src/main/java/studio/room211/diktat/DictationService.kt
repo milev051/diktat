@@ -130,6 +130,11 @@ class DictationService : Service() {
             stopSelf()
             return
         }
+        if (SonioxStt.enabled(cfg) && cfg.sonioxApiKey.isBlank()) {
+            toast("Soniox API ključ nije podešen — unesi ga u aplikaciji")
+            stopSelf()
+            return
+        }
         if (GeminiStt.enabled(cfg) && cfg.polishApiKey.isBlank()) {
             toast("Gemini API ključ nije podešen — unesi ga u aplikaciji")
             stopSelf()
@@ -170,7 +175,7 @@ class DictationService : Service() {
         pilula.prikazi()
         tick()
         if (cfg.longRecording) {
-            if (GeminiStt.enabled(cfg)) thread { geminiLiveLoop() } else thread { segmentLoop() }
+            if (uzivo()) thread { geminiLiveLoop() } else thread { segmentLoop() }
         }
     }
 
@@ -179,8 +184,11 @@ class DictationService : Service() {
             stopRecording()
             return
         }
-        if (GeminiStt.enabled(cfg) && (busy || prepis.vidjeno().isNotEmpty())) prisilnoZavrsi()
+        if (uzivo() && (busy || prepis.vidjeno().isNotEmpty())) prisilnoZavrsi()
     }
+
+    /** Servisi koji šalju zvuk dok snimanje traje (Gemini Live, Soniox). */
+    private fun uzivo() = GeminiStt.enabled(cfg) || SonioxStt.enabled(cfg)
 
     private fun stopRecording() {
         if (!isRecording) return
@@ -203,7 +211,7 @@ class DictationService : Service() {
             // Petlja sama pokupi ostatak iz reda i posalje rep; ovde se samo
             // trazi kraj, da se poslednji komadi ne izgube.
             recorder?.requestStop()
-            if (GeminiStt.enabled(cfg)) handler.postDelayed(salvageRunnable, 8_000)
+            if (uzivo()) handler.postDelayed(salvageRunnable, 8_000)
             return
         }
 
@@ -337,10 +345,7 @@ class DictationService : Service() {
                     }
                 }
             } else null
-            val sirov = GeminiStt.recognizeStream(
-                cfg, onUpdate = onUpdate, onFinal = onFinal, onInterim = onInterim,
-                veza = liveVeza,
-            ) {
+            val izvor: () -> ByteArray? = {
                 val chunk = rec.nextChunk()
                 when {
                     chunk != null -> {
@@ -363,6 +368,12 @@ class DictationService : Service() {
                     else -> null
                 }
             }
+            val sirov = if (SonioxStt.enabled(cfg)) {
+                SonioxStt.recognizeStream(cfg, onUpdate = onUpdate, veza = liveVeza, komadi = izvor)
+            } else GeminiStt.recognizeStream(
+                cfg, onUpdate = onUpdate, onFinal = onFinal, onInterim = onInterim,
+                veza = liveVeza, komadi = izvor,
+            )
             tekst = GeminiStt.postProcess(sirov, cfg)
             if (tekst.isBlank()) problem = "Ništa nije prepoznato"
         } catch (e: Exception) {
@@ -588,6 +599,7 @@ class DictationService : Service() {
             val sirov = when {
                 cfg.transcriptionProvider == "openai" -> OpenAiTranscription.recognize(pcm, cfg)
                 GeminiStt.enabled(cfg) -> GeminiStt.recognize(pcm, cfg)
+                SonioxStt.enabled(cfg) -> SonioxStt.recognize(pcm, cfg)
                 else -> WebStt.recognize(pcm, cfg)
             }
             // Kad model sredjuje tekst, dobija ga nedirnutog: skracenice i
@@ -597,7 +609,7 @@ class DictationService : Service() {
             // primenjuju na kraju, nad ispravljenim tekstom.
             text = if (cfg.transcriptionProvider == "openai") {
                 OpenAiTranscription.postProcess(sirov, cfg)
-            } else if (GeminiStt.enabled(cfg)) {
+            } else if (uzivo()) {
                 GeminiStt.postProcess(sirov, cfg)
             } else if (formal() && cfg.polishTidy) sirov.trim()
             else TextPolish.apply(sirov, cfg)

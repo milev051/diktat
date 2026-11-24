@@ -48,7 +48,7 @@ class CompactDesktop(unittest.TestCase):
         cfg = self.load(dict(compact_desktop_v1=True, transcription_provider='google'))
         self.assertEqual(cfg['transcription_provider'], 'google')
         self.assertTrue(cfg['live_preview'])
-        self.assertEqual(set(settings_window.PROVIDER_TITLES), {'google', 'gemini_live'})
+        self.assertEqual(set(settings_window.PROVIDER_TITLES), {'google', 'gemini_live', 'soniox'})
 
     def test_escape_clears_every_kind_of_mouse_binding(self):
         app = DictateApp.__new__(DictateApp)

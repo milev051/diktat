@@ -4,7 +4,7 @@
 import threading
 import traceback
 
-from . import audio, geministt, insert, rezerva
+from . import audio, geministt, insert, rezerva, sonioxstt
 from .pomoc import _short_error
 
 
@@ -60,7 +60,7 @@ class PrepisSacuvanog:
         isto kao u neprekidnom rezimu. Gemini i OpenAI primaju ceo snimak.
         """
         if (self.cfg.get("transcription_provider", "google") == "openai"
-                or geministt.enabled(self.cfg)):
+                or geministt.enabled(self.cfg) or sonioxstt.enabled(self.cfg)):
             return self._apply_rules(self._recognize(pcm))
         rate = int(self.cfg["sample_rate"])
         korak = rate // 10 * 2

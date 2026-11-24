@@ -138,3 +138,8 @@
 - Korisnik traži identična podešavanja na oba uređaja. Mac gubi prekidač „Remove punctuation”; interpunkcija se uvek uklanja (`strip_punctuation` uvek True pri učitavanju). Zamenjuje Mac deo odluke o prekidaču „Remove punctuation”. Start at login, mikrofon i dugme miša ostaju samo na Macu jer nemaju smisla na telefonu.
 - Telefon: istorija od ivice do ivice kao spisak, svih do 100 u stranici; servis i polje ključa uokvireni.
 - Izvor: čet 13f303fb-29d7-48a4-acfb-a19027ad71aa, korisnik 2026-11-13T18:43Z.
+
+## 2026-11-24, Soniox kao servis prepisa
+- Odluka: Soniox `stt-rt-v6` je treći izbor servisa na Macu i Androidu, uz Google i Gemini Live; Mac je prebačen na Soniox. Ključ je u posebnom Soniox projektu „Diktat” da se potrošnja vidi odvojeno od nmb3. Mac čita ključ iz `soniox_api_key` u config.json ili iz `~/.config/diktat/soniox_api_key`; telefon iz polja u aplikaciji.
+- Razlog: korisnik: „da kreira api kljuc za soniox … da koristim to umesto googlea”.
+- Izvor: čet Newsmax Balkan, podčet 1fb43a81-812a-48b4-abcb-9239c8bde191, 2026-11-24.

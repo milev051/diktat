@@ -10,6 +10,7 @@ package studio.room211.diktat
 object Prepoznaj {
     fun tekst(pcm: ByteArray, cfg: Config): String = when {
         GeminiStt.enabled(cfg) -> GeminiStt.postProcess(GeminiStt.recognize(pcm, cfg), cfg)
+        SonioxStt.enabled(cfg) -> GeminiStt.postProcess(SonioxStt.recognize(pcm, cfg), cfg)
         cfg.transcriptionProvider == "openai" ->
             OpenAiTranscription.postProcess(OpenAiTranscription.recognize(pcm, cfg), cfg)
         else -> TextPolish.apply(WebStt.recognize(pcm, cfg), cfg)

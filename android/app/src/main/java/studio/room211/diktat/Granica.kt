@@ -27,7 +27,7 @@ object Granica {
     ): Int = when {
         // Granica za Live vazi bez obzira na „dugo snimanje": ona ne stiti od
         // predugackog ZAHTEVA nego od zaboravljenog mikrofona koji trosi podatke.
-        provider == "gemini_live" -> geminiLive
+        provider == "gemini_live" || provider == "soniox" -> geminiLive
         !dugoSnimanje -> kratko
         provider == "openai" -> openAi
         else -> neprekidno

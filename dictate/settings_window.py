@@ -15,6 +15,7 @@ from .upis import VELICINA_ISTORIJE
 PROVIDER_TITLES = {
     "google": "Google Speech-to-Text",
     "gemini_live": "Gemini 3.5 Transcribe Live",
+    "soniox": "Soniox",
 }
 
 MIKROFON_PODRAZUMEVANI = "System default"

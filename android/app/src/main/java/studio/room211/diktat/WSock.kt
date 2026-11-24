@@ -120,6 +120,8 @@ class WSock(
 
     fun sendText(tekst: String) = sendFrame(OP_TEXT, tekst.toByteArray(Charsets.UTF_8))
 
+    fun sendBinary(data: ByteArray) = sendFrame(OP_BINARY, data)
+
     private fun sendFrame(opcode: Int, payload: ByteArray) {
         if (socket == null) throw WSException("Veza nije otvorena", retryable = false)
         synchronized(sendLock) { sendAll(encodeFrame(opcode, payload)) }

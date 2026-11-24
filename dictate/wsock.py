@@ -153,6 +153,9 @@ class WebSocket:
     def send_text(self, tekst):
         self._send_frame(OP_TEXT, tekst.encode("utf-8"))
 
+    def send_bytes(self, data):
+        self._send_frame(OP_BINARY, bytes(data))
+
     def _send_frame(self, opcode, payload):
         if self._sock is None:
             raise WebSocketError("Veza nije otvorena", retryable=False)
