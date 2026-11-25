@@ -1,5 +1,6 @@
 # Stanje
 _2026-11-25_
+- 1.90: telefon ima crnu karticu (95 %) fiksne širine, Mac ostaje teget. Objavljeno https://github.com/milev051/diktat/releases/tag/v1.90 sa APK-om. Otvoreno: provera na telefonu.
 - 1.89: okvir uživo ponovo teget kartica fiksne širine (kao 1.76) na Macu i Androidu; žuta pri kašnjenju ostaje. Objavljeno https://github.com/milev051/diktat/releases/tag/v1.89 sa APK-om; Mac instaliran. Otvoreno: provera na telefonu.
 _2026-11-24_
 - Soniox stt-rt-v6 dodat (Mac + Android 1.88). Mac instaliran i radi na Sonioxu; ključ u ~/.config/diktat/soniox_api_key. APK: Agent Desk data/prilozi/c075f8bd…/Diktat-1.88-soniox.apk, čeka ručnu instalaciju i upis ključa (ili dugme za ažuriranje na telefonu). 1.88 objavljena na GitHub-u: https://github.com/milev051/diktat/releases/tag/v1.88; Mac je vidi kao novu i zadržava Soniox. Otvoreno: živ diktat mikrofonom.
