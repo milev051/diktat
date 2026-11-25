@@ -253,17 +253,21 @@ LIVE_MAX_WIDTH = 760.0
 LIVE_MAX_HEIGHT = 260.0
 LIVE_BOTTOM = 120.0
 LIVE_CHARS = 400          # koliko poslednjih znakova stoji na ekranu
-# Izgled titla: centriran tekst, iza svakog reda crna cetvrtasta traka 75 %.
-TITL_FONT = 19.0
-TITL_PAD_X = 10.0         # traka viri levo i desno od reda
-TITL_PAD_Y = 4.0          # i iznad prvog, ispod poslednjeg reda
-TITL_TRAKA = (0.0, 0.0, 0.0, 0.75)
+# Izgled kao u 1.76 (vraceno 2026-11-25 na zahtev korisnika): tamna teget
+# kutija fiksne sirine, zaobljena, tekst levo. Titl sa trakom po redu (1.87)
+# korisniku je izgledao kao go tekst preko ekrana.
+TITL_FONT = 17.0
+TITL_PAD_X = 18.0         # unutrasnji luft kutije levo i desno
+TITL_PAD_Y = 18.0         # i gore i dole
+TITL_RAZMAK = 2.0         # dodatni razmak izmedju redova
+TITL_UGAO = 14.0
+TITL_TRAKA = (0.12, 0.16, 0.20, 0.90)   # #1F2933, teget kartica iz Android 1.76
 TITL_TRAKA_KASNI = (1.00, 0.80, 0.05, 0.92)   # zuto: prepis kasni, mikrofon snima
 PLACEHOLDER = "Listening…"
 
 
 class TitlView(AppKit.NSView):
-    """Crta tekst kao titl: svaki red na svojoj traci, bez okvira oko svega."""
+    """Crta tamnu kutiju fiksne sirine i prelomljen tekst u njoj."""
 
     def initWithFrame_(self, frame):
         self = objc.super(TitlView, self).initWithFrame_(frame)
@@ -287,11 +291,9 @@ class TitlView(AppKit.NSView):
     @objc.python_method
     def postavi(self, text, boja, font):
         stil = AppKit.NSMutableParagraphStyle.alloc().init()
-        stil.setAlignment_(AppKit.NSTextAlignmentCenter)
+        stil.setAlignment_(AppKit.NSTextAlignmentLeft)
         stil.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
-        # Razmak izmedju redova = gornji + donji luft trake, da se trake
-        # dodiruju bez preklapanja i da svaki red ima isti luft gore i dole.
-        stil.setLineSpacing_(2 * TITL_PAD_Y)
+        stil.setLineSpacing_(TITL_RAZMAK)
         self.visina_reda = self.lm.defaultLineHeightForFont_(font)
         attrs = {
             AppKit.NSFontAttributeName: font,
@@ -332,20 +334,9 @@ class TitlView(AppKit.NSView):
         if not redovi:
             return
         AppKit.NSColor.colorWithRed_green_blue_alpha_(*self.traka).set()
-        for r, opseg in redovi:
-            # Bez praznih razmaka na kraju reda, da traka bude simetricna.
-            vidljiv = self.lm.boundingRectForGlyphRange_inTextContainer_(
-                AppKit.NSMakeRange(opseg.location, opseg.length), self.container
-            )
-            x0 = r.origin.x + TITL_PAD_X - TITL_PAD_X
-            sirina = r.size.width
-            if vidljiv.size.width and vidljiv.size.width < sirina:
-                sirina = vidljiv.size.width
-                x0 = vidljiv.origin.x
-            # Tekst reda pocinje na r.y + PAD_Y; traka ima PAD_Y luft gore i dole.
-            AppKit.NSRectFill(NSMakeRect(
-                x0, r.origin.y, sirina + 2 * TITL_PAD_X, self.visina_reda + 2 * TITL_PAD_Y
-            ))
+        AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            self.bounds(), TITL_UGAO, TITL_UGAO
+        ).fill()
         self.lm.drawGlyphsForGlyphRange_atPoint_(
             AppKit.NSMakeRange(0, self.lm.numberOfGlyphs()),
             AppKit.NSMakePoint(TITL_PAD_X, TITL_PAD_Y),
@@ -353,14 +344,14 @@ class TitlView(AppKit.NSView):
 
 
 class LivePanel:
-    """Okvir sa prepisom koji se ispisuje DOK govoris, u izgledu titla.
+    """Okvir sa prepisom koji se ispisuje DOK govoris, u tamnoj kutiji fiksne sirine.
 
     Postoji zato sto direktan upis u aktivno polje stize tek kad Gemini potvrdi
     celinu. Ovde se vidi i medjurezultat, koji se u polje namerno NE kuca:
     model sme da ga promeni, pa bi kasnija izmena obrisala rucnu ispravku.
 
-    Izgled (od 2026-11-13): centriran tekst, svaki red na crnoj cetvrtastoj
-    traci od 75 %, kao titl. Kad prepis kasni, trake postaju zute, tekst crn.
+    Izgled (od 2026-11-25, kao u 1.76): tamna teget kutija fiksne sirine,
+    tekst levo. Kad prepis kasni, kutija postaje zuta, tekst crn.
 
     Panel je `NonactivatingPanel`, propusta klik i nikad ne uzima fokus, jer
     tekst mora da ode u polje koje je bilo aktivno pre diktata.
@@ -398,7 +389,7 @@ class LivePanel:
         panel.setLevel_(AppKit.NSScreenSaverWindowLevel)
         panel.setOpaque_(False)
         panel.setBackgroundColor_(AppKit.NSColor.clearColor())
-        panel.setHasShadow_(False)
+        panel.setHasShadow_(True)
         panel.setIgnoresMouseEvents_(True)
         panel.setReleasedWhenClosed_(False)
         panel.setHidesOnDeactivate_(False)
@@ -451,7 +442,7 @@ class LivePanel:
         if screen is None:
             return
         v = screen.visibleFrame()
-        # Kad je pilula sa vremenom takodje na dnu, titl ide iznad nje.
+        # Kad je pilula sa vremenom takodje na dnu, okvir ide iznad nje.
         dno = LIVE_BOTTOM + (HEIGHT + 14 if self.avoid_pill else 0)
         x = v.origin.x + (v.size.width - width) / 2
         y = v.origin.y + dno

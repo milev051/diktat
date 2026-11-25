@@ -25,12 +25,8 @@ class LiveOkvirVisina(unittest.TestCase):
                 dno = redovi[-1][0].origin.y + panel._view.visina_reda
                 # Poslednji red (onaj koji se izgovara) mora da stane u prozor.
                 self.assertGreaterEqual(visina, dno + 2 * overlay.TITL_PAD_Y, tekst)
-                # Svaka traka ima isti luft gore i dole: trake se dodiruju
-                # bez preklapanja, pa je razmak redova tacno visina trake.
-                for (r1, _), (r2, _) in zip(redovi, redovi[1:]):
-                    self.assertAlmostEqual(
-                        r2.origin.y - r1.origin.y,
-                        panel._view.visina_reda + 2 * overlay.TITL_PAD_Y, places=1)
+                # Kutija je fiksne sirine, bez obzira na duzinu teksta.
+                self.assertEqual(panel._panel.frame().size.width, panel._width())
                 self.assertEqual(sum(o.length for _, o in redovi),
                                  panel._view.lm.numberOfGlyphs())
         finally:

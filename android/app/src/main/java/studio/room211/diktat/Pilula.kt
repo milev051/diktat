@@ -10,9 +10,10 @@ import android.widget.FrameLayout
 import android.widget.TextView
 
 /**
- * Okvir preko ekrana dok diktat traje, u izgledu titla kao na Macu (od
- * 2026-11-13): centriran tekst, svaki red na crnoj cetvrtastoj traci 75 %,
- * zute trake i crn tekst kad prepis kasni. Stoji dole, bez dugmeta.
+ * Okvir preko ekrana dok diktat traje: tamna teget kartica fiksne sirine kao
+ * u 1.76 (vraceno 2026-11-25 na zahtev korisnika; titl sa trakom po redu iz
+ * 1.87 izgledao je kao go tekst). Zuta kartica i crn tekst kad prepis kasni.
+ * Stoji dole, bez dugmeta.
  *
  * Prozor je FLAG_NOT_FOCUSABLE: polje u koje tekst ide mora da zadrzi fokus.
  */
@@ -25,7 +26,7 @@ class Pilula(
     private val windows = context.getSystemService(WindowManager::class.java)
     private var pill: View? = null
     private var preview: TextView? = null
-    private val trake = TitlTrake()
+    private val kartica = GradientDrawable()
     private var kasni = false
     private var poslednjiTekst = ""
 
@@ -48,15 +49,14 @@ class Pilula(
             setTextColor(DIM)
             // Razmak redova = luft trake gore + dole, da se trake dodiruju
             // i da svaki red ima isti luft iznad i ispod slova.
-            includeFontPadding = false
-            setLineSpacing(2f * dp(4), 1f)
             maxLines = MAX_REDOVA
-            gravity = Gravity.CENTER
-            // Mesto za traku oko reda: span je crta van teksta, unutar paddinga.
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            setShadowLayer(0f, 0f, 0f, 0)
+            gravity = Gravity.BOTTOM or Gravity.START
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            kartica.cornerRadius = dp(16).toFloat()
+            kartica.setColor(TEGET)
+            background = kartica
         }
-        // Samo titl, bez dugmeta: prozor ne prima dodire, pa tastatura
+        // Samo kartica, bez dugmeta: prozor ne prima dodire, pa tastatura
         // ispod njega radi normalno. Diktat se zaustavlja kao i do sada.
         val view = FrameLayout(context).apply {
             addView(text, FrameLayout.LayoutParams(-1, -2))
@@ -104,7 +104,7 @@ class Pilula(
     private fun postaviKasnjenje(novo: Boolean) {
         if (novo == kasni) return
         kasni = novo
-        trake.boja = if (kasni) ZUTO else CRNO
+        kartica.setColor(if (kasni) ZUTO else TEGET)
         preview?.let { postaviTekst(it, it.text.toString()) }
         oboji()
     }
@@ -117,7 +117,6 @@ class Pilula(
             prazno -> DIM
             else -> Color.WHITE
         })
-        // Stop ostaje beli kvadrat na crnom krugu i kad trake pozute.
     }
 
     fun sakrij() {
@@ -129,11 +128,7 @@ class Pilula(
         preview = null
     }
     private fun postaviTekst(t: TextView, tekst: String) {
-        trake.padX = dp(8).toFloat()
-        trake.padY = dp(4).toFloat()
-        t.text = android.text.SpannableString(tekst).apply {
-            setSpan(trake, 0, length, android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-        }
+        t.text = tekst
     }
 
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
@@ -142,42 +137,7 @@ class Pilula(
         const val LISTENING = "Listening…"
         const val DIM = 0x8CFFFFFF.toInt()
         const val MAX_REDOVA = 6
-        const val CRNO = 0xBF000000.toInt()   // 75 % crno, kao traka titla
+        const val TEGET = 0xE61F2933.toInt()  // kartica iz 1.76
         const val ZUTO = 0xEBFFCC0D.toInt()
-    }
-}
-
-/**
- * Crna cetvrtasta traka iza svakog reda, sirine samog teksta tog reda.
- * Trake susednih redova se dodiruju bez preklapanja, da 75 % ne postane tamnije.
- */
-class TitlTrake : android.text.style.LineBackgroundSpan {
-    var boja = 0xBF000000.toInt()
-    var padX = 0f
-    var padY = 0f
-    private val rect = android.graphics.RectF()
-
-    override fun drawBackground(
-        canvas: android.graphics.Canvas, paint: android.graphics.Paint,
-        left: Int, right: Int, top: Int, baseline: Int, bottom: Int,
-        text: CharSequence, start: Int, end: Int, lineNumber: Int,
-    ) {
-        val red = text.subSequence(start, end).toString().trimEnd()
-        if (red.isEmpty()) return
-        val sirina = paint.measureText(red)
-        val sredina = (left + right) / 2f
-        // Traka se meri od slova, ne od reda: razmak redova ide samo ispod
-        // reda, pa bi traka po redu imala luft dole, a ne gore.
-        val fm = paint.fontMetrics
-        rect.set(
-            sredina - sirina / 2 - padX,
-            baseline + fm.ascent - padY,
-            sredina + sirina / 2 + padX,
-            baseline + fm.descent + padY,
-        )
-        val stara = paint.color
-        paint.color = boja
-        canvas.drawRect(rect, paint)
-        paint.color = stara
     }
 }
