@@ -104,6 +104,10 @@ class MainActivity : AppCompatActivity() {
         root.addView(switch(this, "Lowercase", cfg.lowercase) { cfg.lowercase = it })
         root.addView(switch(this, "Remove diacritics", cfg.asciiDiacritics) { cfg.asciiDiacritics = it })
         root.addView(switch(this, "Abbreviations", cfg.abbreviations) { cfg.abbreviations = it })
+        root.addView(switch(this, "Punctuation", !cfg.stripPunctuation) {
+            cfg.stripPunctuation = !it
+            cfg.samoZarezi = false
+        })
         root.addView(compactProvider())
         root.addView(compactKey())
         root.addView(compactSonioxKey())

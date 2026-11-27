@@ -7,7 +7,7 @@ rep obicnog aktivnog polja; potvrda ga zakljucava.
 import time
 from contextlib import nullcontext
 
-from . import dijagnostika, geministt, insert, rezerva, sonioxstt
+from . import dijagnostika, geministt, insert, kasnjenje, rezerva, sonioxstt
 
 LIVE_MREZNI_ROK = 20
 
@@ -166,13 +166,28 @@ class GeminiTok:
         if not ((show_preview or show_diagnostics) and (geministt.enabled(self.cfg) or sonioxstt.enabled(self.cfg) or google)):
             return
         recorder = self._recorder
-        poslednji = getattr(self, "_live_last_update_at", time.monotonic())
-        # Google salje tekst tek posle pauze (15 s i vise), pa kasnjenje nije znak kvara.
-        if (recorder is not None and not google and not getattr(self, "_live_waiting", False)
-                and time.monotonic() - poslednji > 4
-                and time.monotonic() - getattr(recorder, "last_audio_at", 0) < 1
+        # Zuto samo kad izgovoren zvuk ceka prepis, ne kad korisnik cuti
+        # (vidi kasnjenje.py). Google salje tekst tek posle pauze, pa za njega
+        # kasnjenje nije znak kvara.
+        sada = time.monotonic()
+        k = getattr(self, "_kasnjenje", None)
+        if k is None:
+            k = self._kasnjenje = kasnjenje.Kasnjenje()
+        poslednji = getattr(self, "_live_last_update_at", 0.0)
+        if (getattr(self, "_kas_tekst_at", None) != poslednji
+                or getattr(self, "_kas_recorder", None) is not recorder):
+            self._kas_tekst_at = poslednji
+            self._kas_recorder = recorder
+            k.reset(sada)
+        dt = min(0.25, max(0.0, sada - getattr(self, "_kas_tick_at", sada)))
+        self._kas_tick_at = sada
+        if (recorder is not None and not google
+                and sada - getattr(recorder, "last_audio_at", 0) < 0.25
                 and getattr(recorder, "level", 0) >= rezerva.PRAG_TISINE):
-            self._live_waiting = True
+            k.glas_komad(sada, dt)
+        novo = bool(recorder is not None and not google and k.kasni(sada))
+        if novo != bool(getattr(self, "_live_waiting", False)):
+            self._live_waiting = novo
             self._live_text_dirty = True
         # Kasnjenje se ne ispisuje: tacka u okviru postaje narandzasta i brze
         # pulsira, pa nema teksta koji treba procitati usred diktiranja.

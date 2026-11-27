@@ -10,7 +10,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 
 /**
- * Okvir preko ekrana dok diktat traje: crna kartica (95 %) fiksne sirine kao
+ * Okvir preko ekrana dok diktat traje: teget kartica (90 %, kao Mac) fiksne sirine kao
  * u 1.76 (vraceno 2026-11-25 na zahtev korisnika; titl sa trakom po redu iz
  * 1.87 izgledao je kao go tekst). Zuta kartica i crn tekst kad prepis kasni.
  * Stoji dole, bez dugmeta.
@@ -53,7 +53,7 @@ class Pilula(
             gravity = Gravity.BOTTOM or Gravity.START
             setPadding(dp(14), dp(12), dp(14), dp(12))
             kartica.cornerRadius = dp(16).toFloat()
-            kartica.setColor(CRNO)
+            kartica.setColor(TEGET)
             background = kartica
         }
         // Samo kartica, bez dugmeta: prozor ne prima dodire, pa tastatura
@@ -104,7 +104,7 @@ class Pilula(
     private fun postaviKasnjenje(novo: Boolean) {
         if (novo == kasni) return
         kasni = novo
-        kartica.setColor(if (kasni) ZUTO else CRNO)
+        kartica.setColor(if (kasni) ZUTO else TEGET)
         preview?.let { postaviTekst(it, it.text.toString()) }
         oboji()
     }
@@ -137,7 +137,7 @@ class Pilula(
         const val LISTENING = "Listening…"
         const val DIM = 0x8CFFFFFF.toInt()
         const val MAX_REDOVA = 6
-        const val CRNO = 0xF2000000.toInt()   // crna kartica, 95 % (od 1.90)
+        const val TEGET = 0xE61F2933.toInt()  // teget 90 %, kao Mac (od 1.91)
         const val ZUTO = 0xEBFFCC0D.toInt()
     }
 }

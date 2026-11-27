@@ -242,9 +242,11 @@ def _migrate(cfg: dict, saved=None) -> dict:
     # podrazumevani "spoken" ostaje malim slovima bez znakova.
     if "lowercase" not in saved:
         cfg["lowercase"] = cfg.get("text_style") != "written"
-    # Prekidac „Remove punctuation" je uklonjen (13.11.2026), isto kao na
-    # telefonu: interpunkcija se uvek uklanja.
-    cfg["strip_punctuation"] = True
+    # Prekidac „Punctuation" (od 27.11.2026, Mac i telefon): ukljucen cuva
+    # interpunkciju. Podrazumevano iskljucen, kao od 13.11. kad je bila uvek
+    # uklonjena; sacuvan izbor se postuje.
+    if "strip_punctuation" not in saved:
+        cfg["strip_punctuation"] = True
 
     for mrtvo in ("engine", "credentials_json", "project_id", "location",
                   "model", "punctuation",

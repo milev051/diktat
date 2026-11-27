@@ -100,14 +100,14 @@ class SettingsLayout(unittest.TestCase):
                     'input_device',
                     'transcription_provider', 'polish_api_key',
                     'lowercase', 'ascii_diacritics',
-                    'abbreviations', 'start_at_login',
+                    'abbreviations', 'punctuation', 'start_at_login',
                 })
                 self.assertEqual(ui.api_key_row.isHidden(), provider == 'google')
                 self.assertEqual(ui.mouse_button.title(), 'Record mouse button')
-                first_rows = [row.view for row in ui.pages[0].rows[:4]]
+                first_rows = [row.view for row in ui.pages[0].rows[:5]]
                 self.assertEqual([str(view.identifier()) for view in first_rows],
                                  ['lowercase', 'ascii_diacritics',
-                                  'abbreviations', 'start_at_login'])
+                                  'abbreviations', 'punctuation', 'start_at_login'])
                 self.assertFalse(ui.history_scroll.hasVerticalScroller())
                 first = ui.history_buttons[0].frame()
                 self.assertEqual(first.origin.x, settings_window.HISTORY_PADDING)
@@ -264,3 +264,17 @@ class AutomaticUpdates(unittest.TestCase):
         app._tick_azuriranje()
         app._tick_azuriranje()
         app._azur_klik.assert_called_once_with()
+
+
+class PunctuationLoad(unittest.TestCase):
+    def test_sacuvan_izbor_interpunkcije_ostaje(self):
+        import json, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "config.json"
+            p.write_text(json.dumps({"strip_punctuation": False}))
+            with patch.object(config, "CONFIG_PATH", p):
+                self.assertFalse(config.load()["strip_punctuation"])
+            p.write_text(json.dumps({}))
+            with patch.object(config, "CONFIG_PATH", p):
+                self.assertTrue(config.load()["strip_punctuation"])

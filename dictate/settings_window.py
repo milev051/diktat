@@ -386,6 +386,8 @@ class SettingsWindow:
         self._checkbox(page, "Lowercase", "lowercase", True)
         self._checkbox(page, "Remove diacritics", "ascii_diacritics", False)
         self._checkbox(page, "Abbreviations", "abbreviations", True)
+        # Ukljuceno = tacke, zarezi, upitnici ostaju (od 1.91, na zahtev).
+        self._checkbox(page, "Punctuation", "punctuation", False)
         self._checkbox(page, "Start at login", "start_at_login", True)
         self._popup(page, "Microphone", "input_device",
                     [MIKROFON_PODRAZUMEVANI, *audio.input_devices()],
@@ -493,8 +495,12 @@ class SettingsWindow:
         item.setTarget_(self.app)
         item.setAction_("settingsCheckbox:")
         item.setIdentifier_(key)
+        if key == "punctuation":
+            ukljuceno = not self.app.cfg.get("strip_punctuation", True)
+        else:
+            ukljuceno = bool(self.app.cfg.get(key, default))
         item.setState_(
-            AppKit.NSControlStateValueOn if bool(self.app.cfg.get(key, default))
+            AppKit.NSControlStateValueOn if ukljuceno
             else AppKit.NSControlStateValueOff
         )
         control = page.place(item, 20, gap=4.0, inset=inset, vidljivo=vidljivo)

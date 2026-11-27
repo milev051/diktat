@@ -576,14 +576,32 @@ class GasenjePrikaza(unittest.TestCase):
 
     def test_kasnjenje_prepisa_se_prikazuje_dok_zvuk_stize(self):
         app = self._app()
-        app._recorder = type("Rec", (), {"last_audio_at": time.monotonic(), "level": 0.2})()
-        app._live_last_update_at = time.monotonic() - 5
+        from dictate.kasnjenje import Kasnjenje
+        sada = time.monotonic()
+        app._recorder = type("Rec", (), {"last_audio_at": sada, "level": 0.2})()
+        app._live_last_update_at = sada - 5
         app._live_waiting = False
+        # 5 s govora od poslednjeg teksta, bez novog prepisa.
+        k = app._kasnjenje = Kasnjenje()
+        app._kas_tekst_at, app._kas_recorder = app._live_last_update_at, app._recorder
+        t = sada - 5
+        while t < sada:
+            k.glas_komad(t, 0.05)
+            t += 0.05
         app._tick_live_panel()
-        # Kasnjenje se pokazuje bojom tacke, ne tekstom koji treba citati.
+        # Kasnjenje se pokazuje bojom, ne tekstom koji treba citati.
         self.assertTrue(app.live_panel.delayed)
         self.assertNotIn("Transcription delayed", app.live_panel.status)
         self.assertEqual(app.live_panel.text, "prva celina")
+
+    def test_sum_posle_duge_tisine_nije_kasnjenje(self):
+        # Korisnik cuti duze od 4 s; jedan sum iznad praga ne sme da pozuti.
+        app = self._app()
+        app._recorder = type("Rec", (), {"last_audio_at": time.monotonic(), "level": 0.2})()
+        app._live_last_update_at = time.monotonic() - 10
+        app._live_waiting = False
+        app._tick_live_panel()
+        self.assertFalse(app.live_panel.delayed)
 
     def test_tisina_ne_prijavljuje_zastoj_servisa(self):
         app = self._app()

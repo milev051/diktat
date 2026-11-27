@@ -86,8 +86,7 @@ class DictationService : Service() {
     private val openAiParts = HashMap<Int, MutableList<java.io.File>>()
     @Volatile private var polishing = false
     // Kasnjenje prepisa za okvir: kad je poslednji glas cut i kad je stigao tekst.
-    @Volatile private var glasAt = 0L
-    @Volatile private var tekstAt = 0L
+    private val kasnjenje = Kasnjenje()
     private var prepis = LivePrenos()
     private val liveVeza = java.util.concurrent.atomic.AtomicReference<WSock?>(null)
     private val sesijaZavrsena = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -102,12 +101,11 @@ class DictationService : Service() {
         isActive = true
         cfg = Config(this)
         pilula = Pilula(this, cfg, ::limitSeconds) { zaustaviIliPrekini() }
-        // Isto pravilo kao na Macu: glas se cuje (poslednjih 1 s), a novog
-        // teksta nema vise od 4 s. Google salje tek posle pauze, pa glasAt
-        // ostaje 0 i okvir ne pozuti.
+        // Isto pravilo kao na Macu (Kasnjenje.kt): zuto samo kad izgovoren
+        // zvuk ceka prepis, ne kad korisnik cuti. Google salje tek posle
+        // pauze i ne puni Kasnjenje, pa okvir ne pozuti.
         pilula.proveraKasnjenja = {
-            val now = android.os.SystemClock.elapsedRealtime()
-            glasAt > 0 && now - glasAt < 1000 && now - tekstAt > 4000
+            kasnjenje.kasni(android.os.SystemClock.elapsedRealtime())
         }
         startForeground(NOTIFICATION_ID, buildNotification())
     }
@@ -170,8 +168,7 @@ class DictationService : Service() {
         isRecording = true
         session = ++sessionSeq
         startedAt = System.currentTimeMillis()
-        glasAt = 0L
-        tekstAt = android.os.SystemClock.elapsedRealtime()
+        kasnjenje.reset()
         pilula.prikazi()
         tick()
         if (cfg.longRecording) {
@@ -311,7 +308,7 @@ class DictationService : Service() {
             var zavrseno = false
             val onUpdate: (String) -> Unit = { raw ->
                 val text = GeminiStt.postProcess(raw, cfg).trim()
-                tekstAt = android.os.SystemClock.elapsedRealtime()
+                kasnjenje.reset()
                 zapamtiPrikaz(text)
                 if (cfg.geminiLivePreview) {
                     val rep = text.takeLast(450)
@@ -350,7 +347,10 @@ class DictationService : Service() {
                 when {
                     chunk != null -> {
                         totalBytes += chunk.size
-                        if (peakLevel(chunk) >= PRAG_GLASA) glasAt = android.os.SystemClock.elapsedRealtime()
+                        if (peakLevel(chunk) >= PRAG_GLASA) kasnjenje.glasKomad(
+                            android.os.SystemClock.elapsedRealtime(),
+                            chunk.size * 1000L / 2 / cfg.sampleRate,
+                        )
                         chunk
                     }
                     !zavrseno -> {

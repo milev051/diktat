@@ -1,4 +1,6 @@
 # Stanje
+_2026-11-27_
+- 1.91: telefon teget kao Mac; žuto samo kad izgovoren zvuk čeka prepis (ne u tišini); prekidač „Punctuation” na Macu i telefonu (podrazumevano isključen). Objavljeno https://github.com/milev051/diktat/releases/tag/v1.91 sa APK-om; Mac instaliran. Otvoreno: provera žutog i prekidača uživo na telefonu.
 _2026-11-25_
 - 1.90: telefon ima crnu karticu (95 %) fiksne širine, Mac ostaje teget. Objavljeno https://github.com/milev051/diktat/releases/tag/v1.90 sa APK-om. Otvoreno: provera na telefonu.
 - 1.89: okvir uživo ponovo teget kartica fiksne širine (kao 1.76) na Macu i Androidu; žuta pri kašnjenju ostaje. Objavljeno https://github.com/milev051/diktat/releases/tag/v1.89 sa APK-om; Mac instaliran. Otvoreno: provera na telefonu.
