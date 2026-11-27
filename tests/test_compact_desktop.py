@@ -100,14 +100,14 @@ class SettingsLayout(unittest.TestCase):
                     'input_device',
                     'transcription_provider', 'polish_api_key',
                     'lowercase', 'ascii_diacritics',
-                    'abbreviations', 'punctuation', 'start_at_login',
+                    'abbreviations', 'strip_punctuation', 'start_at_login',
                 })
                 self.assertEqual(ui.api_key_row.isHidden(), provider == 'google')
                 self.assertEqual(ui.mouse_button.title(), 'Record mouse button')
                 first_rows = [row.view for row in ui.pages[0].rows[:5]]
                 self.assertEqual([str(view.identifier()) for view in first_rows],
                                  ['lowercase', 'ascii_diacritics',
-                                  'abbreviations', 'punctuation', 'start_at_login'])
+                                  'abbreviations', 'strip_punctuation', 'start_at_login'])
                 self.assertFalse(ui.history_scroll.hasVerticalScroller())
                 first = ui.history_buttons[0].frame()
                 self.assertEqual(first.origin.x, settings_window.HISTORY_PADDING)

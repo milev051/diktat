@@ -184,8 +184,12 @@ KEY_MAP = {
 }
 
 
+DUGI_PRITISAK = 0.5   # s drzanja prekidaca koje otvara meni
+
+
 class HotkeyListener:
-    def __init__(self, cfg, on_start, on_stop, on_cancel, is_synthetic=None):
+    def __init__(self, cfg, on_start, on_stop, on_cancel, is_synthetic=None,
+                 on_menu=None):
         key_name = cfg.get("hotkey", "cmd_r")
         if key_name not in KEY_MAP:
             raise RuntimeError(
@@ -199,6 +203,13 @@ class HotkeyListener:
         self.on_start = on_start
         self.on_stop = on_stop
         self.on_cancel = on_cancel
+        # Dugi pritisak (od 1.92): drzanje prekidaca DUGI_PRITISAK s u rezimu
+        # prekidaca otkazuje upravo pokrenut diktat i otvara meni.
+        self.on_menu = on_menu
+        self._dugi_br = 0           # broj pritiska; tajmer vazi samo za svoj
+        self._dugi_dole = False     # prekidac je dole posle pritiska koji je pokrenuo
+        self._glavni_dole = False   # auto-repeat glavnog tastera se ignorise
+        self._glavni_dole_at = 0.0
         # Vraca True dok aplikacija sama salje tastere (lepljenje teksta).
         self.is_synthetic = is_synthetic or (lambda: False)
 
@@ -476,9 +487,19 @@ class HotkeyListener:
                     self._pritisak()
                 return
             if self._matches(key):
-                self._pritisak()
+                # Auto-repeat drzanog tastera nije nov pritisak. Posle 5 s se
+                # ipak prima, da izgubljeno pustanje ne ukoci prekidac.
+                sada = time.monotonic()
+                # Modifikatori nemaju auto-repeat, pa za njih ovo ne vazi.
+                if (key in MODIFIER_KEYS or not self._glavni_dole
+                        or sada - self._glavni_dole_at > 5):
+                    self._glavni_dole = True
+                    self._glavni_dole_at = sada
+                    self._pritisak()
                 return
 
+            # Drugi taster dok je prekidac dole: precica, ne dugi pritisak.
+            self._dugi_dole = False
             # Neki drugi taster dok drzimo hotkey => ovo je precica, ne diktat.
             # Osim ako smo ga mi poslali: lepljenje segmenta usred diktata salje
             # Cmd+V, i bez ove provere bi aplikacija otkazala sopstveni diktat.
@@ -500,6 +521,7 @@ class HotkeyListener:
                 self._pustanje()
                 return
             if self._matches(key):
+                self._glavni_dole = False
                 self._pustanje()
 
     def _pritisak(self):
@@ -513,6 +535,7 @@ class HotkeyListener:
                 self._contaminated = False
                 self._pressed_at = time.monotonic()
                 self._start()
+                self._zakazi_dugi()
             return
         # hold: ignorisi auto-repeat dok je vec aktivno
         if not self._active:
@@ -523,6 +546,7 @@ class HotkeyListener:
 
     def _pustanje(self):
         """Prekidac pusten; znacajno samo u rezimu „drzi taster"."""
+        self._dugi_dole = False
         if self.mode == "toggle" or not self._active:
             return
         self._active = False
@@ -533,6 +557,26 @@ class HotkeyListener:
             self._fire(self.on_cancel, "prekratko")
         else:
             self._fire(self.on_stop)
+
+    def _zakazi_dugi(self):
+        """Pod `_lock`: posle DUGI_PRITISAK s proveri da li je prekidac jos dole."""
+        if self.on_menu is None:
+            return
+        self._dugi_br += 1
+        self._dugi_dole = True
+        t = threading.Timer(DUGI_PRITISAK, self._dugi_pritisak, args=(self._dugi_br,))
+        t.daemon = True
+        t.start()
+
+    def _dugi_pritisak(self, broj):
+        """Prekidac je drzan DUGI_PRITISAK s: otkazi diktat, otvori meni."""
+        with self._lock:
+            if broj != self._dugi_br or not self._dugi_dole or not self._active:
+                return
+            self._dugi_dole = False
+            self._active = False
+        self._fire(self.on_cancel, "meni")
+        self._fire(self.on_menu)
 
     def reset(self, pokrenuto=None):
         """Vrati prekidac u mirovanje.

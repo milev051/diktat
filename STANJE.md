@@ -1,5 +1,6 @@
 # Stanje
 _2026-11-27_
+- 1.92: „Remove punctuation” (negacija, podrazumevano uključen) na Macu i telefonu; Mac: drži prekidač 0,5 s = meni; telefon: dugi pritisak na pločicu Diktata = meni. Objavljeno https://github.com/milev051/diktat/releases/tag/v1.92; Mac instaliran. Otvoreno: provera dugog pritiska uživo.
 - 1.91: telefon teget kao Mac; žuto samo kad izgovoren zvuk čeka prepis (ne u tišini); prekidač „Punctuation” na Macu i telefonu (podrazumevano isključen). Objavljeno https://github.com/milev051/diktat/releases/tag/v1.91 sa APK-om; Mac instaliran. Otvoreno: provera žutog i prekidača uživo na telefonu.
 _2026-11-25_
 - 1.90: telefon ima crnu karticu (95 %) fiksne širine, Mac ostaje teget. Objavljeno https://github.com/milev051/diktat/releases/tag/v1.90 sa APK-om. Otvoreno: provera na telefonu.

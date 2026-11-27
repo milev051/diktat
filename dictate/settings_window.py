@@ -386,8 +386,8 @@ class SettingsWindow:
         self._checkbox(page, "Lowercase", "lowercase", True)
         self._checkbox(page, "Remove diacritics", "ascii_diacritics", False)
         self._checkbox(page, "Abbreviations", "abbreviations", True)
-        # Ukljuceno = tacke, zarezi, upitnici ostaju (od 1.91, na zahtev).
-        self._checkbox(page, "Punctuation", "punctuation", False)
+        # Negacija kao ostali prekidaci (od 1.92): ukljuceno = bez interpunkcije.
+        self._checkbox(page, "Remove punctuation", "strip_punctuation", True)
         self._checkbox(page, "Start at login", "start_at_login", True)
         self._popup(page, "Microphone", "input_device",
                     [MIKROFON_PODRAZUMEVANI, *audio.input_devices()],

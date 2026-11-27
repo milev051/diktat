@@ -216,7 +216,12 @@ class DictateApp(
             on_stop=self._on_stop,
             on_cancel=self._on_cancel,
             is_synthetic=insert.injecting,
+            on_menu=self._zatrazi_meni,
         )
+
+    def _zatrazi_meni(self):
+        """Dugi pritisak prekidaca (nit tastature): meni otvara `_tick`."""
+        self._meni_trazen = True
 
     def _restart_hotkey(self):
         """Ponovo otvori osluškivanje tastature.
@@ -284,6 +289,11 @@ class DictateApp(
         if self._settings_window_ui is not None:
             self._settings_window_ui.refresh_recording()
 
+        if getattr(self, "_meni_trazen", False):
+            self._meni_trazen = False
+            prozor = self._settings_window_ui
+            if prozor is None or not prozor.visible():
+                self._open_settings(None)
         self._tick_live_panel()
         self._tick_azuriranje()
         if self._prozor_moze and self._settings_window_ui is None:

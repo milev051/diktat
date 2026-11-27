@@ -104,8 +104,10 @@ class MainActivity : AppCompatActivity() {
         root.addView(switch(this, "Lowercase", cfg.lowercase) { cfg.lowercase = it })
         root.addView(switch(this, "Remove diacritics", cfg.asciiDiacritics) { cfg.asciiDiacritics = it })
         root.addView(switch(this, "Abbreviations", cfg.abbreviations) { cfg.abbreviations = it })
-        root.addView(switch(this, "Punctuation", !cfg.stripPunctuation) {
-            cfg.stripPunctuation = !it
+        // Negacija kao ostali prekidaci (od 1.92); stanje iz 1.91 ostaje isto
+        // jer se i dalje cuva kao `punctuation_on` (Config.stripPunctuation).
+        root.addView(switch(this, "Remove punctuation", cfg.stripPunctuation) {
+            cfg.stripPunctuation = it
             cfg.samoZarezi = false
         })
         root.addView(compactProvider())

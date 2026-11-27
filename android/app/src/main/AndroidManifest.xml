@@ -31,6 +31,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Dugi pritisak na plocicu Diktata u brzim podesavanjima otvara
+                 meni (od 1.92). Bocni taster aplikaciji salje samo jedan
+                 dogadjaj bez trajanja pritiska, pa tamo dugi pritisak ne postoji. -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
 
         <!-- Audio iz WhatsApp-a, menadzera fajlova i drugih aplikacija. -->

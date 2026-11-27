@@ -65,6 +65,7 @@ class TasterGrave(unittest.TestCase):
         sluzba = self._listener(hotkey_grave=True, hotkey_section=False)
         sluzba._on_press(self._grave())
         self.assertTrue(sluzba._active)
+        sluzba._on_release(self._grave())
         sluzba._on_press(self._grave())
         self.assertFalse(sluzba._active)
 
@@ -316,3 +317,73 @@ class LogiSwipe(unittest.TestCase):
 
     def test_naziv(self):
         self.assertEqual(hotkey.naziv_prekidaca({"mouse_swipe": "back"}), "bočno dugme Back")
+
+
+class DugiPritisak(unittest.TestCase):
+    """Drzanje prekidaca 0,5 s otkazuje upravo pokrenut diktat i otvara meni."""
+
+    def _listener(self, **kw):
+        cfg = {"hotkey": "alt_r", "mode": "toggle", "min_seconds": 0.35}
+        cfg.update(kw)
+        self.dogadjaji = []
+        sluzba = hotkey.HotkeyListener(
+            cfg, on_start=lambda: True, on_stop=lambda: self.dogadjaji.append("stop"),
+            on_cancel=lambda *a: self.dogadjaji.append(("cancel",) + a),
+            on_menu=lambda: self.dogadjaji.append("meni"),
+        )
+        # Tajmer se ne pokrece; test sam zove `_dugi_pritisak` kao da je istekao.
+        sluzba._fire = lambda fn, *a: fn(*a)
+        sluzba._start = lambda: None
+        hotkey.threading.Timer = _LazniTajmer
+        return sluzba
+
+    def tearDown(self):
+        hotkey.threading.Timer = _PRAVI_TAJMER
+
+    def test_drzanje_otvara_meni(self):
+        s = self._listener()
+        s._on_press(keyboard.Key.alt_r)
+        self.assertTrue(s._active)
+        s._dugi_pritisak(s._dugi_br)
+        self.assertFalse(s._active)
+        self.assertEqual(self.dogadjaji, [("cancel", "meni"), "meni"])
+        s._on_release(keyboard.Key.alt_r)
+        self.assertEqual(self.dogadjaji, [("cancel", "meni"), "meni"])
+
+    def test_kratak_pritisak_radi_kao_pre(self):
+        s = self._listener()
+        s._on_press(keyboard.Key.alt_r)
+        s._on_release(keyboard.Key.alt_r)
+        s._dugi_pritisak(s._dugi_br)          # tajmer istekne posle pustanja
+        self.assertTrue(s._active)
+        self.assertEqual(self.dogadjaji, [])
+        s._on_press(keyboard.Key.alt_r)
+        self.assertFalse(s._active)
+        self.assertEqual(self.dogadjaji, ["stop"])
+
+    def test_auto_repeat_nije_nov_pritisak(self):
+        s = self._listener(hotkey_section=True)
+        sek = keyboard.KeyCode.from_vk(hotkey.SECTION_VK)
+        s._on_press(sek)
+        s._on_press(sek)
+        s._on_press(sek)
+        self.assertTrue(s._active)
+
+    def test_precica_nije_dugi_pritisak(self):
+        s = self._listener()
+        s._on_press(keyboard.Key.alt_r)
+        s._on_press(keyboard.KeyCode.from_char("a"))
+        s._dugi_pritisak(s._dugi_br)
+        self.assertTrue(s._active)
+        self.assertNotIn("meni", self.dogadjaji)
+
+
+class _LazniTajmer:
+    def __init__(self, *a, **kw):
+        self.daemon = True
+
+    def start(self):
+        pass
+
+
+_PRAVI_TAJMER = hotkey.threading.Timer

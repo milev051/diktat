@@ -132,8 +132,8 @@ class Config(context: Context) {
         set(v) = prefs.edit().putBoolean("lowercase", v).apply()
 
     /**
-     * Prekidac „Punctuation" (od 1.91, 2026-11-27, isto kao na Macu):
-     * ukljucen cuva tacke, zareze i upitnike. Podrazumevano iskljucen, kao od
+     * Prekidac „Remove punctuation" (1.91 „Punctuation", od 1.92 negacija):
+     * ukljucen uklanja tacke, zareze i upitnike. Podrazumevano ukljucen, kao od
      * 2026-11-13. Nov kljuc `punctuation_on`, da stara vrednost
      * `strip_punctuation` iz vremena pre 1.84 ne upali interpunkciju sama.
      * Separatori u brojevima ostaju (TextPolish).
